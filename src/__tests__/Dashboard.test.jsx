@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Dashboard from '../screens/Dashboard';
-import { clearAllData, createSession, addImprovements } from '../store';
+import { clearAllData, createSession, addImprovements, logActivity } from '../store';
 
 function renderDashboard() {
   return render(
@@ -114,5 +114,17 @@ describe('Dashboard Component', () => {
 
     fireEvent.click(sessionBtn);
     expect(window.location.pathname + window.location.search).toBe(`/library?session=${session.id}`);
+  });
+
+  it('renders time badge on expanded session row', () => {
+    const session = createSession({ title: 'Timed Session', sourceType: 'video' });
+    logActivity({ type: 'session', durationSeconds: 150, sessionId: session.id, topicId: session.topicId });
+
+    renderDashboard();
+
+    const header = screen.getByText('Timed Session').closest('button');
+    fireEvent.click(header);
+
+    expect(screen.getAllByText(/2m 30s/i).length).toBeGreaterThan(0);
   });
 });

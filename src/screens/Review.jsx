@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { getDueCards, getImprovement, getSession, updateSrsCard, getSrsCards } from '../store';
+import { getDueCards, getImprovement, getSession, updateSrsCard, getSrsCards, logActivity } from '../store';
 import { processReview, RATINGS } from '../srs';
 import { generateExamplesPrompt } from '../prompts';
 
@@ -12,6 +12,8 @@ export default function Review() {
   const [showExamplesPrompt, setShowExamplesPrompt] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
   const [loading, setLoading] = useState(true);
+  const startTimeRef = useRef(Date.now());
+  const reviewedCardsRef = useRef([]);
   
   // Stats for summary
   const [stats, setStats] = useState({
@@ -29,6 +31,8 @@ export default function Review() {
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
+    startTimeRef.current = Date.now();
+
     const loadCards = () => {
       const due = getDueCards();
       
@@ -65,6 +69,20 @@ export default function Review() {
     };
 
     loadCards();
+
+    return () => {
+      // Log accumulated review time on unmount if any cards were reviewed
+      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+      if (elapsed > 0 && reviewedCardsRef.current.length > 0) {
+        const lastCard = reviewedCardsRef.current[reviewedCardsRef.current.length - 1];
+        logActivity({
+          type: 'review',
+          durationSeconds: elapsed,
+          sessionId: lastCard?.session?.id || null,
+          topicId: lastCard?.session?.topicId || null,
+        });
+      }
+    };
   }, []);
 
   const handleShowAnswer = () => {
@@ -73,6 +91,7 @@ export default function Review() {
 
   const handleRating = (score) => {
     const currentCard = queue[currentIndex];
+    reviewedCardsRef.current.push(currentCard);
     
     // Process SRS
     const updates = processReview(currentCard, score);
@@ -101,6 +120,18 @@ export default function Review() {
     setShowExamplesPrompt(false);
     
     if (currentIndex + 1 >= newQueue.length) {
+      const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
+      if (elapsed > 0) {
+        logActivity({
+          type: 'review',
+          durationSeconds: elapsed,
+          sessionId: currentCard?.session?.id || null,
+          topicId: currentCard?.session?.topicId || null,
+        });
+        // Reset timer ref so unmount doesn't double log
+        startTimeRef.current = Date.now();
+        reviewedCardsRef.current = [];
+      }
       setSessionComplete(true);
     } else {
       setCurrentIndex(prev => prev + 1);

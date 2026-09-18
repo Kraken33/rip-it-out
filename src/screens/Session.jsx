@@ -5,7 +5,8 @@ import {
   addImprovements, 
   findDuplicate,
   getSettings,
-  getSessions
+  getSessions,
+  logActivity
 } from '../store';
 import { 
   generateDescriptionPrompt, 
@@ -26,6 +27,7 @@ export default function Session() {
   const [step, setStep] = useState(1);
   const [settings, setSettings] = useState(null);
   const [existingSessions, setExistingSessions] = useState([]);
+  const [startTime, setStartTime] = useState(null);
 
   useEffect(() => {
     setSettings(getSettings());
@@ -98,10 +100,14 @@ export default function Session() {
       notes
     });
     setSession(newSession);
+    setStartTime(Date.now());
     setStep(2);
   }, [title, sourceType, tags, notes]);
 
   const copyToClipboard = useCallback(async (text, setter) => {
+    if (!startTime) {
+      setStartTime(Date.now());
+    }
     try {
       await navigator.clipboard.writeText(text);
       setter(true);
@@ -109,7 +115,7 @@ export default function Session() {
     } catch (err) {
       console.error('Failed to copy text: ', err);
     }
-  }, []);
+  }, [startTime]);
 
   const handleImport = useCallback(() => {
     setParseError('');
@@ -132,9 +138,20 @@ export default function Session() {
   const handleConfirmImport = useCallback(() => {
     if (session && parsedImprovements.length > 0) {
       addImprovements(session.id, parsedImprovements);
+      if (startTime) {
+        const durationSeconds = Math.round((Date.now() - startTime) / 1000);
+        if (durationSeconds > 0) {
+          logActivity({
+            type: 'session',
+            durationSeconds,
+            sessionId: session.id,
+            topicId: session.topicId,
+          });
+        }
+      }
       navigate('/');
     }
-  }, [session, parsedImprovements, navigate]);
+  }, [session, parsedImprovements, startTime, navigate]);
 
   // Derived Prompts
   const descriptionPrompt = useMemo(() => {

@@ -6,6 +6,7 @@ import Review from './screens/Review';
 import Practice from './screens/Practice';
 import Library from './screens/Library';
 import Settings from './screens/Settings';
+import Stats from './screens/Stats';
 import { getDueCards } from './store';
 
 const NAV_ITEMS = [
@@ -13,6 +14,7 @@ const NAV_ITEMS = [
   { path: '/library', label: 'Library', icon: LibraryIcon },
   { path: '/session/new', label: 'New', icon: PlusIcon, accent: true },
   { path: '/review', label: 'Review', icon: ReviewIcon },
+  { path: '/stats', label: 'Stats', icon: StatsIcon },
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
@@ -35,6 +37,7 @@ export default function App() {
           <Route path="/review" element={<Review />} />
           <Route path="/practice" element={<Practice />} />
           <Route path="/library" element={<Library />} />
+          <Route path="/stats" element={<Stats />} />
           <Route path="/settings" element={<Settings />} />
         </Routes>
       </main>
@@ -112,6 +115,16 @@ function ReviewIcon({ className }) {
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 20h9" />
       <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" />
+    </svg>
+  );
+}
+
+function StatsIcon({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="18" y1="20" x2="18" y2="10" />
+      <line x1="12" y1="20" x2="12" y2="4" />
+      <line x1="6" y1="20" x2="6" y2="14" />
     </svg>
   );
 }

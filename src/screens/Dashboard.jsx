@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getStats, getTopicsWithSessions } from '../store';
+import { getStats, getTopicsWithSessions, getActivityStats, formatDuration } from '../store';
 
 function formatRelativeTime(dateString) {
   if (!dateString) return '';
@@ -38,11 +38,13 @@ function getTopicIcon(sessions) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
+  const [activityStats, setActivityStats] = useState(null);
   const [topics, setTopics] = useState([]);
   const [expandedTopics, setExpandedTopics] = useState(new Set());
 
   useEffect(() => {
     setStats(getStats());
+    setActivityStats(getActivityStats());
     setTopics(getTopicsWithSessions());
   }, []);
 
@@ -74,46 +76,73 @@ export default function Dashboard() {
         </p>
       </header>
 
-      {/* Due Today Card */}
-      <div className="glass-panel p-8 sm:p-10 text-center flex flex-col items-center justify-center border border-purple-500/30 relative overflow-hidden box-glow">
-        <div className="inline-block text-purple-300 font-bold mb-3 uppercase tracking-widest text-xs px-3.5 py-1 rounded-full bg-purple-500/20 border border-purple-400/30">
-          Due for Review
-        </div>
-
-        <div className="text-6xl sm:text-7xl font-extrabold text-white my-2 text-glow">
-          {stats.dueToday}
-        </div>
-
-        {stats.dueToday > 0 ? (
-          <p className="text-gray-300 text-base mb-6 font-medium">cards waiting for your review today</p>
-        ) : (
-          <p className="text-gray-300 text-base mb-6 font-medium">You're all caught up for today! Great job.</p>
-        )}
-
-        {/* Two Review Methods */}
-        <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md">
-          <button
-            id="btn-start-review-main"
-            onClick={() => navigate('/review')}
-            className="flex-1 px-5 py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition-all shadow-lg active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-          >
-            🎴 Flashcard Review
-          </button>
-
-          <button
-            id="btn-practice-llm-main"
-            onClick={() => navigate('/practice')}
-            className="flex-1 px-5 py-3.5 bg-gray-800 hover:bg-gray-700 text-purple-300 hover:text-white border border-purple-500/40 font-bold text-sm rounded-xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-          >
-            🤖 Practice with External LLM (Prompt #3)
-          </button>
-        </div>
-
-        {stats.newCards > 0 && (
-          <div className="mt-5 text-gray-400 text-xs font-medium">
-            + {stats.newCards} new {stats.newCards === 1 ? 'card' : 'cards'} ready in vault
+      {/* Time Tracking & Due Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* Time Widget */}
+        <div className="sm:col-span-1 glass-panel p-6 flex flex-col justify-between border border-purple-500/20">
+          <div className="space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">⏱️ Time Spent</span>
+              <button
+                id="btn-view-stats"
+                onClick={() => navigate('/stats')}
+                className="text-[11px] text-gray-400 hover:text-white transition-colors cursor-pointer"
+              >
+                Full Stats →
+              </button>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 font-medium">Today</div>
+              <div className="text-2xl font-bold text-white">{formatDuration(activityStats?.todayTimeSeconds || 0)}</div>
+            </div>
+            <div>
+              <div className="text-xs text-gray-400 font-medium">Total Learning</div>
+              <div className="text-lg font-semibold text-purple-300">{formatDuration(activityStats?.totalTimeSeconds || 0)}</div>
+            </div>
           </div>
-        )}
+        </div>
+
+        {/* Due Today Card */}
+        <div className="sm:col-span-2 glass-panel p-8 sm:p-10 text-center flex flex-col items-center justify-center border border-purple-500/30 relative overflow-hidden box-glow">
+          <div className="inline-block text-purple-300 font-bold mb-3 uppercase tracking-widest text-xs px-3.5 py-1 rounded-full bg-purple-500/20 border border-purple-400/30">
+            Due for Review
+          </div>
+
+          <div className="text-6xl sm:text-7xl font-extrabold text-white my-2 text-glow">
+            {stats.dueToday}
+          </div>
+
+          {stats.dueToday > 0 ? (
+            <p className="text-gray-300 text-base mb-6 font-medium">cards waiting for your review today</p>
+          ) : (
+            <p className="text-gray-300 text-base mb-6 font-medium">You're all caught up for today! Great job.</p>
+          )}
+
+          {/* Two Review Methods */}
+          <div className="flex flex-col sm:flex-row gap-3 w-full max-w-md">
+            <button
+              id="btn-start-review-main"
+              onClick={() => navigate('/review')}
+              className="flex-1 px-5 py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition-all shadow-lg active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+            >
+              🎴 Flashcard Review
+            </button>
+
+            <button
+              id="btn-practice-llm-main"
+              onClick={() => navigate('/practice')}
+              className="flex-1 px-5 py-3.5 bg-gray-800 hover:bg-gray-700 text-purple-300 hover:text-white border border-purple-500/40 font-bold text-sm rounded-xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+            >
+              🤖 Practice with External LLM (Prompt #3)
+            </button>
+          </div>
+
+          {stats.newCards > 0 && (
+            <div className="mt-5 text-gray-400 text-xs font-medium">
+              + {stats.newCards} new {stats.newCards === 1 ? 'card' : 'cards'} ready in vault
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Stats Row */}
@@ -183,6 +212,14 @@ export default function Dashboard() {
                         <span className="text-xs text-gray-500 font-medium">
                           {topic.totalPhrases} {topic.totalPhrases === 1 ? 'phrase' : 'phrases'}
                         </span>
+                        {topic.totalTimeSeconds > 0 && (
+                          <>
+                            <span className="text-gray-700 text-xs">·</span>
+                            <span className="text-xs text-purple-400 font-semibold">
+                              ⏱️ {formatDuration(topic.totalTimeSeconds)}
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -212,6 +249,11 @@ export default function Dashboard() {
                             <span className="text-sm text-gray-400">
                               {formatRelativeTime(session.createdAt)}
                             </span>
+                            {(session.totalTimeSeconds > 0 || session.durationSeconds > 0) && (
+                              <span className="text-xs text-purple-400 font-medium">
+                                ⏱️ {formatDuration(session.totalTimeSeconds || session.durationSeconds)}
+                              </span>
+                            )}
                           </div>
                           <span className="text-xs font-semibold text-gray-400 bg-gray-800 px-2.5 py-1 rounded-full border border-gray-700 shrink-0">
                             {getImprovementsCount(session.id)} phrases

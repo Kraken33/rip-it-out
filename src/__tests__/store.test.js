@@ -18,6 +18,12 @@ import {
   getTopic,
   getOrCreateTopic,
   migrateSessionsToTopics,
+  logActivity,
+  getActivityLogs,
+  formatDuration,
+  getTopicTime,
+  getSessionTime,
+  getActivityStats,
 } from '../store';
 
 describe('Store Layer', () => {
@@ -215,6 +221,60 @@ describe('Topics — migrateSessionsToTopics', () => {
     expect(sessions.find((s) => s.id === 'mig-1').topicId).toBe('existing-topic');
     expect(sessions.find((s) => s.id === 'leg-c').topicId).toBeDefined();
     expect(getTopics()).toHaveLength(2);
+  });
+});
+
+describe('Activity Logs & Time Tracking', () => {
+  beforeEach(() => {
+    clearAllData();
+  });
+
+  it('logs activity duration and retrieves activity logs', () => {
+    const entry = logActivity({ type: 'session', durationSeconds: 120 });
+    expect(entry).not.toBeNull();
+    expect(entry.durationSeconds).toBe(120);
+    expect(entry.type).toBe('session');
+    
+    const logs = getActivityLogs();
+    expect(logs).toHaveLength(1);
+    expect(logs[0].id).toBe(entry.id);
+  });
+
+  it('formats duration strings cleanly', () => {
+    expect(formatDuration(0)).toBe('0s');
+    expect(formatDuration(45)).toBe('45s');
+    expect(formatDuration(125)).toBe('2m 5s');
+    expect(formatDuration(3600)).toBe('1h');
+    expect(formatDuration(3720)).toBe('1h 2m');
+  });
+
+  it('calculates topic time combining session direct duration and review logs', () => {
+    const session = createSession({ title: 'Topic Time Test', sourceType: 'video' });
+    logActivity({ type: 'session', durationSeconds: 300, sessionId: session.id, topicId: session.topicId });
+    logActivity({ type: 'review', durationSeconds: 150, sessionId: session.id, topicId: session.topicId });
+
+    const totalTopicTime = getTopicTime(session.topicId);
+    expect(totalTopicTime).toBe(450); // 300s session + 150s review
+  });
+
+  it('calculates individual session time correctly with getSessionTime', () => {
+    const session = createSession({ title: 'Session Time Test', sourceType: 'podcast' });
+    logActivity({ type: 'session', durationSeconds: 180, sessionId: session.id, topicId: session.topicId });
+    logActivity({ type: 'review', durationSeconds: 90, sessionId: session.id, topicId: session.topicId });
+
+    const sessionTime = getSessionTime(session.id);
+    expect(sessionTime).toBe(270); // 180s practice + 90s review
+  });
+
+  it('calculates activity stats correctly', () => {
+    logActivity({ type: 'session', durationSeconds: 200 });
+    logActivity({ type: 'review', durationSeconds: 100 });
+
+    const stats = getActivityStats();
+    expect(stats.todayTimeSeconds).toBe(300);
+    expect(stats.totalTimeSeconds).toBe(300);
+    expect(stats.sessionTimeSeconds).toBe(200);
+    expect(stats.reviewTimeSeconds).toBe(100);
   });
 });
 

@@ -7,6 +7,7 @@ const STORAGE_KEYS = {
   improvements: 'rio_improvements',
   srsCards: 'rio_srs_cards',
   settings: 'rio_settings',
+  activityLogs: 'rio_activity_logs',
 };
 
 const DEFAULT_SETTINGS = {
@@ -85,7 +86,7 @@ export function getSession(id) {
   return getSessions().find((s) => s.id === id) || null;
 }
 
-export function createSession({ title, sourceType, tags = [], notes = '' }) {
+export function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0 }) {
   const topic = getOrCreateTopic(title);
   const session = {
     id: generateId(),
@@ -94,6 +95,7 @@ export function createSession({ title, sourceType, tags = [], notes = '' }) {
     sourceType,
     tags,
     notes,
+    durationSeconds,
     createdAt: new Date().toISOString(),
     status: 'created', // created | prompted | imported
   };
@@ -322,6 +324,108 @@ export function getStats() {
   };
 }
 
+// ── Activity Logs ──────────────────────────────────────────────────
+
+export function getActivityLogs() {
+  return readStore(STORAGE_KEYS.activityLogs) || [];
+}
+
+export function logActivity({ type, durationSeconds, sessionId = null, topicId = null }) {
+  if (!durationSeconds || durationSeconds <= 0) return null;
+  const logs = getActivityLogs();
+  const entry = {
+    id: generateId(),
+    type, // 'review' | 'session'
+    durationSeconds: Math.round(durationSeconds),
+    sessionId,
+    topicId,
+    createdAt: new Date().toISOString(),
+  };
+  logs.unshift(entry);
+  writeStore(STORAGE_KEYS.activityLogs, logs);
+
+  // If sessionId is attached for session type, update durationSeconds on session record
+  if (sessionId && type === 'session') {
+    const session = getSession(sessionId);
+    if (session) {
+      updateSession(sessionId, {
+        durationSeconds: (session.durationSeconds || 0) + Math.round(durationSeconds),
+      });
+    }
+  }
+
+  return entry;
+}
+
+export function formatDuration(totalSeconds) {
+  if (!totalSeconds || totalSeconds <= 0) return '0s';
+  const secs = Math.round(totalSeconds);
+  if (secs < 60) return `${secs}s`;
+  const mins = Math.floor(secs / 60);
+  const remainingSecs = secs % 60;
+  if (mins < 60) {
+    return remainingSecs > 0 ? `${mins}m ${remainingSecs}s` : `${mins}m`;
+  }
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+  return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
+}
+
+export function getTopicTime(topicId) {
+  const topic = getTopic(topicId);
+  if (!topic) return 0;
+
+  const sessions = getSessions().filter((s) => s.topicId === topicId);
+  const sessionIds = new Set(sessions.map((s) => s.id));
+  
+  // Sum session practice durations (which accumulate logActivity session entries)
+  const sessionPracticeTime = sessions.reduce((sum, s) => sum + (s.durationSeconds || 0), 0);
+
+  // Sum review activity logs matching this topicId or any session in this topic
+  const logs = getActivityLogs();
+  const reviewTime = logs
+    .filter((l) => l.type === 'review' && (l.topicId === topicId || (l.sessionId && sessionIds.has(l.sessionId))))
+    .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
+
+  // Standalone session logs that had topicId set but no sessionId
+  const standaloneSessionTime = logs
+    .filter((l) => l.type === 'session' && l.topicId === topicId && !l.sessionId)
+    .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
+
+  return sessionPracticeTime + reviewTime + standaloneSessionTime;
+}
+
+export function getActivityStats() {
+  const logs = getActivityLogs();
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+
+  let todayTimeSeconds = 0;
+  let totalTimeSeconds = 0;
+  let reviewTimeSeconds = 0;
+  let sessionTimeSeconds = 0;
+
+  logs.forEach((log) => {
+    const dur = log.durationSeconds || 0;
+    totalTimeSeconds += dur;
+    if (log.type === 'review') reviewTimeSeconds += dur;
+    if (log.type === 'session') sessionTimeSeconds += dur;
+
+    const d = new Date(log.createdAt);
+    const dateStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (dateStr === todayStr) {
+      todayTimeSeconds += dur;
+    }
+  });
+
+  return {
+    todayTimeSeconds,
+    totalTimeSeconds,
+    reviewTimeSeconds,
+    sessionTimeSeconds,
+  };
+}
+
 // ── Migration ──────────────────────────────────────────────────────
 
 export function migrateSessionsToTopics() {
@@ -339,6 +443,17 @@ export function migrateSessionsToTopics() {
   writeStore(STORAGE_KEYS.sessions, updatedSessions);
 }
 
+export function getSessionTime(sessionId) {
+  const session = getSession(sessionId);
+  if (!session) return 0;
+  const directDuration = session.durationSeconds || 0;
+  const logs = getActivityLogs();
+  const reviewTime = logs
+    .filter((l) => l.type === 'review' && l.sessionId === sessionId)
+    .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
+  return directDuration + reviewTime;
+}
+
 // ── Topics with sessions (dashboard helper) ─────────────────────────
 
 export function getTopicsWithSessions() {
@@ -348,7 +463,14 @@ export function getTopicsWithSessions() {
 
   const enriched = topics.map((topic) => {
     const sessions = topic.sessionIds
-      .map((id) => sessionMap.get(id))
+      .map((id) => {
+        const s = sessionMap.get(id);
+        if (!s) return null;
+        return {
+          ...s,
+          totalTimeSeconds: getSessionTime(s.id),
+        };
+      })
       .filter(Boolean);
     const totalPhrases = sessions.reduce(
       (sum, s) => sum + getImprovementsBySession(s.id).length,
@@ -358,7 +480,9 @@ export function getTopicsWithSessions() {
       const d = new Date(s.createdAt);
       return d > latest ? d : latest;
     }, new Date(0));
-    return { ...topic, sessions, totalPhrases, latestDate };
+    const totalTimeSeconds = getTopicTime(topic.id);
+
+    return { ...topic, sessions, totalPhrases, latestDate, totalTimeSeconds };
   });
 
   // Sort by most recent session date descending
@@ -378,6 +502,7 @@ export function exportAllData() {
     sessions: getSessions(),
     improvements: getImprovements(),
     srsCards: getSrsCards(),
+    activityLogs: getActivityLogs(),
   };
 }
 
@@ -389,6 +514,7 @@ export function importData(data, mode = 'merge') {
     writeStore(STORAGE_KEYS.sessions, data.sessions || []);
     writeStore(STORAGE_KEYS.improvements, data.improvements || []);
     writeStore(STORAGE_KEYS.srsCards, data.srsCards || []);
+    writeStore(STORAGE_KEYS.activityLogs, data.activityLogs || []);
     if (data.settings) writeStore(STORAGE_KEYS.settings, data.settings);
     return;
   }
@@ -420,6 +546,13 @@ export function importData(data, mode = 'merge') {
     const existingIds = new Set(existing.map((c) => c.improvementId));
     const newItems = data.srsCards.filter((c) => !existingIds.has(c.improvementId));
     writeStore(STORAGE_KEYS.srsCards, [...existing, ...newItems]);
+  }
+
+  if (data.activityLogs) {
+    const existing = getActivityLogs();
+    const existingIds = new Set(existing.map((l) => l.id));
+    const newItems = data.activityLogs.filter((l) => !existingIds.has(l.id));
+    writeStore(STORAGE_KEYS.activityLogs, [...existing, ...newItems]);
   }
 }
 

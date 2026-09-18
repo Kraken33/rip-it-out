@@ -4,7 +4,9 @@ import {
   getDueCards, 
   getImprovement, 
   updateSrsCard, 
-  getSettings 
+  getSettings,
+  getSession,
+  logActivity
 } from '../store';
 import { processReview, RATINGS } from '../srs';
 import { generatePracticePrompt } from '../prompts';
@@ -18,6 +20,7 @@ export default function Practice() {
   const [promptText, setPromptText] = useState('');
   const [copied, setCopied] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [startTime, setStartTime] = useState(null);
 
   useEffect(() => {
     const loadData = () => {
@@ -46,22 +49,37 @@ export default function Practice() {
       setPromptText(prompt);
       
       setStep('prompt');
+      setStartTime(Date.now());
     };
     
     loadData();
   }, []);
 
   const handleCopy = useCallback(() => {
+    if (!startTime) setStartTime(Date.now());
     navigator.clipboard.writeText(promptText).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [promptText]);
+  }, [promptText, startTime]);
 
   const startRating = useCallback(() => {
+    if (startTime) {
+      const durationSeconds = Math.round((Date.now() - startTime) / 1000);
+      if (durationSeconds > 0) {
+        const firstImp = improvements[0];
+        const session = firstImp ? getSession(firstImp.sessionId) : null;
+        logActivity({
+          type: 'session',
+          durationSeconds,
+          sessionId: session?.id || null,
+          topicId: session?.topicId || null,
+        });
+      }
+    }
     setStep('rating');
     setCurrentIndex(0);
-  }, []);
+  }, [startTime, improvements]);
 
   const handleRate = useCallback((score) => {
     const card = selectedCards[currentIndex];

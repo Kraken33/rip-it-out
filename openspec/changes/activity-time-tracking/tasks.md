@@ -1,0 +1,22 @@
+# Tasks: Activity Time Tracking
+
+- [x] Data Store Extensions (`src/store.js`) <!-- id: 0 -->
+  - [x] Add `rio_activity_logs` key to `STORAGE_KEYS` <!-- id: 1 -->
+  - [x] Implement `logActivity`, `getActivityStats`, `getTopicTime`, and `formatDuration` helpers <!-- id: 2 -->
+  - [x] Update `createSession` & `updateSession` to handle `durationSeconds` <!-- id: 3 -->
+  - [x] Update `exportAllData` and `importData` to include activity logs <!-- id: 4 -->
+- [x] Session & Practice Time Measurement Integration <!-- id: 5 -->
+  - [x] Add timer tracking to `src/screens/Session.jsx` (start on Prompt #1 copy, log on import completion) <!-- id: 6 -->
+  - [x] Add timer tracking to `src/screens/Practice.jsx` (start on Prompt #3 copy, log on "I'm Done Practicing") <!-- id: 7 -->
+- [x] Card Review Time Measurement Integration <!-- id: 8 -->
+  - [x] Add timer tracking to `src/screens/Review.jsx` (measure active queue time and log attributed review time) <!-- id: 9 -->
+- [x] Dashboard Topic & Session Time Display <!-- id: 10 -->
+  - [x] Update `getTopicsWithSessions` in `src/store.js` to calculate total topic time and include session durations <!-- id: 11 -->
+  - [x] Update `src/screens/Dashboard.jsx` to display combined topic time on group headers and session time on child rows <!-- id: 12 -->
+  - [x] Add Time Tracking Widget to `src/screens/Dashboard.jsx` <!-- id: 13 -->
+- [x] Statistics Page & Navigation (`src/screens/Stats.jsx` & `src/App.jsx`) <!-- id: 14 -->
+  - [x] Create `src/screens/Stats.jsx` showing time summaries, topic breakdown, and daily activity timeline <!-- id: 15 -->
+  - [x] Add `/stats` route and navigation bar item in `src/App.jsx` <!-- id: 16 -->
+- [x] Automated Testing <!-- id: 17 -->
+  - [x] Add store unit tests for activity logging and duration calculation in `src/__tests__/store.test.js` <!-- id: 18 -->
+  - [x] Add component tests for `Stats.jsx` and time widgets in `src/__tests__/Stats.test.jsx` <!-- id: 19 -->
