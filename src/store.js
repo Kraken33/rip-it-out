@@ -1,7 +1,8 @@
 // ── Store: localStorage wrapper for all app data ───────────────────
-// Entities: sessions, improvements, srsCards, settings
+// Entities: topics, sessions, improvements, srsCards, settings
 
 const STORAGE_KEYS = {
+  topics: 'rio_topics',
   sessions: 'rio_sessions',
   improvements: 'rio_improvements',
   srsCards: 'rio_srs_cards',
@@ -35,6 +36,45 @@ function writeStore(key, data) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
+// ── Topics ─────────────────────────────────────────────────────────
+
+export function getTopics() {
+  return readStore(STORAGE_KEYS.topics) || [];
+}
+
+export function getTopic(id) {
+  return getTopics().find((t) => t.id === id) || null;
+}
+
+export function createTopic({ title }) {
+  const topic = {
+    id: generateId(),
+    title,
+    createdAt: new Date().toISOString(),
+    sessionIds: [],
+  };
+  const topics = getTopics();
+  topics.unshift(topic);
+  writeStore(STORAGE_KEYS.topics, topics);
+  return topic;
+}
+
+export function getOrCreateTopic(title) {
+  const existing = getTopics().find((t) => t.title === title);
+  if (existing) return existing;
+  return createTopic({ title });
+}
+
+function addSessionToTopic(topicId, sessionId) {
+  const topics = getTopics();
+  const idx = topics.findIndex((t) => t.id === topicId);
+  if (idx === -1) return;
+  if (!topics[idx].sessionIds.includes(sessionId)) {
+    topics[idx].sessionIds.push(sessionId);
+  }
+  writeStore(STORAGE_KEYS.topics, topics);
+}
+
 // ── Sessions ───────────────────────────────────────────────────────
 
 export function getSessions() {
@@ -46,8 +86,10 @@ export function getSession(id) {
 }
 
 export function createSession({ title, sourceType, tags = [], notes = '' }) {
+  const topic = getOrCreateTopic(title);
   const session = {
     id: generateId(),
+    topicId: topic.id,
     title,
     sourceType,
     tags,
@@ -58,6 +100,7 @@ export function createSession({ title, sourceType, tags = [], notes = '' }) {
   const sessions = getSessions();
   sessions.unshift(session);
   writeStore(STORAGE_KEYS.sessions, sessions);
+  addSessionToTopic(topic.id, session.id);
   return session;
 }
 
@@ -99,6 +142,7 @@ export function addImprovements(sessionId, items) {
   const newItems = items.map((item) => ({
     id: generateId(),
     sessionId,
+    construction: item.construction || item.improved || item.original,
     original: item.original,
     improved: item.improved,
     explanation: item.explanation,
@@ -278,6 +322,50 @@ export function getStats() {
   };
 }
 
+// ── Migration ──────────────────────────────────────────────────────
+
+export function migrateSessionsToTopics() {
+  const sessions = getSessions();
+  const unmigrated = sessions.filter((s) => !s.topicId);
+  if (unmigrated.length === 0) return;
+
+  const updatedSessions = [...sessions];
+  unmigrated.forEach((session) => {
+    const topic = createTopic({ title: session.title || 'Untitled' });
+    addSessionToTopic(topic.id, session.id);
+    const idx = updatedSessions.findIndex((s) => s.id === session.id);
+    if (idx !== -1) updatedSessions[idx] = { ...updatedSessions[idx], topicId: topic.id };
+  });
+  writeStore(STORAGE_KEYS.sessions, updatedSessions);
+}
+
+// ── Topics with sessions (dashboard helper) ─────────────────────────
+
+export function getTopicsWithSessions() {
+  const topics = getTopics();
+  const allSessions = getSessions();
+  const sessionMap = new Map(allSessions.map((s) => [s.id, s]));
+
+  const enriched = topics.map((topic) => {
+    const sessions = topic.sessionIds
+      .map((id) => sessionMap.get(id))
+      .filter(Boolean);
+    const totalPhrases = sessions.reduce(
+      (sum, s) => sum + getImprovementsBySession(s.id).length,
+      0
+    );
+    const latestDate = sessions.reduce((latest, s) => {
+      const d = new Date(s.createdAt);
+      return d > latest ? d : latest;
+    }, new Date(0));
+    return { ...topic, sessions, totalPhrases, latestDate };
+  });
+
+  // Sort by most recent session date descending
+  enriched.sort((a, b) => b.latestDate - a.latestDate);
+  return enriched;
+}
+
 // ── Export / Import ────────────────────────────────────────────────
 
 export function exportAllData() {
@@ -286,6 +374,7 @@ export function exportAllData() {
     version: '1.0',
     exportedAt: new Date().toISOString(),
     settings: getSettings(),
+    topics: getTopics(),
     sessions: getSessions(),
     improvements: getImprovements(),
     srsCards: getSrsCards(),
@@ -296,6 +385,7 @@ export function importData(data, mode = 'merge') {
   if (data.app !== 'rip-it-out') throw new Error('Invalid export file');
 
   if (mode === 'replace') {
+    writeStore(STORAGE_KEYS.topics, data.topics || []);
     writeStore(STORAGE_KEYS.sessions, data.sessions || []);
     writeStore(STORAGE_KEYS.improvements, data.improvements || []);
     writeStore(STORAGE_KEYS.srsCards, data.srsCards || []);
@@ -304,6 +394,13 @@ export function importData(data, mode = 'merge') {
   }
 
   // Merge mode: add items with new IDs that don't exist yet
+  if (data.topics) {
+    const existing = getTopics();
+    const existingIds = new Set(existing.map((t) => t.id));
+    const newItems = data.topics.filter((t) => !existingIds.has(t.id));
+    writeStore(STORAGE_KEYS.topics, [...existing, ...newItems]);
+  }
+
   if (data.sessions) {
     const existing = getSessions();
     const existingIds = new Set(existing.map((s) => s.id));
@@ -329,3 +426,6 @@ export function importData(data, mode = 'merge') {
 export function clearAllData() {
   Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
 }
+
+// ── Module-level migration (runs once on import) ───────────────────
+migrateSessionsToTopics();
