@@ -1,6 +1,14 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getStats, getTopicsWithSessions, getActivityStats, formatDuration } from '../store';
+import { 
+  getStats, 
+  getTopicsWithSessions, 
+  getActivityStats, 
+  formatDuration, 
+  getTodayWordMetrics,
+  getImprovementsBySession 
+} from '../store';
+import ConversationViewerModal from './ConversationViewerModal';
 
 function formatRelativeTime(dateString) {
   if (!dateString) return '';
@@ -40,12 +48,15 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null);
   const [activityStats, setActivityStats] = useState(null);
   const [topics, setTopics] = useState([]);
+  const [wordsToday, setWordsToday] = useState(0);
   const [expandedTopics, setExpandedTopics] = useState(new Set());
+  const [activeViewerSession, setActiveViewerSession] = useState(null);
 
   useEffect(() => {
     setStats(getStats());
     setActivityStats(getActivityStats());
     setTopics(getTopicsWithSessions());
+    setWordsToday(getTodayWordMetrics());
   }, []);
 
   function toggleTopic(topicId) {
@@ -92,12 +103,16 @@ export default function Dashboard() {
               </button>
             </div>
             <div>
-              <div className="text-xs text-gray-400 font-medium">Today</div>
+              <div className="text-xs text-gray-400 font-medium">Today's Time</div>
               <div className="text-2xl font-bold text-white">{formatDuration(activityStats?.todayTimeSeconds || 0)}</div>
+            </div>
+            <div className="pt-1 border-t border-gray-800">
+              <div className="text-xs text-gray-400 font-medium">Words Today</div>
+              <div className="text-lg font-bold text-emerald-400">{wordsToday.toLocaleString()} <span className="text-xs font-normal text-gray-400">words</span></div>
             </div>
             <div>
               <div className="text-xs text-gray-400 font-medium">Total Learning</div>
-              <div className="text-lg font-semibold text-purple-300">{formatDuration(activityStats?.totalTimeSeconds || 0)}</div>
+              <div className="text-sm font-semibold text-purple-300">{formatDuration(activityStats?.totalTimeSeconds || 0)}</div>
             </div>
           </div>
         </div>
@@ -212,6 +227,14 @@ export default function Dashboard() {
                         <span className="text-xs text-gray-500 font-medium">
                           {topic.totalPhrases} {topic.totalPhrases === 1 ? 'phrase' : 'phrases'}
                         </span>
+                        {topic.totalWords > 0 && (
+                          <>
+                            <span className="text-gray-700 text-xs">·</span>
+                            <span className="text-xs text-emerald-400 font-medium">
+                              📝 {topic.totalWords.toLocaleString()} words ({topic.uniqueWords.toLocaleString()} unique)
+                            </span>
+                          </>
+                        )}
                         {topic.totalTimeSeconds > 0 && (
                           <>
                             <span className="text-gray-700 text-xs">·</span>
@@ -238,27 +261,45 @@ export default function Dashboard() {
                   <div className="border-t border-white/5">
                     {topic.sessions.length > 0 ? (
                       topic.sessions.map((session, idx) => (
-                        <button
+                        <div
                           key={session.id}
                           id={`session-row-${session.id}`}
                           onClick={() => navigate(`/library?session=${session.id}`)}
-                          className={`w-full flex items-center justify-between px-4 py-3 hover:bg-white/10 transition-colors cursor-pointer text-left ${idx !== topic.sessions.length - 1 ? 'border-b border-white/5' : ''}`}
+                          className={`w-full flex items-center justify-between px-4 py-3 hover:bg-white/10 transition-colors cursor-pointer ${idx !== topic.sessions.length - 1 ? 'border-b border-white/5' : ''}`}
                         >
-                          <div className="flex items-center gap-3 min-w-0">
+                          <div className="flex items-center gap-3 min-w-0 flex-wrap">
                             <div className="w-1.5 h-1.5 rounded-full bg-purple-500/60 shrink-0 ml-2" />
                             <span className="text-sm text-gray-400">
                               {formatRelativeTime(session.createdAt)}
                             </span>
+                            {session.totalWords > 0 && (
+                              <span className="text-xs text-emerald-400 font-medium">
+                                📝 {session.totalWords} words
+                              </span>
+                            )}
                             {(session.totalTimeSeconds > 0 || session.durationSeconds > 0) && (
                               <span className="text-xs text-purple-400 font-medium">
                                 ⏱️ {formatDuration(session.totalTimeSeconds || session.durationSeconds)}
                               </span>
                             )}
                           </div>
-                          <span className="text-xs font-semibold text-gray-400 bg-gray-800 px-2.5 py-1 rounded-full border border-gray-700 shrink-0">
-                            {getImprovementsCount(session.id)} phrases
-                          </span>
-                        </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {session.rawText && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveViewerSession(session);
+                                }}
+                                className="text-xs font-semibold text-purple-300 bg-purple-950/60 hover:bg-purple-900 border border-purple-500/40 px-2.5 py-1 rounded-full flex items-center gap-1 transition cursor-pointer"
+                              >
+                                💬 View Conversation
+                              </button>
+                            )}
+                            <span className="text-xs font-semibold text-gray-400 bg-gray-800 px-2.5 py-1 rounded-full border border-gray-700">
+                              {getImprovementsCount(session.id)} phrases
+                            </span>
+                          </div>
+                        </div>
                       ))
                     ) : (
                       <div className="px-6 py-3 text-sm text-gray-600">No sessions yet</div>
@@ -280,6 +321,14 @@ export default function Dashboard() {
           </div>
         )}
       </div>
+
+      {activeViewerSession && (
+        <ConversationViewerModal
+          session={activeViewerSession}
+          improvements={getImprovementsBySession(activeViewerSession.id)}
+          onClose={() => setActiveViewerSession(null)}
+        />
+      )}
     </div>
   );
 }

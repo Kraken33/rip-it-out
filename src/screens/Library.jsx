@@ -5,9 +5,11 @@ import {
   getSessions, 
   getSrsCards, 
   deleteImprovement, 
-  resetSrsCard 
+  resetSrsCard,
+  getImprovementsBySession 
 } from '../store';
 import { formatNextReview } from '../srs';
+import ConversationViewerModal from './ConversationViewerModal';
 
 function Badge({ children, type = 'default' }) {
   const baseClasses = "text-[11px] font-bold px-2.5 py-0.5 rounded-full whitespace-nowrap border";
@@ -28,6 +30,7 @@ export default function Library() {
   const [improvements, setImprovements] = useState([]);
   const [srsCards, setSrsCards] = useState({});
   const [sessions, setSessions] = useState([]);
+  const [activeViewerSession, setActiveViewerSession] = useState(null);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -151,13 +154,37 @@ export default function Library() {
             {filteredAndSorted.length} {filteredAndSorted.length === 1 ? 'phrase stored' : 'phrases in vault'}
           </p>
         </div>
-        <Link 
-          to="/session/new"
-          className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-bold text-xs transition-colors text-center cursor-pointer shadow"
-        >
-          + New Session
-        </Link>
+        <div className="flex items-center gap-2">
+          {sessionFilter !== 'all' && (() => {
+            const currentSession = sessions.find(s => s.id === sessionFilter);
+            if (currentSession && currentSession.rawText) {
+              return (
+                <button
+                  onClick={() => setActiveViewerSession(currentSession)}
+                  className="bg-purple-950/60 hover:bg-purple-900 border border-purple-500/40 text-purple-300 px-3.5 py-2 rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  💬 View Conversation
+                </button>
+              );
+            }
+            return null;
+          })()}
+          <Link 
+            to="/session/new"
+            className="bg-purple-600 hover:bg-purple-500 text-white px-4 py-2 rounded-lg font-bold text-xs transition-colors text-center cursor-pointer shadow"
+          >
+            + New Session
+          </Link>
+        </div>
       </div>
+
+      {activeViewerSession && (
+        <ConversationViewerModal
+          session={activeViewerSession}
+          improvements={getImprovementsBySession(activeViewerSession.id)}
+          onClose={() => setActiveViewerSession(null)}
+        />
+      )}
 
       {/* Search & Filter Controls */}
       <div className="glass-panel p-4 space-y-3">

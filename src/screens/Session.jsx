@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { 
   createSession, 
   addImprovements, 
+  addSessionText,
   findDuplicate,
   getSettings,
   getSessions,
@@ -76,6 +77,7 @@ export default function Session() {
   // Data State
   const [session, setSession] = useState(null);
   const [jsonInput, setJsonInput] = useState('');
+  const [rawTextInput, setRawTextInput] = useState('');
   const [parseError, setParseError] = useState('');
   const [parseWarnings, setParseWarnings] = useState([]);
   const [parsedImprovements, setParsedImprovements] = useState([]);
@@ -137,6 +139,9 @@ export default function Session() {
 
   const handleConfirmImport = useCallback(() => {
     if (session && parsedImprovements.length > 0) {
+      if (rawTextInput.trim()) {
+        addSessionText(session.id, rawTextInput.trim());
+      }
       addImprovements(session.id, parsedImprovements);
       if (startTime) {
         const durationSeconds = Math.round((Date.now() - startTime) / 1000);
@@ -151,7 +156,7 @@ export default function Session() {
       }
       navigate('/');
     }
-  }, [session, parsedImprovements, startTime, navigate]);
+  }, [session, parsedImprovements, rawTextInput, startTime, navigate]);
 
   // Derived Prompts
   const descriptionPrompt = useMemo(() => {
@@ -369,15 +374,30 @@ export default function Session() {
 
             <div className="space-y-1.5 pt-2">
               <label htmlFor="json-input" className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
-                Paste LLM JSON Output
+                Paste LLM JSON Output <span className="text-rose-400">*</span>
               </label>
               <textarea
                 id="json-input"
                 value={jsonInput}
                 onChange={e => setJsonInput(e.target.value)}
                 placeholder='{"improvements": [...]}'
-                rows={6}
+                rows={5}
                 className="w-full bg-[#0e0f17] border border-gray-800 rounded-lg p-3 text-xs text-gray-200 font-mono focus:outline-none focus:border-purple-500 transition-all resize-y"
+              />
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <label htmlFor="raw-text-input" className="block text-xs font-bold text-gray-300 uppercase tracking-wider flex items-center justify-between">
+                <span>My Conversation Text <span className="text-gray-500 font-normal lowercase">(optional)</span></span>
+                <span className="text-[10px] text-purple-400 font-normal">📝 Enables word metrics &amp; interactive viewer</span>
+              </label>
+              <textarea
+                id="raw-text-input"
+                value={rawTextInput}
+                onChange={e => setRawTextInput(e.target.value)}
+                placeholder="Paste your messages from the conversation here..."
+                rows={4}
+                className="w-full bg-[#0e0f17] border border-gray-800 rounded-lg p-3 text-xs text-gray-200 font-sans focus:outline-none focus:border-purple-500 transition-all resize-y"
               />
             </div>
 

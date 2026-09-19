@@ -86,7 +86,7 @@ export function getSession(id) {
   return getSessions().find((s) => s.id === id) || null;
 }
 
-export function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0 }) {
+export function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0, rawText = null }) {
   const topic = getOrCreateTopic(title);
   const session = {
     id: generateId(),
@@ -96,6 +96,7 @@ export function createSession({ title, sourceType, tags = [], notes = '', durati
     tags,
     notes,
     durationSeconds,
+    rawText: rawText || null,
     createdAt: new Date().toISOString(),
     status: 'created', // created | prompted | imported
   };
@@ -113,6 +114,10 @@ export function updateSession(id, updates) {
   sessions[idx] = { ...sessions[idx], ...updates };
   writeStore(STORAGE_KEYS.sessions, sessions);
   return sessions[idx];
+}
+
+export function addSessionText(id, rawText) {
+  return updateSession(id, { rawText: rawText || null });
 }
 
 export function deleteSession(id) {
@@ -454,6 +459,107 @@ export function getSessionTime(sessionId) {
   return directDuration + reviewTime;
 }
 
+// ── Word Metrics ──────────────────────────────────────────────────
+
+export function countTextWords(text) {
+  if (!text || typeof text !== 'string' || !text.trim()) {
+    return { totalWords: 0, uniqueWords: 0, vocabularyDensity: 0 };
+  }
+  const words = text.toLowerCase().match(/\b\w+\b/g) || [];
+  if (words.length === 0) {
+    return { totalWords: 0, uniqueWords: 0, vocabularyDensity: 0 };
+  }
+  const unique = new Set(words);
+  const totalWords = words.length;
+  const uniqueWords = unique.size;
+  const vocabularyDensity = Math.round((uniqueWords / totalWords) * 1000) / 1000;
+  return { totalWords, uniqueWords, vocabularyDensity };
+}
+
+export function getSessionWordMetrics(sessionId) {
+  const session = getSession(sessionId);
+  if (!session || !session.rawText) {
+    return { totalWords: 0, uniqueWords: 0, vocabularyDensity: 0 };
+  }
+  return countTextWords(session.rawText);
+}
+
+export function getTopicWordMetrics(topicId) {
+  const sessions = getSessions().filter((s) => s.topicId === topicId && s.rawText);
+  if (sessions.length === 0) {
+    return { totalWords: 0, uniqueWords: 0, vocabularyDensity: 0, sessionCountWithText: 0 };
+  }
+  let allWords = [];
+  sessions.forEach((s) => {
+    const words = s.rawText.toLowerCase().match(/\b\w+\b/g) || [];
+    allWords.push(...words);
+  });
+  if (allWords.length === 0) {
+    return { totalWords: 0, uniqueWords: 0, vocabularyDensity: 0, sessionCountWithText: 0 };
+  }
+  const unique = new Set(allWords);
+  const totalWords = allWords.length;
+  const uniqueWords = unique.size;
+  const vocabularyDensity = Math.round((uniqueWords / totalWords) * 1000) / 1000;
+  return {
+    totalWords,
+    uniqueWords,
+    vocabularyDensity,
+    sessionCountWithText: sessions.length,
+  };
+}
+
+export function getTodayWordMetrics() {
+  const sessions = getSessions();
+  const now = new Date();
+  const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+  let todayWords = 0;
+
+  sessions.forEach((s) => {
+    if (!s.rawText) return;
+    const d = new Date(s.createdAt);
+    const dateStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+    if (dateStr === todayStr) {
+      const { totalWords } = countTextWords(s.rawText);
+      todayWords += totalWords;
+    }
+  });
+
+  return todayWords;
+}
+
+export function getAllTimeWordMetrics() {
+  const sessions = getSessions().filter((s) => s.rawText);
+  if (sessions.length === 0) {
+    return { totalWords: 0, uniqueWords: 0, avgDensity: 0, sessionCountWithText: 0 };
+  }
+  let allWords = [];
+  let totalDensitySum = 0;
+
+  sessions.forEach((s) => {
+    const { totalWords, vocabularyDensity } = countTextWords(s.rawText);
+    const words = s.rawText.toLowerCase().match(/\b\w+\b/g) || [];
+    allWords.push(...words);
+    totalDensitySum += vocabularyDensity;
+  });
+
+  if (allWords.length === 0) {
+    return { totalWords: 0, uniqueWords: 0, avgDensity: 0, sessionCountWithText: 0 };
+  }
+
+  const unique = new Set(allWords);
+  const totalWords = allWords.length;
+  const uniqueWords = unique.size;
+  const avgDensity = Math.round((totalDensitySum / sessions.length) * 1000) / 1000;
+
+  return {
+    totalWords,
+    uniqueWords,
+    avgDensity,
+    sessionCountWithText: sessions.length,
+  };
+}
+
 // ── Topics with sessions (dashboard helper) ─────────────────────────
 
 export function getTopicsWithSessions() {
@@ -466,9 +572,13 @@ export function getTopicsWithSessions() {
       .map((id) => {
         const s = sessionMap.get(id);
         if (!s) return null;
+        const wordMetrics = countTextWords(s.rawText);
         return {
           ...s,
           totalTimeSeconds: getSessionTime(s.id),
+          totalWords: wordMetrics.totalWords,
+          uniqueWords: wordMetrics.uniqueWords,
+          vocabularyDensity: wordMetrics.vocabularyDensity,
         };
       })
       .filter(Boolean);
@@ -481,8 +591,18 @@ export function getTopicsWithSessions() {
       return d > latest ? d : latest;
     }, new Date(0));
     const totalTimeSeconds = getTopicTime(topic.id);
+    const topicWordMetrics = getTopicWordMetrics(topic.id);
 
-    return { ...topic, sessions, totalPhrases, latestDate, totalTimeSeconds };
+    return {
+      ...topic,
+      sessions,
+      totalPhrases,
+      latestDate,
+      totalTimeSeconds,
+      totalWords: topicWordMetrics.totalWords,
+      uniqueWords: topicWordMetrics.uniqueWords,
+      vocabularyDensity: topicWordMetrics.vocabularyDensity,
+    };
   });
 
   // Sort by most recent session date descending

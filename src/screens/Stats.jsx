@@ -1,16 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { getActivityStats, formatDuration, getTopicsWithSessions, getActivityLogs } from '../store';
+import { 
+  getActivityStats, 
+  formatDuration, 
+  getTopicsWithSessions, 
+  getActivityLogs,
+  getAllTimeWordMetrics 
+} from '../store';
 
 export default function Stats() {
   const [stats, setStats] = useState(null);
   const [topics, setTopics] = useState([]);
   const [logs, setLogs] = useState([]);
+  const [allTimeWords, setAllTimeWords] = useState(null);
 
   useEffect(() => {
     setStats(getActivityStats());
     setTopics(getTopicsWithSessions());
     setLogs(getActivityLogs());
+    setAllTimeWords(getAllTimeWordMetrics());
   }, []);
 
   if (!stats) return null;
@@ -89,6 +97,62 @@ export default function Stats() {
             <span>Session Practice: <strong className="text-white">{sessionPercent}%</strong> ({formatDuration(stats.sessionTimeSeconds)})</span>
           </div>
         </div>
+      </div>
+
+      {/* Writing Metrics Section */}
+      <div className="glass-panel p-5 space-y-4">
+        <div className="flex justify-between items-center">
+          <h2 className="text-sm font-bold text-white uppercase tracking-wider">Writing Metrics (Conversation Artifacts)</h2>
+          <span className="text-xs text-purple-400 font-semibold">
+            {allTimeWords?.sessionCountWithText || 0} {allTimeWords?.sessionCountWithText === 1 ? 'session with text' : 'sessions with text'}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-color)]">
+            <div className="text-xs text-gray-400 font-medium">Total Spoken Words</div>
+            <div className="text-2xl font-bold text-white mt-1">{(allTimeWords?.totalWords || 0).toLocaleString()}</div>
+          </div>
+          <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-color)]">
+            <div className="text-xs text-gray-400 font-medium">Unique Words Used</div>
+            <div className="text-2xl font-bold text-purple-300 mt-1">{(allTimeWords?.uniqueWords || 0).toLocaleString()}</div>
+          </div>
+          <div className="p-3.5 rounded-xl bg-[var(--bg-input)] border border-[var(--border-color)]">
+            <div className="text-xs text-gray-400 font-medium">Avg Vocab Density</div>
+            <div className="text-2xl font-bold text-emerald-400 mt-1">
+              {((allTimeWords?.avgDensity || 0) * 100).toFixed(1)}%
+            </div>
+          </div>
+        </div>
+
+        {/* Per Topic Word Breakdown Table */}
+        {topics.filter(t => t.totalWords > 0).length > 0 && (
+          <div className="pt-2 space-y-2">
+            <h3 className="text-xs font-bold text-gray-300 uppercase tracking-wider">Word Volume per Topic</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-gray-300">
+                <thead className="bg-gray-800/80 text-gray-400 text-[10px] uppercase tracking-wider font-bold">
+                  <tr>
+                    <th className="p-2.5 rounded-l-lg">Topic</th>
+                    <th className="p-2.5">Total Words</th>
+                    <th className="p-2.5">Unique Words</th>
+                    <th className="p-2.5 rounded-r-lg">Density</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/60">
+                  {topics.filter(t => t.totalWords > 0).map(topic => (
+                    <tr key={topic.id} className="hover:bg-white/5 transition-colors">
+                      <td className="p-2.5 font-semibold text-white">{topic.title}</td>
+                      <td className="p-2.5 font-bold text-purple-300">{topic.totalWords.toLocaleString()}</td>
+                      <td className="p-2.5 text-gray-300">{topic.uniqueWords.toLocaleString()}</td>
+                      <td className="p-2.5 text-emerald-400 font-semibold">{(topic.vocabularyDensity * 100).toFixed(1)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Topic Time Breakdown */}
