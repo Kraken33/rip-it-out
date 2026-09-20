@@ -33,7 +33,6 @@ function getSourceIcon(type) {
 
 function getTopicIcon(sessions) {
   if (!sessions || sessions.length === 0) return '📝';
-  // Find most common sourceType
   const freq = {};
   sessions.forEach((s) => {
     const t = s.sourceType?.toLowerCase() || 'other';
@@ -51,13 +50,47 @@ export default function Dashboard() {
   const [wordsToday, setWordsToday] = useState(0);
   const [expandedTopics, setExpandedTopics] = useState(new Set());
   const [activeViewerSession, setActiveViewerSession] = useState(null);
+  const [activeSessionImprovements, setActiveSessionImprovements] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setStats(getStats());
-    setActivityStats(getActivityStats());
-    setTopics(getTopicsWithSessions());
-    setWordsToday(getTodayWordMetrics());
+    let isMounted = true;
+    async function loadDashboardData() {
+      try {
+        setLoading(true);
+        const [s, act, top, w] = await Promise.all([
+          getStats(),
+          getActivityStats(),
+          getTopicsWithSessions(),
+          getTodayWordMetrics(),
+        ]);
+        if (isMounted) {
+          setStats(s);
+          setActivityStats(act);
+          setTopics(top);
+          setWordsToday(w);
+        }
+      } catch (err) {
+        console.error('Error loading dashboard data:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    }
+    loadDashboardData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
+
+  const handleOpenConversationModal = async (session) => {
+    setActiveViewerSession(session);
+    try {
+      const imps = await getImprovementsBySession(session.id);
+      setActiveSessionImprovements(imps);
+    } catch {
+      setActiveSessionImprovements([]);
+    }
+  };
 
   function toggleTopic(topicId) {
     setExpandedTopics((prev) => {
@@ -71,7 +104,17 @@ export default function Dashboard() {
     });
   }
 
-  if (!stats) return null;
+  if (loading || !stats) {
+    return (
+      <div className="min-h-[50vh] flex flex-col items-center justify-center text-slate-400">
+        <svg className="animate-spin h-8 w-8 text-purple-500 mb-3" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+        <span className="text-sm font-medium">Loading Dashboard...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-8 animate-fade-in max-w-4xl mx-auto">
@@ -288,16 +331,13 @@ export default function Dashboard() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setActiveViewerSession(session);
+                                  handleOpenConversationModal(session);
                                 }}
                                 className="text-xs font-semibold text-purple-300 bg-purple-950/60 hover:bg-purple-900 border border-purple-500/40 px-2.5 py-1 rounded-full flex items-center gap-1 transition cursor-pointer"
                               >
                                 💬 View Conversation
                               </button>
                             )}
-                            <span className="text-xs font-semibold text-gray-400 bg-gray-800 px-2.5 py-1 rounded-full border border-gray-700">
-                              {getImprovementsCount(session.id)} phrases
-                            </span>
                           </div>
                         </div>
                       ))
@@ -325,21 +365,13 @@ export default function Dashboard() {
       {activeViewerSession && (
         <ConversationViewerModal
           session={activeViewerSession}
-          improvements={getImprovementsBySession(activeViewerSession.id)}
-          onClose={() => setActiveViewerSession(null)}
+          improvements={activeSessionImprovements}
+          onClose={() => {
+            setActiveViewerSession(null);
+            setActiveSessionImprovements([]);
+          }}
         />
       )}
     </div>
   );
-}
-
-// Local helper to avoid importing getImprovementsBySession which triggers migration
-function getImprovementsCount(sessionId) {
-  try {
-    const raw = localStorage.getItem('rio_improvements');
-    const all = raw ? JSON.parse(raw) : [];
-    return all.filter((i) => i.sessionId === sessionId).length;
-  } catch {
-    return 0;
-  }
 }

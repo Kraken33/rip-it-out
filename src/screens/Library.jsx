@@ -31,6 +31,8 @@ export default function Library() {
   const [srsCards, setSrsCards] = useState({});
   const [sessions, setSessions] = useState([]);
   const [activeViewerSession, setActiveViewerSession] = useState(null);
+  const [activeSessionImprovements, setActiveSessionImprovements] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Filters
   const [search, setSearch] = useState('');
@@ -41,14 +43,25 @@ export default function Library() {
   const [sortBy, setSortBy] = useState('date_desc');
   const [filtersExpanded, setFiltersExpanded] = useState(false);
 
-  const loadData = useCallback(() => {
-    setImprovements(getImprovements());
-    setSessions(getSessions());
-    
-    const cards = getSrsCards();
-    const cardMap = {};
-    cards.forEach(c => { cardMap[c.improvementId] = c; });
-    setSrsCards(cardMap);
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [imps, sess, cards] = await Promise.all([
+        getImprovements(),
+        getSessions(),
+        getSrsCards(),
+      ]);
+      setImprovements(imps);
+      setSessions(sess);
+
+      const cardMap = {};
+      cards.forEach((c) => { cardMap[c.improvementId] = c; });
+      setSrsCards(cardMap);
+    } catch (err) {
+      console.error('Error loading library data:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -64,19 +77,29 @@ export default function Library() {
     setSearchParams(searchParams, { replace: true });
   }, [sessionFilter, searchParams, setSearchParams]);
 
-  const handleDelete = useCallback((id) => {
+  const handleDelete = useCallback(async (id) => {
     if (window.confirm('Are you sure you want to delete this phrase?')) {
-      deleteImprovement(id);
-      loadData();
+      await deleteImprovement(id);
+      await loadData();
     }
   }, [loadData]);
 
-  const handleResetSrs = useCallback((id) => {
+  const handleResetSrs = useCallback(async (id) => {
     if (window.confirm('Reset SRS progress for this phrase?')) {
-      resetSrsCard(id);
-      loadData();
+      await resetSrsCard(id);
+      await loadData();
     }
   }, [loadData]);
+
+  const handleOpenViewerModal = useCallback(async (session) => {
+    setActiveViewerSession(session);
+    try {
+      const imps = await getImprovementsBySession(session.id);
+      setActiveSessionImprovements(imps);
+    } catch {
+      setActiveSessionImprovements([]);
+    }
+  }, []);
 
   const filteredAndSorted = useMemo(() => {
     let result = [...improvements];
@@ -84,7 +107,7 @@ export default function Library() {
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter(
-        i => (i.construction && i.construction.toLowerCase().includes(q)) ||
+        (i) => (i.construction && i.construction.toLowerCase().includes(q)) ||
              (i.original && i.original.toLowerCase().includes(q)) || 
              (i.improved && i.improved.toLowerCase().includes(q)) || 
              (i.explanation && i.explanation.toLowerCase().includes(q))
@@ -92,19 +115,19 @@ export default function Library() {
     }
 
     if (sessionFilter !== 'all') {
-      result = result.filter(i => i.sessionId === sessionFilter);
+      result = result.filter((i) => i.sessionId === sessionFilter);
     }
 
     if (categoryFilter !== 'all') {
-      result = result.filter(i => i.category === categoryFilter);
+      result = result.filter((i) => i.category === categoryFilter);
     }
 
     if (freqFilter !== 'all') {
-      result = result.filter(i => i.spokenFrequency === freqFilter);
+      result = result.filter((i) => i.spokenFrequency === freqFilter);
     }
 
     if (srsFilter !== 'all') {
-      result = result.filter(i => srsCards[i.id]?.status === srsFilter);
+      result = result.filter((i) => srsCards[i.id]?.status === srsFilter);
     }
 
     result.sort((a, b) => {
@@ -127,11 +150,10 @@ export default function Library() {
 
   const categoryOptions = ['all', 'grammar', 'vocabulary', 'collocation', 'idiom', 'pronunciation', 'structure'];
   const srsOptions = ['all', 'new', 'learning', 'reviewing', 'mature'];
-  const freqOptions = ['all', 'very_high', 'high', 'medium'];
 
   const formatOption = (opt) => {
     if (opt === 'all') return 'All';
-    return opt.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    return opt.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
   };
 
   const getSrsBadgeType = (status) => {
@@ -143,6 +165,17 @@ export default function Library() {
       default: return 'default';
     }
   };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center min-h-[50vh] text-slate-400">
+        <svg className="animate-spin h-8 w-8 text-purple-500 mb-3" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-6 animate-fade-in max-w-3xl mx-auto py-2">
@@ -156,11 +189,11 @@ export default function Library() {
         </div>
         <div className="flex items-center gap-2">
           {sessionFilter !== 'all' && (() => {
-            const currentSession = sessions.find(s => s.id === sessionFilter);
+            const currentSession = sessions.find((s) => s.id === sessionFilter);
             if (currentSession && currentSession.rawText) {
               return (
                 <button
-                  onClick={() => setActiveViewerSession(currentSession)}
+                  onClick={() => handleOpenViewerModal(currentSession)}
                   className="bg-purple-950/60 hover:bg-purple-900 border border-purple-500/40 text-purple-300 px-3.5 py-2 rounded-lg font-bold text-xs transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   💬 View Conversation
@@ -181,8 +214,11 @@ export default function Library() {
       {activeViewerSession && (
         <ConversationViewerModal
           session={activeViewerSession}
-          improvements={getImprovementsBySession(activeViewerSession.id)}
-          onClose={() => setActiveViewerSession(null)}
+          improvements={activeSessionImprovements}
+          onClose={() => {
+            setActiveViewerSession(null);
+            setActiveSessionImprovements([]);
+          }}
         />
       )}
 
@@ -215,7 +251,7 @@ export default function Library() {
                 className="w-full bg-[#1b1c2b] border border-[#27283d] rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
               >
                 <option value="all">All Sessions</option>
-                {sessions.map(s => (
+                {sessions.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.title} ({new Date(s.createdAt).toLocaleDateString()})
                   </option>
@@ -241,7 +277,7 @@ export default function Library() {
             <div className="sm:col-span-2 space-y-1">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Category</label>
               <div className="flex flex-wrap gap-1.5">
-                {categoryOptions.map(cat => (
+                {categoryOptions.map((cat) => (
                   <button
                     key={cat}
                     onClick={() => setCategoryFilter(cat)}
@@ -261,7 +297,7 @@ export default function Library() {
             <div className="sm:col-span-2 space-y-1">
               <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">SRS Status</label>
               <div className="flex flex-wrap gap-1.5">
-                {srsOptions.map(srs => (
+                {srsOptions.map((srs) => (
                   <button
                     key={srs}
                     onClick={() => setSrsFilter(srs)}

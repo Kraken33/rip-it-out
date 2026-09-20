@@ -1,5 +1,7 @@
 import { Routes, Route, NavLink, useLocation } from 'react-router-dom';
 import { useState, useEffect } from 'react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthScreen } from './screens/AuthScreen';
 import Dashboard from './screens/Dashboard';
 import Session from './screens/Session';
 import Review from './screens/Review';
@@ -18,18 +20,71 @@ const NAV_ITEMS = [
   { path: '/settings', label: 'Settings', icon: SettingsIcon },
 ];
 
-export default function App() {
+function AuthenticatedApp() {
+  const { user, loading, signOut } = useAuth();
   const location = useLocation();
   const [dueCount, setDueCount] = useState(0);
 
   useEffect(() => {
-    setDueCount(getDueCards().length);
-  }, [location]);
+    async function updateDueCount() {
+      try {
+        const due = await getDueCards();
+        setDueCount(Array.isArray(due) ? due.length : 0);
+      } catch {
+        setDueCount(0);
+      }
+    }
+    if (user) {
+      updateDueCount();
+    }
+  }, [location, user]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#0d0e15] flex flex-col justify-center items-center text-slate-300">
+        <svg className="animate-spin h-8 w-8 text-indigo-500 mb-3" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+        <span className="text-sm font-medium">Loading session...</span>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <AuthScreen />;
+  }
 
   const hideNav = location.pathname === '/review' || location.pathname === '/practice';
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0d0e15] text-[#f3f4f6]">
+      {/* App Header with user profile & logout */}
+      {!hideNav && (
+        <header className="border-b border-[#27283d] bg-[#151622]/80 backdrop-blur-md px-4 py-2.5">
+          <div className="max-w-3xl mx-auto flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-lg bg-indigo-600/30 text-indigo-400 font-black text-xs flex items-center justify-center border border-indigo-500/30">
+                RIO
+              </span>
+              <span className="text-xs font-semibold text-slate-300">Rip It Out</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <span className="text-xs text-slate-400 font-medium truncate max-w-[140px] sm:max-w-none">
+                {user.email}
+              </span>
+              <button
+                type="button"
+                onClick={signOut}
+                className="px-2.5 py-1 text-xs font-semibold text-rose-300 hover:text-rose-100 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 rounded-lg transition-all"
+              >
+                Log Out
+              </button>
+            </div>
+          </div>
+        </header>
+      )}
+
       <main className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-28">
         <Routes>
           <Route path="/" element={<Dashboard />} />
@@ -76,6 +131,14 @@ export default function App() {
         </nav>
       )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
   );
 }
 

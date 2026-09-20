@@ -25,3 +25,6 @@ dist-ssr
 
 coverage/
 
+# Environment files
+.env
+.env*.local

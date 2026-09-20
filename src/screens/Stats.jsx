@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   getActivityStats, 
@@ -13,15 +13,42 @@ export default function Stats() {
   const [topics, setTopics] = useState([]);
   const [logs, setLogs] = useState([]);
   const [allTimeWords, setAllTimeWords] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    setStats(getActivityStats());
-    setTopics(getTopicsWithSessions());
-    setLogs(getActivityLogs());
-    setAllTimeWords(getAllTimeWordMetrics());
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [activityStats, topicsWithSessions, activityLogs, wordMetrics] = await Promise.all([
+        getActivityStats(),
+        getTopicsWithSessions(),
+        getActivityLogs(),
+        getAllTimeWordMetrics(),
+      ]);
+      setStats(activityStats);
+      setTopics(topicsWithSessions);
+      setLogs(activityLogs);
+      setAllTimeWords(wordMetrics);
+    } catch (err) {
+      console.error('Error loading stats:', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  if (!stats) return null;
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  if (loading || !stats) {
+    return (
+      <div className="flex justify-center items-center min-h-[50vh]">
+        <svg className="animate-spin h-8 w-8 text-purple-500" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+      </div>
+    );
+  }
 
   const reviewPercent = stats.totalTimeSeconds > 0
     ? Math.round((stats.reviewTimeSeconds / stats.totalTimeSeconds) * 100)

@@ -29,10 +29,25 @@ export default function Session() {
   const [settings, setSettings] = useState(null);
   const [existingSessions, setExistingSessions] = useState([]);
   const [startTime, setStartTime] = useState(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    setSettings(getSettings());
-    setExistingSessions(getSessions());
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const [st, sess] = await Promise.all([getSettings(), getSessions()]);
+        if (isMounted) {
+          setSettings(st);
+          setExistingSessions(sess);
+        }
+      } catch (err) {
+        console.error('Error loading session screen data:', err);
+      }
+    }
+    loadData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   // Step 1 State
@@ -44,7 +59,7 @@ export default function Session() {
   // Map of unique previous titles with their most recent session data
   const previousTitlesMap = useMemo(() => {
     const map = new Map();
-    existingSessions.forEach(s => {
+    existingSessions.forEach((s) => {
       if (s.title && !map.has(s.title)) {
         map.set(s.title, s);
       }
@@ -54,7 +69,7 @@ export default function Session() {
 
   const autofillFromSession = useCallback((selectedTitle) => {
     if (!selectedTitle) return;
-    const match = existingSessions.find(s => s.title === selectedTitle);
+    const match = existingSessions.find((s) => s.title === selectedTitle);
     if (match) {
       setTitle(match.title);
       if (match.sourceType) setSourceType(match.sourceType);
@@ -66,14 +81,14 @@ export default function Session() {
   const handleTitleChange = (e) => {
     const val = e.target.value;
     setTitle(val);
-    const match = existingSessions.find(s => s.title.toLowerCase() === val.toLowerCase().trim());
+    const match = existingSessions.find((s) => s.title.toLowerCase() === val.toLowerCase().trim());
     if (match) {
       if (match.sourceType) setSourceType(match.sourceType);
       if (match.tags && Array.isArray(match.tags)) setTags(match.tags.join(', '));
       if (match.notes) setNotes(match.notes || '');
     }
   };
-  
+
   // Data State
   const [session, setSession] = useState(null);
   const [jsonInput, setJsonInput] = useState('');
@@ -86,24 +101,31 @@ export default function Session() {
   const [copied1, setCopied1] = useState(false);
   const [copied2, setCopied2] = useState(false);
 
-  const handleCreateSession = useCallback((e) => {
+  const handleCreateSession = useCallback(async (e) => {
     e.preventDefault();
     if (!title || !sourceType) return;
-    
+
     const tagArray = tags
       .split(',')
-      .map(t => t.trim())
-      .filter(t => t.length > 0);
-      
-    const newSession = createSession({
-      title,
-      sourceType,
-      tags: tagArray,
-      notes
-    });
-    setSession(newSession);
-    setStartTime(Date.now());
-    setStep(2);
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+
+    try {
+      setLoading(true);
+      const newSession = await createSession({
+        title,
+        sourceType,
+        tags: tagArray,
+        notes,
+      });
+      setSession(newSession);
+      setStartTime(Date.now());
+      setStep(2);
+    } catch (err) {
+      console.error('Error creating session:', err);
+    } finally {
+      setLoading(false);
+    }
   }, [title, sourceType, tags, notes]);
 
   const copyToClipboard = useCallback(async (text, setter) => {
@@ -122,39 +144,46 @@ export default function Session() {
   const handleImport = useCallback(() => {
     setParseError('');
     setParseWarnings([]);
-    
+
     const result = parseImportJSON(jsonInput);
     if (!result.success) {
       setParseError(result.error);
       return;
     }
-    
+
     if (result.warnings) {
       setParseWarnings(result.warnings);
     }
-    
+
     setParsedImprovements(result.improvements);
     setStep(4);
   }, [jsonInput]);
 
-  const handleConfirmImport = useCallback(() => {
+  const handleConfirmImport = useCallback(async () => {
     if (session && parsedImprovements.length > 0) {
-      if (rawTextInput.trim()) {
-        addSessionText(session.id, rawTextInput.trim());
-      }
-      addImprovements(session.id, parsedImprovements);
-      if (startTime) {
-        const durationSeconds = Math.round((Date.now() - startTime) / 1000);
-        if (durationSeconds > 0) {
-          logActivity({
-            type: 'session',
-            durationSeconds,
-            sessionId: session.id,
-            topicId: session.topicId,
-          });
+      try {
+        setLoading(true);
+        if (rawTextInput.trim()) {
+          await addSessionText(session.id, rawTextInput.trim());
         }
+        await addImprovements(session.id, parsedImprovements);
+        if (startTime) {
+          const durationSeconds = Math.round((Date.now() - startTime) / 1000);
+          if (durationSeconds > 0) {
+            await logActivity({
+              type: 'session',
+              durationSeconds,
+              sessionId: session.id,
+              topicId: session.topicId,
+            });
+          }
+        }
+        navigate('/');
+      } catch (err) {
+        console.error('Error confirming import:', err);
+      } finally {
+        setLoading(false);
       }
-      navigate('/');
     }
   }, [session, parsedImprovements, rawTextInput, startTime, navigate]);
 
@@ -163,7 +192,7 @@ export default function Session() {
     if (!session || !settings) return '';
     return generateDescriptionPrompt(session, settings);
   }, [session, settings]);
-  
+
   const exportPrompt = useMemo(() => {
     return generateExportPrompt();
   }, []);
@@ -172,7 +201,7 @@ export default function Session() {
     <div className="w-full space-y-6 animate-fade-in max-w-2xl mx-auto py-2">
       <div className="space-y-3">
         <h1 className="text-2xl sm:text-3xl font-bold text-white">New Practice Session</h1>
-        
+
         {/* Progress Indicator */}
         <div className="pt-2">
           <div className="flex items-center justify-between relative">
@@ -182,8 +211,8 @@ export default function Session() {
                 style={{ width: `${((step - 1) / 3) * 100}%` }}
               ></div>
             </div>
-            
-            {[1, 2, 3, 4].map(num => (
+
+            {[1, 2, 3, 4].map((num) => (
               <div 
                 key={num} 
                 className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
@@ -252,7 +281,7 @@ export default function Session() {
               Source Type <span className="text-rose-400">*</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
-              {SOURCE_TYPES.map(type => (
+              {SOURCE_TYPES.map((type) => (
                 <button
                   key={type.id}
                   type="button"
@@ -278,7 +307,7 @@ export default function Session() {
               id="tags"
               type="text"
               value={tags}
-              onChange={e => setTags(e.target.value)}
+              onChange={(e) => setTags(e.target.value)}
               placeholder="productivity, video, tech"
               className="w-full bg-[#1b1c2b] border border-[#27283d] rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-all font-medium"
             />
@@ -291,7 +320,7 @@ export default function Session() {
             <textarea
               id="notes"
               value={notes}
-              onChange={e => setNotes(e.target.value)}
+              onChange={(e) => setNotes(e.target.value)}
               placeholder="Any context about this session..."
               rows={2}
               className="w-full bg-[#1b1c2b] border border-[#27283d] rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-all resize-none font-medium"
@@ -302,10 +331,10 @@ export default function Session() {
             <button
               id="btn-generate-prompt"
               type="submit"
-              disabled={!title || !sourceType}
+              disabled={!title || !sourceType || loading}
               className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-base py-3.5 px-6 rounded-xl transition-all shadow flex items-center justify-center gap-2 cursor-pointer"
             >
-              Generate Prompt #1 (Description) →
+              {loading ? 'Creating Session...' : 'Generate Prompt #1 (Description) →'}
             </button>
           </div>
         </form>
@@ -318,7 +347,7 @@ export default function Session() {
               <div>
                 <h2 className="text-lg font-bold text-white">Step 1: Describe Content</h2>
                 <p className="text-xs text-gray-400 mt-0.5">
-                  Copy prompt to LLM and describe what you {SOURCE_TYPES.find(t => t.id === session?.sourceType)?.label?.toLowerCase() || 'consumed'}.
+                  Copy prompt to LLM and describe what you {SOURCE_TYPES.find((t) => t.id === session?.sourceType)?.label?.toLowerCase() || 'consumed'}.
                 </p>
               </div>
               <button
@@ -329,7 +358,7 @@ export default function Session() {
                 {copied1 ? 'Copied! ✓' : 'Copy Prompt #1'}
               </button>
             </div>
-            
+
             <div className="bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5">
               <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto leading-relaxed">
                 {descriptionPrompt}
@@ -365,7 +394,7 @@ export default function Session() {
                 {copied2 ? 'Copied! ✓' : 'Copy Prompt #2'}
               </button>
             </div>
-            
+
             <div className="bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5">
               <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap max-h-44 overflow-y-auto leading-relaxed">
                 {exportPrompt}
@@ -379,7 +408,7 @@ export default function Session() {
               <textarea
                 id="json-input"
                 value={jsonInput}
-                onChange={e => setJsonInput(e.target.value)}
+                onChange={(e) => setJsonInput(e.target.value)}
                 placeholder='{"improvements": [...]}'
                 rows={5}
                 className="w-full bg-[#0e0f17] border border-gray-800 rounded-lg p-3 text-xs text-gray-200 font-mono focus:outline-none focus:border-purple-500 transition-all resize-y"
@@ -394,7 +423,7 @@ export default function Session() {
               <textarea
                 id="raw-text-input"
                 value={rawTextInput}
-                onChange={e => setRawTextInput(e.target.value)}
+                onChange={(e) => setRawTextInput(e.target.value)}
                 placeholder="Paste your messages from the conversation here..."
                 rows={4}
                 className="w-full bg-[#0e0f17] border border-gray-800 rounded-lg p-3 text-xs text-gray-200 font-sans focus:outline-none focus:border-purple-500 transition-all resize-y"
@@ -432,9 +461,10 @@ export default function Session() {
             <button
               id="btn-confirm-import"
               onClick={handleConfirmImport}
-              className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg transition-all shadow cursor-pointer"
+              disabled={loading}
+              className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg transition-all shadow cursor-pointer disabled:opacity-50"
             >
-              Confirm Import
+              {loading ? 'Saving...' : 'Confirm Import'}
             </button>
           </div>
 
@@ -446,53 +476,44 @@ export default function Session() {
           )}
 
           <div className="space-y-3">
-            {parsedImprovements.map((imp, idx) => {
-              const duplicate = findDuplicate(imp.original);
-              
-              return (
-                <div key={idx} className="glass-panel p-4 space-y-2 relative">
-                  {duplicate && (
-                    <div className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 rounded w-max">
-                      Similar phrase already exists in vault
-                    </div>
-                  )}
-                  
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
-                      {imp.category}
-                    </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
-                      {imp.spoken_frequency?.replace('_', ' ')} freq
-                    </span>
-                  </div>
-                  
-                  <div>
-                    <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Construction Pattern:</span>
-                    <p className="text-base font-extrabold text-purple-300 text-glow">
-                      "{imp.construction || imp.improved}"
-                    </p>
-                    <p className="text-xs text-emerald-400 font-medium">
-                      Example: "{imp.improved}"
-                    </p>
-                    <p className="text-xs text-rose-400 line-through opacity-80 pt-0.5">
-                      Original: "{imp.original}"
-                    </p>
-                  </div>
-                  
-                  <p className="text-xs text-gray-300 bg-gray-900/60 p-2.5 rounded border border-gray-800">
-                    <span className="font-bold text-white">Why: </span>{imp.explanation}
+            {parsedImprovements.map((imp, idx) => (
+              <div key={idx} className="glass-panel p-4 space-y-2 relative">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
+                    {imp.category}
+                  </span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
+                    {imp.spoken_frequency?.replace('_', ' ')} freq
+                  </span>
+                </div>
+
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Construction Pattern:</span>
+                  <p className="text-base font-extrabold text-purple-300 text-glow">
+                    "{imp.construction || imp.improved}"
+                  </p>
+                  <p className="text-xs text-emerald-400 font-medium">
+                    Example: "{imp.improved}"
+                  </p>
+                  <p className="text-xs text-rose-400 line-through opacity-80 pt-0.5">
+                    Original: "{imp.original}"
                   </p>
                 </div>
-              );
-            })}
+
+                <p className="text-xs text-gray-300 bg-gray-900/60 p-2.5 rounded border border-gray-800">
+                  <span className="font-bold text-white">Why: </span>{imp.explanation}
+                </p>
+              </div>
+            ))}
           </div>
 
           <button
             id="btn-confirm-import-bottom"
             onClick={handleConfirmImport}
-            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-base py-3.5 px-6 rounded-xl transition-all cursor-pointer shadow"
+            disabled={loading}
+            className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-base py-3.5 px-6 rounded-xl transition-all cursor-pointer shadow disabled:opacity-50"
           >
-            Confirm Import
+            {loading ? 'Saving...' : 'Confirm Import'}
           </button>
         </div>
       )}

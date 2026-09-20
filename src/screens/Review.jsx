@@ -1,11 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { getDueCards, getImprovement, getSession, updateSrsCard, getSrsCards, logActivity } from '../store';
-import { processReview, RATINGS } from '../srs';
+import { processReview } from '../srs';
 import { generateExamplesPrompt } from '../prompts';
 
 export default function Review() {
-  const navigate = useNavigate();
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -14,64 +13,74 @@ export default function Review() {
   const [loading, setLoading] = useState(true);
   const startTimeRef = useRef(Date.now());
   const reviewedCardsRef = useRef([]);
-  
-  // Stats for summary
+
   const [stats, setStats] = useState({
     again: 0,
     hard: 0,
     good: 0,
     easy: 0,
-    total: 0
+    total: 0,
   });
 
-  // For empty state, find next due
   const [nextDue, setNextDue] = useState(null);
-
-  // Examples prompt copy state
   const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     startTimeRef.current = Date.now();
+    let isMounted = true;
 
-    const loadCards = () => {
-      const due = getDueCards();
-      
-      if (due.length > 0) {
-        // Hydrate with improvement and session data
-        const hydratedQueue = due.map(card => {
-          const improvement = getImprovement(card.improvementId);
-          if (!improvement) return null;
-          const session = getSession(improvement.sessionId);
-          return {
-            ...card,
-            improvement,
-            session
-          };
-        }).filter(Boolean);
-        
-        if (hydratedQueue.length > 0) {
-          setQueue(hydratedQueue);
+    async function loadCards() {
+      try {
+        setLoading(true);
+        const due = await getDueCards();
+
+        if (due.length > 0) {
+          const hydratedQueue = (
+            await Promise.all(
+              due.map(async (card) => {
+                const improvement = await getImprovement(card.improvementId);
+                if (!improvement) return null;
+                const session = await getSession(improvement.sessionId);
+                return {
+                  ...card,
+                  improvement,
+                  session,
+                };
+              })
+            )
+          ).filter(Boolean);
+
+          if (isMounted) {
+            if (hydratedQueue.length > 0) {
+              setQueue(hydratedQueue);
+            } else {
+              await findNextDue();
+            }
+          }
         } else {
-          findNextDue();
+          if (isMounted) await findNextDue();
         }
-      } else {
-        findNextDue();
+      } catch (err) {
+        console.error('Error loading review cards:', err);
+      } finally {
+        if (isMounted) setLoading(false);
       }
-      setLoading(false);
-    };
+    }
 
-    const findNextDue = () => {
-      const allCards = getSrsCards();
-      const futureCards = allCards.filter(c => c.dueDate > Date.now()).sort((a, b) => a.dueDate - b.dueDate);
-      if (futureCards.length > 0) {
-        setNextDue(new Date(futureCards[0].dueDate));
+    async function findNextDue() {
+      const allCards = await getSrsCards();
+      const futureCards = allCards
+        .filter((c) => new Date(c.nextReview) > new Date())
+        .sort((a, b) => new Date(a.nextReview) - new Date(b.nextReview));
+      if (futureCards.length > 0 && isMounted) {
+        setNextDue(new Date(futureCards[0].nextReview));
       }
-    };
+    }
 
     loadCards();
 
     return () => {
-      // Log accumulated review time on unmount if any cards were reviewed
+      isMounted = false;
       const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
       if (elapsed > 0 && reviewedCardsRef.current.length > 0) {
         const lastCard = reviewedCardsRef.current[reviewedCardsRef.current.length - 1];
@@ -89,52 +98,48 @@ export default function Review() {
     setShowAnswer(true);
   };
 
-  const handleRating = (score) => {
+  const handleRating = async (score) => {
     const currentCard = queue[currentIndex];
     reviewedCardsRef.current.push(currentCard);
-    
-    // Process SRS
+
     const updates = processReview(currentCard, score);
-    updateSrsCard(currentCard.improvementId, updates);
-    
-    // Update stats
+    await updateSrsCard(currentCard.improvementId, updates);
+
     const statKeys = { 1: 'again', 2: 'hard', 3: 'good', 4: 'easy' };
     const key = statKeys[score];
     if (key) {
-      setStats(prev => ({
+      setStats((prev) => ({
         ...prev,
         [key]: prev[key] + 1,
-        total: prev.total + 1
+        total: prev.total + 1,
       }));
     }
 
     let newQueue = [...queue];
-    
+
     if (score === 1) {
-      // Put at end of queue
       newQueue.push({ ...currentCard, ...updates });
       setQueue(newQueue);
     }
-    
+
     setShowAnswer(false);
     setShowExamplesPrompt(false);
-    
+
     if (currentIndex + 1 >= newQueue.length) {
       const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
       if (elapsed > 0) {
-        logActivity({
+        await logActivity({
           type: 'review',
           durationSeconds: elapsed,
           sessionId: currentCard?.session?.id || null,
           topicId: currentCard?.session?.topicId || null,
         });
-        // Reset timer ref so unmount doesn't double log
         startTimeRef.current = Date.now();
         reviewedCardsRef.current = [];
       }
       setSessionComplete(true);
     } else {
-      setCurrentIndex(prev => prev + 1);
+      setCurrentIndex((prev) => prev + 1);
     }
   };
 
@@ -159,16 +164,6 @@ export default function Review() {
   }
 
   if (sessionComplete) {
-    // Count cards due tomorrow
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(23, 59, 59, 999);
-    
-    const allCards = getSrsCards();
-    const dueTomorrowCount = allCards.filter(c => {
-      return c.dueDate > Date.now() && c.dueDate <= tomorrow.getTime();
-    }).length;
-
     return (
       <div className="max-w-2xl mx-auto p-6 animate-scale-in">
         <div className="glass rounded-xl p-8 text-center space-y-6">
@@ -176,7 +171,7 @@ export default function Review() {
           <div className="text-[var(--text-secondary)] text-lg">
             You reviewed {stats.total} cards today.
           </div>
-          
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-6">
             <div className="bg-[var(--bg-surface)] p-4 rounded-lg border border-[var(--border-subtle)]">
               <div className="text-[var(--danger)] font-bold text-2xl">{stats.again}</div>
@@ -195,11 +190,7 @@ export default function Review() {
               <div className="text-sm text-[var(--text-muted)]">Easy</div>
             </div>
           </div>
-          
-          <div className="text-[var(--text-secondary)]">
-            Cards due tomorrow: <span className="font-bold text-[var(--text-primary)]">{dueTomorrowCount}</span>
-          </div>
-          
+
           <div className="pt-4">
             <Link to="/" className="inline-flex items-center px-6 py-3 bg-[var(--bg-surface)] text-[var(--text-primary)] hover:text-[var(--accent)] hover:border-[var(--accent)] border border-[var(--border-subtle)] rounded-lg transition-colors">
               Back to Dashboard
@@ -240,7 +231,6 @@ export default function Review() {
 
   return (
     <div className="w-full space-y-6 animate-fade-in py-2 max-w-2xl mx-auto">
-      {/* Progress Bar */}
       <div className="space-y-2">
         <div className="flex justify-between text-xs font-bold text-gray-400 uppercase tracking-wider">
           <span>Review Mode</span>
@@ -254,9 +244,7 @@ export default function Review() {
         </div>
       </div>
 
-      {/* Card Area */}
       <div className="glass-panel p-6 sm:p-8 flex flex-col min-h-[380px] shadow-xl relative overflow-hidden">
-        {/* Front */}
         <div className="flex-1 flex flex-col items-center justify-center text-center space-y-4 my-4">
           <div className="text-purple-400 text-xs font-bold tracking-wider uppercase bg-purple-500/10 px-3 py-1 rounded-full border border-purple-500/20">
             {currentCard.session?.title || "Session Phrase"}
@@ -272,7 +260,6 @@ export default function Review() {
           </div>
         </div>
 
-        {/* Back */}
         {showAnswer ? (
           <div className="animate-fade-in border-t border-gray-800 pt-6 space-y-6 flex flex-col">
             <div className="text-center space-y-3">
@@ -286,7 +273,7 @@ export default function Review() {
                 </p>
               )}
             </div>
-            
+
             <div className="flex flex-col items-center pt-1">
               <button 
                 onClick={() => setShowExamplesPrompt(!showExamplesPrompt)}
@@ -294,7 +281,7 @@ export default function Review() {
               >
                 ✨ Get Example Sentences (Prompt #4)
               </button>
-              
+
               {showExamplesPrompt && (
                 <div className="mt-4 w-full p-4 bg-gray-900 border border-gray-800 rounded-lg text-left animate-fade-in">
                   <div className="flex justify-between items-center mb-2">
@@ -313,7 +300,6 @@ export default function Review() {
               )}
             </div>
 
-            {/* Rating Buttons */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
               <button 
                 id="btn-rate-again"

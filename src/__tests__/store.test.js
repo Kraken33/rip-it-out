@@ -1,23 +1,29 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { 
-  getSessions, 
-  createSession, 
-  deleteSession, 
-  getImprovements, 
-  addImprovements, 
-  deleteImprovement, 
-  getSrsCards, 
-  findDuplicate, 
-  getSettings, 
-  updateSettings, 
-  getStats, 
-  exportAllData, 
-  importData, 
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+// Mock supabaseClient so all tests use the localStorage fallback path
+vi.mock('../supabaseClient', () => ({
+  supabase: null,
+  isSupabaseConfigured: false,
+}));
+
+import {
+  getSessions,
+  createSession,
+  deleteSession,
+  getImprovements,
+  addImprovements,
+  deleteImprovement,
+  getSrsCards,
+  findDuplicate,
+  getSettings,
+  updateSettings,
+  getStats,
+  exportAllData,
+  importData,
   clearAllData,
   getTopics,
   getTopic,
   getOrCreateTopic,
-  migrateSessionsToTopics,
   logActivity,
   getActivityLogs,
   formatDuration,
@@ -27,215 +33,153 @@ import {
 } from '../store';
 
 describe('Store Layer', () => {
-  beforeEach(() => {
-    clearAllData();
+  beforeEach(async () => {
+    await clearAllData();
   });
 
-  it('creates and reads sessions', () => {
-    const session = createSession({ title: 'Podcast 1', sourceType: 'podcast', tags: ['audio'], notes: 'test note' });
+  it('creates and reads sessions', async () => {
+    const session = await createSession({ title: 'Podcast 1', sourceType: 'podcast', tags: ['audio'], notes: 'test note' });
     expect(session.id).toBeDefined();
     expect(session.title).toBe('Podcast 1');
-    const all = getSessions();
+    const all = await getSessions();
     expect(all).toHaveLength(1);
     expect(all[0].id).toBe(session.id);
   });
 
-  it('adds improvements and creates corresponding SRS cards', () => {
-    const session = createSession({ title: 'Book 1', sourceType: 'book' });
+  it('adds improvements and creates corresponding SRS cards', async () => {
+    const session = await createSession({ title: 'Book 1', sourceType: 'book' });
     const items = [
       { construction: 'invite [someone] over', original: 'invited him home', improved: 'invited him over', explanation: 'natural', category: 'grammar', spoken_frequency: 'high' }
     ];
-    const added = addImprovements(session.id, items);
+    const added = await addImprovements(session.id, items);
     expect(added).toHaveLength(1);
-    expect(getImprovements()).toHaveLength(1);
-    const cards = getSrsCards();
+    expect(await getImprovements()).toHaveLength(1);
+    const cards = await getSrsCards();
     expect(cards).toHaveLength(1);
     expect(cards[0].improvementId).toBe(added[0].id);
   });
 
-  it('finds duplicate phrases case-insensitively', () => {
-    const session = createSession({ title: 'S1', sourceType: 'video' });
-    addImprovements(session.id, [{ original: 'Invited Him Home', improved: 'invited him over', explanation: 'exp' }]);
-    expect(findDuplicate('invited him home')).toBeDefined();
-    expect(findDuplicate('completely new phrase')).toBeUndefined();
+  it('finds duplicate phrases case-insensitively', async () => {
+    const session = await createSession({ title: 'S1', sourceType: 'video' });
+    await addImprovements(session.id, [{ original: 'Invited Him Home', improved: 'invited him over', explanation: 'exp' }]);
+    expect(await findDuplicate('invited him home')).toBeDefined();
+    expect(await findDuplicate('completely new phrase')).toBeUndefined();
   });
 
-  it('deletes improvement and cascades deletion of SRS card', () => {
-    const session = createSession({ title: 'S1', sourceType: 'video' });
-    const [imp] = addImprovements(session.id, [{ original: 'old', improved: 'new', explanation: 'why' }]);
-    expect(getImprovements()).toHaveLength(1);
-    expect(getSrsCards()).toHaveLength(1);
+  it('deletes improvement and cascades deletion of SRS card', async () => {
+    const session = await createSession({ title: 'S1', sourceType: 'video' });
+    const [imp] = await addImprovements(session.id, [{ original: 'old', improved: 'new', explanation: 'why' }]);
+    expect(await getImprovements()).toHaveLength(1);
+    expect(await getSrsCards()).toHaveLength(1);
 
-    deleteImprovement(imp.id);
-    expect(getImprovements()).toHaveLength(0);
-    expect(getSrsCards()).toHaveLength(0);
+    await deleteImprovement(imp.id);
+    expect(await getImprovements()).toHaveLength(0);
+    expect(await getSrsCards()).toHaveLength(0);
   });
 
-  it('deletes session and cascades deletion of improvements and cards', () => {
-    const session = createSession({ title: 'S1', sourceType: 'video' });
-    addImprovements(session.id, [{ original: 'old', improved: 'new', explanation: 'why' }]);
-    expect(getSessions()).toHaveLength(1);
-    expect(getImprovements()).toHaveLength(1);
+  it('deletes session and cascades deletion of improvements and cards', async () => {
+    const session = await createSession({ title: 'S1', sourceType: 'video' });
+    await addImprovements(session.id, [{ original: 'old', improved: 'new', explanation: 'why' }]);
+    expect(await getSessions()).toHaveLength(1);
+    expect(await getImprovements()).toHaveLength(1);
 
-    deleteSession(session.id);
-    expect(getSessions()).toHaveLength(0);
-    expect(getImprovements()).toHaveLength(0);
-    expect(getSrsCards()).toHaveLength(0);
+    await deleteSession(session.id);
+    expect(await getSessions()).toHaveLength(0);
+    expect(await getImprovements()).toHaveLength(0);
+    expect(await getSrsCards()).toHaveLength(0);
   });
 
-  it('updates settings', () => {
-    expect(getSettings().formality).toBe('casual');
-    updateSettings({ formality: 'semi-formal' });
-    expect(getSettings().formality).toBe('semi-formal');
+  it('updates settings', async () => {
+    expect((await getSettings()).formality).toBe('casual');
+    await updateSettings({ formality: 'semi-formal' });
+    expect((await getSettings()).formality).toBe('semi-formal');
   });
 
-  it('calculates correct stats', () => {
-    const stats = getStats();
+  it('calculates correct stats', async () => {
+    const stats = await getStats();
     expect(stats.totalImprovements).toBe(0);
     expect(stats.totalSessions).toBe(0);
   });
 
-  it('exports and imports backup data in replace mode', () => {
-    const session = createSession({ title: 'Export Session', sourceType: 'article' });
-    addImprovements(session.id, [{ original: 'old', improved: 'new', explanation: 'why' }]);
-    const backup = exportAllData();
+  it('exports and imports backup data in replace mode', async () => {
+    const session = await createSession({ title: 'Export Session', sourceType: 'article' });
+    await addImprovements(session.id, [{ original: 'old', improved: 'new', explanation: 'why' }]);
+    const backup = await exportAllData();
     expect(backup.app).toBe('rip-it-out');
     expect(backup.topics).toBeDefined();
 
-    clearAllData();
-    expect(getSessions()).toHaveLength(0);
+    await clearAllData();
+    expect(await getSessions()).toHaveLength(0);
 
-    importData(backup, 'replace');
-    expect(getSessions()).toHaveLength(1);
-    expect(getImprovements()).toHaveLength(1);
-    expect(getTopics()).toHaveLength(1);
+    await importData(backup, 'replace');
+    expect(await getSessions()).toHaveLength(1);
+    expect(await getImprovements()).toHaveLength(1);
+    expect(await getTopics()).toHaveLength(1);
   });
 });
 
 describe('Topics — getOrCreateTopic', () => {
-  beforeEach(() => {
-    clearAllData();
+  beforeEach(async () => {
+    await clearAllData();
   });
 
-  it('creates a new topic for an unknown title', () => {
-    const topic = getOrCreateTopic('Friends S3');
+  it('creates a new topic for an unknown title', async () => {
+    const topic = await getOrCreateTopic('Friends S3');
     expect(topic.id).toBeDefined();
     expect(topic.title).toBe('Friends S3');
-    expect(getTopics()).toHaveLength(1);
+    expect(await getTopics()).toHaveLength(1);
   });
 
-  it('returns the same topic for a known title', () => {
-    const first = getOrCreateTopic('Breaking Bad');
-    const second = getOrCreateTopic('Breaking Bad');
+  it('returns the same topic for a known title', async () => {
+    const first = await getOrCreateTopic('Breaking Bad');
+    const second = await getOrCreateTopic('Breaking Bad');
     expect(second.id).toBe(first.id);
-    expect(getTopics()).toHaveLength(1);
+    expect(await getTopics()).toHaveLength(1);
   });
 
-  it('id on returned object is stable across multiple calls', () => {
-    const a = getOrCreateTopic('Stable Topic');
-    const b = getOrCreateTopic('Stable Topic');
-    const c = getOrCreateTopic('Stable Topic');
+  it('id on returned object is stable across multiple calls', async () => {
+    const a = await getOrCreateTopic('Stable Topic');
+    const b = await getOrCreateTopic('Stable Topic');
+    const c = await getOrCreateTopic('Stable Topic');
     expect(a.id).toBe(b.id);
     expect(b.id).toBe(c.id);
   });
 
-  it('getTopic returns null for unknown id', () => {
-    expect(getTopic('nonexistent-id')).toBeNull();
+  it('getTopic returns null for unknown id', async () => {
+    expect(await getTopic('nonexistent-id')).toBeNull();
   });
 
-  it('creates a new session with topicId set', () => {
-    const session = createSession({ title: 'My Show', sourceType: 'video' });
+  it('creates a new session with topicId set', async () => {
+    const session = await createSession({ title: 'My Show', sourceType: 'video' });
     expect(session.topicId).toBeDefined();
-    const topic = getTopic(session.topicId);
+    const topic = await getTopic(session.topicId);
     expect(topic).not.toBeNull();
     expect(topic.title).toBe('My Show');
   });
 
-  it('attaches new session to existing topic when title matches', () => {
-    const s1 = createSession({ title: 'Podcast X', sourceType: 'podcast' });
-    const s2 = createSession({ title: 'Podcast X', sourceType: 'podcast' });
+  it('attaches new session to existing topic when title matches', async () => {
+    const s1 = await createSession({ title: 'Podcast X', sourceType: 'podcast' });
+    const s2 = await createSession({ title: 'Podcast X', sourceType: 'podcast' });
     expect(s1.topicId).toBe(s2.topicId);
-    expect(getTopics()).toHaveLength(1);
-    const topic = getTopic(s1.topicId);
+    expect(await getTopics()).toHaveLength(1);
+    const topic = await getTopic(s1.topicId);
     expect(topic.sessionIds).toContain(s1.id);
     expect(topic.sessionIds).toContain(s2.id);
   });
 });
 
-describe('Topics — migrateSessionsToTopics', () => {
-  beforeEach(() => {
-    clearAllData();
-  });
-
-  it('adds topicId to all sessions that lack one', () => {
-    // Directly write a legacy session without topicId
-    const legacySession = { id: 'legacy-1', title: 'Old Show', sourceType: 'video', createdAt: new Date().toISOString(), status: 'created' };
-    localStorage.setItem('rio_sessions', JSON.stringify([legacySession]));
-
-    migrateSessionsToTopics();
-
-    const sessions = getSessions();
-    expect(sessions[0].topicId).toBeDefined();
-    expect(getTopics()).toHaveLength(1);
-    expect(getTopics()[0].title).toBe('Old Show');
-  });
-
-  it('is idempotent — re-running leaves data unchanged', () => {
-    const legacySession = { id: 'legacy-2', title: 'Old Show 2', sourceType: 'video', createdAt: new Date().toISOString(), status: 'created' };
-    localStorage.setItem('rio_sessions', JSON.stringify([legacySession]));
-
-    migrateSessionsToTopics();
-    const topicsAfterFirst = getTopics().length;
-    const topicIdAfterFirst = getSessions()[0].topicId;
-
-    migrateSessionsToTopics();
-    expect(getTopics()).toHaveLength(topicsAfterFirst);
-    expect(getSessions()[0].topicId).toBe(topicIdAfterFirst);
-  });
-
-  it('each legacy session gets its own solo topic entity', () => {
-    const sessions = [
-      { id: 'leg-a', title: 'Show A', sourceType: 'video', createdAt: new Date().toISOString(), status: 'created' },
-      { id: 'leg-b', title: 'Show B', sourceType: 'podcast', createdAt: new Date().toISOString(), status: 'created' },
-    ];
-    localStorage.setItem('rio_sessions', JSON.stringify(sessions));
-
-    migrateSessionsToTopics();
-
-    const topics = getTopics();
-    expect(topics).toHaveLength(2);
-    const topicIds = getSessions().map((s) => s.topicId);
-    expect(topicIds[0]).not.toBe(topicIds[1]);
-  });
-
-  it('sessions already having topicId are not modified', () => {
-    // Mix: one migrated, one legacy
-    const migratedSession = { id: 'mig-1', title: 'Already Migrated', sourceType: 'video', topicId: 'existing-topic', createdAt: new Date().toISOString(), status: 'created' };
-    const legacySession = { id: 'leg-c', title: 'Legacy', sourceType: 'book', createdAt: new Date().toISOString(), status: 'created' };
-    localStorage.setItem('rio_sessions', JSON.stringify([migratedSession, legacySession]));
-    localStorage.setItem('rio_topics', JSON.stringify([{ id: 'existing-topic', title: 'Already Migrated', createdAt: new Date().toISOString(), sessionIds: ['mig-1'] }]));
-
-    migrateSessionsToTopics();
-
-    const sessions = getSessions();
-    expect(sessions.find((s) => s.id === 'mig-1').topicId).toBe('existing-topic');
-    expect(sessions.find((s) => s.id === 'leg-c').topicId).toBeDefined();
-    expect(getTopics()).toHaveLength(2);
-  });
-});
-
 describe('Activity Logs & Time Tracking', () => {
-  beforeEach(() => {
-    clearAllData();
+  beforeEach(async () => {
+    await clearAllData();
   });
 
-  it('logs activity duration and retrieves activity logs', () => {
-    const entry = logActivity({ type: 'session', durationSeconds: 120 });
+  it('logs activity duration and retrieves activity logs', async () => {
+    const entry = await logActivity({ type: 'session', durationSeconds: 120 });
     expect(entry).not.toBeNull();
     expect(entry.durationSeconds).toBe(120);
     expect(entry.type).toBe('session');
-    
-    const logs = getActivityLogs();
+
+    const logs = await getActivityLogs();
     expect(logs).toHaveLength(1);
     expect(logs[0].id).toBe(entry.id);
   });
@@ -248,33 +192,32 @@ describe('Activity Logs & Time Tracking', () => {
     expect(formatDuration(3720)).toBe('1h 2m');
   });
 
-  it('calculates topic time combining session direct duration and review logs', () => {
-    const session = createSession({ title: 'Topic Time Test', sourceType: 'video' });
-    logActivity({ type: 'session', durationSeconds: 300, sessionId: session.id, topicId: session.topicId });
-    logActivity({ type: 'review', durationSeconds: 150, sessionId: session.id, topicId: session.topicId });
+  it('calculates topic time combining session direct duration and review logs', async () => {
+    const session = await createSession({ title: 'Topic Time Test', sourceType: 'video' });
+    await logActivity({ type: 'session', durationSeconds: 300, sessionId: session.id, topicId: session.topicId });
+    await logActivity({ type: 'review', durationSeconds: 150, sessionId: session.id, topicId: session.topicId });
 
-    const totalTopicTime = getTopicTime(session.topicId);
+    const totalTopicTime = await getTopicTime(session.topicId);
     expect(totalTopicTime).toBe(450); // 300s session + 150s review
   });
 
-  it('calculates individual session time correctly with getSessionTime', () => {
-    const session = createSession({ title: 'Session Time Test', sourceType: 'podcast' });
-    logActivity({ type: 'session', durationSeconds: 180, sessionId: session.id, topicId: session.topicId });
-    logActivity({ type: 'review', durationSeconds: 90, sessionId: session.id, topicId: session.topicId });
+  it('calculates individual session time correctly with getSessionTime', async () => {
+    const session = await createSession({ title: 'Session Time Test', sourceType: 'podcast' });
+    await logActivity({ type: 'session', durationSeconds: 180, sessionId: session.id, topicId: session.topicId });
+    await logActivity({ type: 'review', durationSeconds: 90, sessionId: session.id, topicId: session.topicId });
 
-    const sessionTime = getSessionTime(session.id);
+    const sessionTime = await getSessionTime(session.id);
     expect(sessionTime).toBe(270); // 180s practice + 90s review
   });
 
-  it('calculates activity stats correctly', () => {
-    logActivity({ type: 'session', durationSeconds: 200 });
-    logActivity({ type: 'review', durationSeconds: 100 });
+  it('calculates activity stats correctly', async () => {
+    await logActivity({ type: 'session', durationSeconds: 200 });
+    await logActivity({ type: 'review', durationSeconds: 100 });
 
-    const stats = getActivityStats();
+    const stats = await getActivityStats();
     expect(stats.todayTimeSeconds).toBe(300);
     expect(stats.totalTimeSeconds).toBe(300);
     expect(stats.sessionTimeSeconds).toBe(200);
     expect(stats.reviewTimeSeconds).toBe(100);
   });
 });
-

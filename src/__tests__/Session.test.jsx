@@ -1,12 +1,17 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Session from '../screens/Session';
 import { clearAllData, createSession } from '../store';
 
+vi.mock('../supabaseClient', () => ({
+  supabase: null,
+  isSupabaseConfigured: false,
+}));
+
 describe('Session Wizard Component', () => {
-  beforeEach(() => {
-    clearAllData();
+  beforeEach(async () => {
+    await clearAllData();
   });
 
   it('renders Step 1 form correctly', () => {
@@ -20,7 +25,7 @@ describe('Session Wizard Component', () => {
     expect(screen.getByPlaceholderText(/Atomic Habits/i)).toBeInTheDocument();
   });
 
-  it('submits Step 1 form and advances to Step 2 with Prompt #1', () => {
+  it('submits Step 1 form and advances to Step 2 with Prompt #1', async () => {
     render(
       <BrowserRouter>
         <Session />
@@ -36,18 +41,26 @@ describe('Session Wizard Component', () => {
     const submitBtn = screen.getByRole('button', { name: /Generate Prompt #1/i });
     fireEvent.click(submitBtn);
 
-    expect(screen.getByText(/Step 1: Describe Content/i)).toBeInTheDocument();
+    // createSession is now async, so wait for step 2 content
+    await waitFor(() =>
+      expect(screen.getByText(/Step 1: Describe Content/i)).toBeInTheDocument()
+    );
     expect(screen.getByText(/My Video Session/i)).toBeInTheDocument();
   });
 
-  it('autofills previous session details when selecting a title from dropdown', () => {
-    createSession({ title: 'Previous Session', sourceType: 'book', tags: ['habits'], notes: 'book note' });
+  it('autofills previous session details when selecting a title from dropdown', async () => {
+    await createSession({ title: 'Previous Session', sourceType: 'book', tags: ['habits'], notes: 'book note' });
 
     const { container } = render(
       <BrowserRouter>
         <Session />
       </BrowserRouter>
     );
+
+    await waitFor(() => {
+      const selector = container.querySelector('#select-prev-title');
+      expect(selector).toBeTruthy();
+    });
 
     const selector = container.querySelector('#select-prev-title');
     fireEvent.change(selector, { target: { value: 'Previous Session' } });

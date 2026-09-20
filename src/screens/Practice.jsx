@@ -23,36 +23,52 @@ export default function Practice() {
   const [startTime, setStartTime] = useState(null);
 
   useEffect(() => {
-    const loadData = () => {
-      const allDue = getDueCards();
-      
-      if (allDue.length === 0) {
-        setStep('empty');
-        return;
+    let isMounted = true;
+    async function loadData() {
+      try {
+        const allDue = await getDueCards();
+        if (!isMounted) return;
+
+        if (!allDue || allDue.length === 0) {
+          setStep('empty');
+          return;
+        }
+
+        const sorted = [...allDue].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
+        const top5 = sorted.slice(0, 5);
+
+        const imps = (
+          await Promise.all(top5.map((card) => getImprovement(card.improvementId)))
+        ).filter(Boolean);
+
+        if (!isMounted) return;
+
+        if (imps.length === 0) {
+          setStep('empty');
+          return;
+        }
+
+        setSelectedCards(top5);
+        setImprovements(imps);
+
+        const settings = await getSettings();
+        const prompt = generatePracticePrompt(imps, settings);
+
+        if (isMounted) {
+          setPromptText(prompt);
+          setStep('prompt');
+          setStartTime(Date.now());
+        }
+      } catch (err) {
+        console.error('Error loading practice data:', err);
+        if (isMounted) setStep('empty');
       }
-      
-      const sorted = [...allDue].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
-      const top5 = sorted.slice(0, 5);
-      
-      const imps = top5.map(card => getImprovement(card.improvementId)).filter(Boolean);
-      
-      if (imps.length === 0) {
-        setStep('empty');
-        return;
-      }
-      
-      setSelectedCards(top5);
-      setImprovements(imps);
-      
-      const settings = getSettings();
-      const prompt = generatePracticePrompt(imps, settings);
-      setPromptText(prompt);
-      
-      setStep('prompt');
-      setStartTime(Date.now());
-    };
-    
+    }
+
     loadData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleCopy = useCallback(() => {
@@ -63,13 +79,13 @@ export default function Practice() {
     });
   }, [promptText, startTime]);
 
-  const startRating = useCallback(() => {
+  const startRating = useCallback(async () => {
     if (startTime) {
       const durationSeconds = Math.round((Date.now() - startTime) / 1000);
       if (durationSeconds > 0) {
         const firstImp = improvements[0];
-        const session = firstImp ? getSession(firstImp.sessionId) : null;
-        logActivity({
+        const session = firstImp ? await getSession(firstImp.sessionId) : null;
+        await logActivity({
           type: 'session',
           durationSeconds,
           sessionId: session?.id || null,
@@ -81,11 +97,11 @@ export default function Practice() {
     setCurrentIndex(0);
   }, [startTime, improvements]);
 
-  const handleRate = useCallback((score) => {
+  const handleRate = useCallback(async (score) => {
     const card = selectedCards[currentIndex];
     const updates = processReview(card, score);
-    updateSrsCard(card.improvementId, updates);
-    
+    await updateSrsCard(card.improvementId, updates);
+
     if (currentIndex + 1 < selectedCards.length) {
       setCurrentIndex(currentIndex + 1);
     } else {
@@ -158,7 +174,7 @@ export default function Practice() {
   if (step === 'rating') {
     const currentImp = improvements[currentIndex];
     const progress = ((currentIndex) / selectedCards.length) * 100;
-    
+
     return (
       <div className="max-w-xl mx-auto space-y-5 animate-fade-in py-4">
         <header className="flex justify-between items-center">
@@ -170,7 +186,7 @@ export default function Practice() {
             {currentIndex + 1} / {selectedCards.length}
           </div>
         </header>
-        
+
         <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
           <div 
             className="h-full bg-purple-500 transition-all duration-300" 
@@ -192,12 +208,12 @@ export default function Practice() {
               "{currentImp.improved}"
             </div>
           </div>
-          
+
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Original Wording</div>
           <div className="text-sm text-rose-400 line-through opacity-80 font-medium">
             "{currentImp.original}"
           </div>
-          
+
           {currentImp.explanation && (
             <div className="pt-2 border-t border-gray-800">
               <div className="text-xs text-gray-300 italic bg-gray-900/60 p-3 rounded border border-gray-800">
@@ -206,7 +222,7 @@ export default function Practice() {
             </div>
           )}
         </div>
-        
+
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
           {RATINGS.map((r) => (
             <button
@@ -251,7 +267,7 @@ export default function Practice() {
             {copied ? 'Copied! ✓' : 'Copy Prompt #3'}
           </button>
         </div>
-        
+
         <div className="bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5">
           <textarea
             readOnly

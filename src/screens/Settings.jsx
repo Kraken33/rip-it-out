@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   getSettings, updateSettings, getStats,
   exportAllData, importData, clearAllData
@@ -37,25 +37,34 @@ export default function Settings() {
   const [stats, setStats] = useState({ sessions: 0, improvements: 0, srsCards: 0 });
   const [importMode, setImportMode] = useState('merge');
   const [dangerConfirmStep, setDangerConfirmStep] = useState(0);
+  const [loading, setLoading] = useState(true);
   const fileInputRef = useRef(null);
+
+  const loadData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [st, stts] = await Promise.all([getSettings(), getStats()]);
+      setSettings(st);
+      setStats(stts);
+    } catch (err) {
+      console.error('Error loading settings:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
-  const loadData = () => {
-    setSettings(getSettings());
-    setStats(getStats());
-  };
-
-  const handleSettingChange = (key, value) => {
+  const handleSettingChange = async (key, value) => {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
-    updateSettings(newSettings);
+    await updateSettings(newSettings);
   };
 
-  const handleExport = () => {
-    const data = exportAllData();
+  const handleExport = async () => {
+    const data = await exportAllData();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -73,12 +82,12 @@ export default function Settings() {
     }
   };
 
-  const handleImport = (e) => {
+  const handleImport = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const jsonData = JSON.parse(event.target.result);
         if (importMode === 'replace') {
@@ -88,33 +97,38 @@ export default function Settings() {
           }
         }
         
-        const success = importData(jsonData, importMode);
-        if (success) {
-          alert('Data imported successfully!');
-          loadData();
-        } else {
-          alert('Failed to import data. Invalid format.');
-        }
+        await importData(jsonData, importMode);
+        alert('Data imported successfully!');
+        await loadData();
       } catch (err) {
-        alert('Error parsing JSON file.');
+        alert('Error parsing or importing JSON file.');
       }
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
   };
 
-  const handleClearData = () => {
+  const handleClearData = async () => {
     if (dangerConfirmStep === 0) {
       setDangerConfirmStep(1);
     } else {
-      clearAllData();
+      await clearAllData();
       alert('All data deleted successfully.');
       setDangerConfirmStep(0);
-      loadData();
+      await loadData();
     }
   };
 
-  if (!settings) return null;
+  if (loading || !settings) {
+    return (
+      <div className="flex justify-center items-center min-h-[50vh] text-slate-400">
+        <svg className="animate-spin h-8 w-8 text-purple-500 mb-3" fill="none" viewBox="0 0 24 24">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+        </svg>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full space-y-10 animate-fade-in py-4">
@@ -172,8 +186,8 @@ export default function Settings() {
 
           <PillGroup
             label="Default Review Mode"
-            value={settings.defaultReviewMode || 'Flashcard'}
-            onChange={(val) => handleSettingChange('defaultReviewMode', val)}
+            value={settings.practiceMode || 'Flashcard'}
+            onChange={(val) => handleSettingChange('practiceMode', val)}
             options={[
               { label: 'Flashcard', value: 'Flashcard' },
               { label: 'Conversation', value: 'Conversation' }

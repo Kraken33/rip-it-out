@@ -1,5 +1,4 @@
-// ── Store: localStorage wrapper for all app data ───────────────────
-// Entities: topics, sessions, improvements, srsCards, settings
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 const STORAGE_KEYS = {
   topics: 'rio_topics',
@@ -11,11 +10,11 @@ const STORAGE_KEYS = {
 };
 
 const DEFAULT_SETTINGS = {
-  formality: 'casual',       // casual | neutral | semi-formal
-  level: 'intermediate',     // beginner | intermediate | advanced
-  focusArea: 'all',          // all | vocabulary | grammar | collocations | idioms
-  maxImprovements: 5,        // 3 | 5
-  practiceMode: 'flashcard', // flashcard | conversation
+  formality: 'casual',
+  level: 'intermediate',
+  focusArea: 'all',
+  maxImprovements: 5,
+  practiceMode: 'flashcard',
 };
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -24,7 +23,7 @@ function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 }
 
-function readStore(key) {
+function readLocalStore(key) {
   try {
     const raw = localStorage.getItem(key);
     return raw ? JSON.parse(raw) : null;
@@ -33,61 +32,227 @@ function readStore(key) {
   }
 }
 
-function writeStore(key, data) {
-  localStorage.setItem(key, JSON.stringify(data));
+function writeLocalStore(key, data) {
+  try {
+    localStorage.setItem(key, JSON.stringify(data));
+  } catch (err) {
+    console.error('Error writing localStorage:', err);
+  }
+}
+
+// ── Data Mappers ───────────────────────────────────────────────────
+
+function mapTopicFromDb(r) {
+  if (!r) return null;
+  return { id: r.id, title: r.title, createdAt: r.created_at, sessionIds: r.session_ids || [] };
+}
+function mapTopicToDb(t) {
+  return { id: t.id, title: t.title, created_at: t.createdAt, session_ids: t.sessionIds || [] };
+}
+
+function mapSessionFromDb(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    topicId: r.topic_id,
+    title: r.title,
+    sourceType: r.source_type,
+    tags: r.tags || [],
+    notes: r.notes || '',
+    durationSeconds: r.duration_seconds || 0,
+    rawText: r.raw_text || null,
+    createdAt: r.created_at,
+    status: r.status || 'created',
+  };
+}
+function mapSessionToDb(s) {
+  return {
+    id: s.id,
+    topic_id: s.topicId,
+    title: s.title,
+    source_type: s.sourceType,
+    tags: s.tags || [],
+    notes: s.notes || '',
+    duration_seconds: s.durationSeconds || 0,
+    raw_text: s.rawText || null,
+    created_at: s.createdAt,
+    status: s.status || 'created',
+  };
+}
+
+function mapImprovementFromDb(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    sessionId: r.session_id,
+    construction: r.construction,
+    original: r.original,
+    improved: r.improved,
+    explanation: r.explanation,
+    category: r.category,
+    spokenFrequency: r.spoken_frequency,
+    createdAt: r.created_at,
+  };
+}
+function mapImprovementToDb(i) {
+  return {
+    id: i.id,
+    session_id: i.sessionId,
+    construction: i.construction,
+    original: i.original,
+    improved: i.improved,
+    explanation: i.explanation,
+    category: i.category,
+    spoken_frequency: i.spokenFrequency,
+    created_at: i.createdAt,
+  };
+}
+
+function mapSrsCardFromDb(r) {
+  if (!r) return null;
+  return {
+    improvementId: r.improvement_id,
+    status: r.status,
+    easeFactor: r.ease_factor,
+    intervalDays: r.interval_days,
+    repetitions: r.repetitions,
+    nextReview: r.next_review,
+    lastReview: r.last_review,
+    totalReviews: r.total_reviews,
+    lapses: r.lapses,
+  };
+}
+function mapSrsCardToDb(c) {
+  return {
+    improvement_id: c.improvementId,
+    status: c.status,
+    ease_factor: c.easeFactor,
+    interval_days: c.intervalDays,
+    repetitions: c.repetitions,
+    next_review: c.nextReview,
+    last_review: c.lastReview,
+    total_reviews: c.totalReviews,
+    lapses: c.lapses,
+  };
+}
+
+function mapSettingsFromDb(r) {
+  if (!r) return DEFAULT_SETTINGS;
+  return {
+    formality: r.formality || DEFAULT_SETTINGS.formality,
+    level: r.level || DEFAULT_SETTINGS.level,
+    focusArea: r.focus_area || DEFAULT_SETTINGS.focusArea,
+    maxImprovements: r.max_improvements ?? DEFAULT_SETTINGS.maxImprovements,
+    practiceMode: r.practice_mode || DEFAULT_SETTINGS.practiceMode,
+  };
+}
+
+function mapActivityLogFromDb(r) {
+  if (!r) return null;
+  return {
+    id: r.id,
+    type: r.type,
+    durationSeconds: r.duration_seconds,
+    sessionId: r.session_id,
+    topicId: r.topic_id,
+    createdAt: r.created_at,
+  };
+}
+function mapActivityLogToDb(l) {
+  return {
+    id: l.id,
+    type: l.type,
+    duration_seconds: l.durationSeconds,
+    session_id: l.sessionId,
+    topic_id: l.topicId,
+    created_at: l.createdAt,
+  };
 }
 
 // ── Topics ─────────────────────────────────────────────────────────
 
-export function getTopics() {
-  return readStore(STORAGE_KEYS.topics) || [];
+export async function getTopics() {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('topics').select('*').order('created_at', { ascending: false });
+    if (!error && data) return data.map(mapTopicFromDb);
+  }
+  return readLocalStore(STORAGE_KEYS.topics) || [];
 }
 
-export function getTopic(id) {
-  return getTopics().find((t) => t.id === id) || null;
+export async function getTopic(id) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('topics').select('*').eq('id', id).single();
+    if (!error && data) return mapTopicFromDb(data);
+  }
+  const topics = (readLocalStore(STORAGE_KEYS.topics) || []);
+  return topics.find((t) => t.id === id) || null;
 }
 
-export function createTopic({ title }) {
+export async function createTopic({ title }) {
   const topic = {
     id: generateId(),
     title,
     createdAt: new Date().toISOString(),
     sessionIds: [],
   };
-  const topics = getTopics();
+
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('topics').insert(mapTopicToDb(topic)).select().single();
+    if (!error && data) return mapTopicFromDb(data);
+  }
+
+  const topics = readLocalStore(STORAGE_KEYS.topics) || [];
   topics.unshift(topic);
-  writeStore(STORAGE_KEYS.topics, topics);
+  writeLocalStore(STORAGE_KEYS.topics, topics);
   return topic;
 }
 
-export function getOrCreateTopic(title) {
-  const existing = getTopics().find((t) => t.title === title);
+export async function getOrCreateTopic(title) {
+  const topics = await getTopics();
+  const existing = topics.find((t) => t.title === title);
   if (existing) return existing;
-  return createTopic({ title });
+  return await createTopic({ title });
 }
 
-function addSessionToTopic(topicId, sessionId) {
-  const topics = getTopics();
-  const idx = topics.findIndex((t) => t.id === topicId);
-  if (idx === -1) return;
-  if (!topics[idx].sessionIds.includes(sessionId)) {
-    topics[idx].sessionIds.push(sessionId);
+async function addSessionToTopic(topicId, sessionId) {
+  const topic = await getTopic(topicId);
+  if (!topic) return;
+  if (!topic.sessionIds.includes(sessionId)) {
+    const updatedIds = [...topic.sessionIds, sessionId];
+    if (isSupabaseConfigured) {
+      await supabase.from('topics').update({ session_ids: updatedIds }).eq('id', topicId);
+    } else {
+      const topics = readLocalStore(STORAGE_KEYS.topics) || [];
+      const idx = topics.findIndex((t) => t.id === topicId);
+      if (idx !== -1) {
+        topics[idx].sessionIds = updatedIds;
+        writeLocalStore(STORAGE_KEYS.topics, topics);
+      }
+    }
   }
-  writeStore(STORAGE_KEYS.topics, topics);
 }
 
 // ── Sessions ───────────────────────────────────────────────────────
 
-export function getSessions() {
-  return readStore(STORAGE_KEYS.sessions) || [];
+export async function getSessions() {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('sessions').select('*').order('created_at', { ascending: false });
+    if (!error && data) return data.map(mapSessionFromDb);
+  }
+  return readLocalStore(STORAGE_KEYS.sessions) || [];
 }
 
-export function getSession(id) {
-  return getSessions().find((s) => s.id === id) || null;
+export async function getSession(id) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('sessions').select('*').eq('id', id).single();
+    if (!error && data) return mapSessionFromDb(data);
+  }
+  const sessions = readLocalStore(STORAGE_KEYS.sessions) || [];
+  return sessions.find((s) => s.id === id) || null;
 }
 
-export function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0, rawText = null }) {
-  const topic = getOrCreateTopic(title);
+export async function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0, rawText = null }) {
+  const topic = await getOrCreateTopic(title);
   const session = {
     id: generateId(),
     topicId: topic.id,
@@ -98,54 +263,96 @@ export function createSession({ title, sourceType, tags = [], notes = '', durati
     durationSeconds,
     rawText: rawText || null,
     createdAt: new Date().toISOString(),
-    status: 'created', // created | prompted | imported
+    status: 'created',
   };
-  const sessions = getSessions();
+
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('sessions').insert(mapSessionToDb(session)).select().single();
+    if (!error && data) {
+      await addSessionToTopic(topic.id, session.id);
+      return mapSessionFromDb(data);
+    }
+  }
+
+  const sessions = readLocalStore(STORAGE_KEYS.sessions) || [];
   sessions.unshift(session);
-  writeStore(STORAGE_KEYS.sessions, sessions);
-  addSessionToTopic(topic.id, session.id);
+  writeLocalStore(STORAGE_KEYS.sessions, sessions);
+  await addSessionToTopic(topic.id, session.id);
   return session;
 }
 
-export function updateSession(id, updates) {
-  const sessions = getSessions();
+export async function updateSession(id, updates) {
+  if (isSupabaseConfigured) {
+    const dbUpdates = {};
+    if ('topicId' in updates) dbUpdates.topic_id = updates.topicId;
+    if ('title' in updates) dbUpdates.title = updates.title;
+    if ('sourceType' in updates) dbUpdates.source_type = updates.sourceType;
+    if ('tags' in updates) dbUpdates.tags = updates.tags;
+    if ('notes' in updates) dbUpdates.notes = updates.notes;
+    if ('durationSeconds' in updates) dbUpdates.duration_seconds = updates.durationSeconds;
+    if ('rawText' in updates) dbUpdates.raw_text = updates.rawText;
+    if ('status' in updates) dbUpdates.status = updates.status;
+
+    const { data, error } = await supabase.from('sessions').update(dbUpdates).eq('id', id).select().single();
+    if (!error && data) return mapSessionFromDb(data);
+  }
+
+  const sessions = readLocalStore(STORAGE_KEYS.sessions) || [];
   const idx = sessions.findIndex((s) => s.id === id);
   if (idx === -1) return null;
   sessions[idx] = { ...sessions[idx], ...updates };
-  writeStore(STORAGE_KEYS.sessions, sessions);
+  writeLocalStore(STORAGE_KEYS.sessions, sessions);
   return sessions[idx];
 }
 
-export function addSessionText(id, rawText) {
-  return updateSession(id, { rawText: rawText || null });
+export async function addSessionText(id, rawText) {
+  return await updateSession(id, { rawText: rawText || null });
 }
 
-export function deleteSession(id) {
-  // Cascade: delete improvements and SRS cards
-  const improvements = getImprovementsBySession(id);
-  improvements.forEach((imp) => deleteSrsCard(imp.id));
-  const allImprovements = getImprovements().filter((i) => i.sessionId !== id);
-  writeStore(STORAGE_KEYS.improvements, allImprovements);
-  const sessions = getSessions().filter((s) => s.id !== id);
-  writeStore(STORAGE_KEYS.sessions, sessions);
+export async function deleteSession(id) {
+  if (isSupabaseConfigured) {
+    await supabase.from('sessions').delete().eq('id', id);
+    return;
+  }
+  const improvements = await getImprovementsBySession(id);
+  for (const imp of improvements) {
+    await deleteSrsCard(imp.id);
+  }
+  const allImprovements = (await getImprovements()).filter((i) => i.sessionId !== id);
+  writeLocalStore(STORAGE_KEYS.improvements, allImprovements);
+  const sessions = (await getSessions()).filter((s) => s.id !== id);
+  writeLocalStore(STORAGE_KEYS.sessions, sessions);
 }
 
 // ── Improvements ───────────────────────────────────────────────────
 
-export function getImprovements() {
-  return readStore(STORAGE_KEYS.improvements) || [];
+export async function getImprovements() {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('improvements').select('*').order('created_at', { ascending: false });
+    if (!error && data) return data.map(mapImprovementFromDb);
+  }
+  return readLocalStore(STORAGE_KEYS.improvements) || [];
 }
 
-export function getImprovement(id) {
-  return getImprovements().find((i) => i.id === id) || null;
+export async function getImprovement(id) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('improvements').select('*').eq('id', id).single();
+    if (!error && data) return mapImprovementFromDb(data);
+  }
+  const improvements = await getImprovements();
+  return improvements.find((i) => i.id === id) || null;
 }
 
-export function getImprovementsBySession(sessionId) {
-  return getImprovements().filter((i) => i.sessionId === sessionId);
+export async function getImprovementsBySession(sessionId) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('improvements').select('*').eq('session_id', sessionId);
+    if (!error && data) return data.map(mapImprovementFromDb);
+  }
+  const improvements = await getImprovements();
+  return improvements.filter((i) => i.sessionId === sessionId);
 }
 
-export function addImprovements(sessionId, items) {
-  const improvements = getImprovements();
+export async function addImprovements(sessionId, items) {
   const newItems = items.map((item) => ({
     id: generateId(),
     sessionId,
@@ -158,22 +365,37 @@ export function addImprovements(sessionId, items) {
     createdAt: new Date().toISOString(),
   }));
 
+  if (isSupabaseConfigured) {
+    const dbItems = newItems.map(mapImprovementToDb);
+    const { data, error } = await supabase.from('improvements').insert(dbItems).select();
+    if (!error && data) {
+      for (const imp of newItems) {
+        await createSrsCard(imp.id);
+      }
+      await updateSession(sessionId, { status: 'imported' });
+      return data.map(mapImprovementFromDb);
+    }
+  }
+
+  const improvements = readLocalStore(STORAGE_KEYS.improvements) || [];
   improvements.unshift(...newItems);
-  writeStore(STORAGE_KEYS.improvements, improvements);
+  writeLocalStore(STORAGE_KEYS.improvements, improvements);
 
-  // Create SRS cards for each new improvement
-  newItems.forEach((imp) => createSrsCard(imp.id));
-
-  // Update session status
-  updateSession(sessionId, { status: 'imported' });
-
+  for (const imp of newItems) {
+    await createSrsCard(imp.id);
+  }
+  await updateSession(sessionId, { status: 'imported' });
   return newItems;
 }
 
-export function deleteImprovement(id) {
-  deleteSrsCard(id);
-  const improvements = getImprovements().filter((i) => i.id !== id);
-  writeStore(STORAGE_KEYS.improvements, improvements);
+export async function deleteImprovement(id) {
+  if (isSupabaseConfigured) {
+    await supabase.from('improvements').delete().eq('id', id);
+    return;
+  }
+  await deleteSrsCard(id);
+  const improvements = (await getImprovements()).filter((i) => i.id !== id);
+  writeLocalStore(STORAGE_KEYS.improvements, improvements);
 }
 
 function normalizeCategory(cat) {
@@ -197,28 +419,35 @@ function normalizeFrequency(freq) {
   return ['very_high', 'high', 'medium'].includes(lower) ? lower : 'high';
 }
 
-// ── Duplicate detection ────────────────────────────────────────────
-
-export function findDuplicate(originalText) {
+export async function findDuplicate(originalText) {
   const normalized = originalText.toLowerCase().trim();
-  return getImprovements().find(
+  const improvements = await getImprovements();
+  return improvements.find(
     (i) => i.original.toLowerCase().trim() === normalized
   );
 }
 
 // ── SRS Cards ──────────────────────────────────────────────────────
 
-export function getSrsCards() {
-  return readStore(STORAGE_KEYS.srsCards) || [];
+export async function getSrsCards() {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('srs_cards').select('*');
+    if (!error && data) return data.map(mapSrsCardFromDb);
+  }
+  return readLocalStore(STORAGE_KEYS.srsCards) || [];
 }
 
-export function getSrsCard(improvementId) {
-  return getSrsCards().find((c) => c.improvementId === improvementId) || null;
+export async function getSrsCard(improvementId) {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('srs_cards').select('*').eq('improvement_id', improvementId).single();
+    if (!error && data) return mapSrsCardFromDb(data);
+  }
+  const cards = await getSrsCards();
+  return cards.find((c) => c.improvementId === improvementId) || null;
 }
 
-function createSrsCard(improvementId) {
-  const cards = getSrsCards();
-  cards.push({
+async function createSrsCard(improvementId) {
+  const card = {
     improvementId,
     status: 'new',
     easeFactor: 2.5,
@@ -228,26 +457,54 @@ function createSrsCard(improvementId) {
     lastReview: null,
     totalReviews: 0,
     lapses: 0,
-  });
-  writeStore(STORAGE_KEYS.srsCards, cards);
+  };
+
+  if (isSupabaseConfigured) {
+    await supabase.from('srs_cards').insert(mapSrsCardToDb(card));
+    return card;
+  }
+
+  const cards = readLocalStore(STORAGE_KEYS.srsCards) || [];
+  cards.push(card);
+  writeLocalStore(STORAGE_KEYS.srsCards, cards);
+  return card;
 }
 
-function deleteSrsCard(improvementId) {
-  const cards = getSrsCards().filter((c) => c.improvementId !== improvementId);
-  writeStore(STORAGE_KEYS.srsCards, cards);
+async function deleteSrsCard(improvementId) {
+  if (isSupabaseConfigured) {
+    await supabase.from('srs_cards').delete().eq('improvement_id', improvementId);
+    return;
+  }
+  const cards = (await getSrsCards()).filter((c) => c.improvementId !== improvementId);
+  writeLocalStore(STORAGE_KEYS.srsCards, cards);
 }
 
-export function updateSrsCard(improvementId, updates) {
-  const cards = getSrsCards();
+export async function updateSrsCard(improvementId, updates) {
+  if (isSupabaseConfigured) {
+    const dbUpdates = {};
+    if ('status' in updates) dbUpdates.status = updates.status;
+    if ('easeFactor' in updates) dbUpdates.ease_factor = updates.easeFactor;
+    if ('intervalDays' in updates) dbUpdates.interval_days = updates.intervalDays;
+    if ('repetitions' in updates) dbUpdates.repetitions = updates.repetitions;
+    if ('nextReview' in updates) dbUpdates.next_review = updates.nextReview;
+    if ('lastReview' in updates) dbUpdates.last_review = updates.lastReview;
+    if ('totalReviews' in updates) dbUpdates.total_reviews = updates.totalReviews;
+    if ('lapses' in updates) dbUpdates.lapses = updates.lapses;
+
+    const { data, error } = await supabase.from('srs_cards').update(dbUpdates).eq('improvement_id', improvementId).select().single();
+    if (!error && data) return mapSrsCardFromDb(data);
+  }
+
+  const cards = readLocalStore(STORAGE_KEYS.srsCards) || [];
   const idx = cards.findIndex((c) => c.improvementId === improvementId);
   if (idx === -1) return null;
   cards[idx] = { ...cards[idx], ...updates };
-  writeStore(STORAGE_KEYS.srsCards, cards);
+  writeLocalStore(STORAGE_KEYS.srsCards, cards);
   return cards[idx];
 }
 
-export function resetSrsCard(improvementId) {
-  return updateSrsCard(improvementId, {
+export async function resetSrsCard(improvementId) {
+  return await updateSrsCard(improvementId, {
     status: 'new',
     easeFactor: 2.5,
     intervalDays: 0,
@@ -259,12 +516,12 @@ export function resetSrsCard(improvementId) {
   });
 }
 
-export function getDueCards() {
+export async function getDueCards() {
   const now = new Date();
-  const cards = getSrsCards().filter((c) => new Date(c.nextReview) <= now);
+  const cards = await getSrsCards();
+  const due = cards.filter((c) => new Date(c.nextReview) <= now);
 
-  // Sort: lapsed first, then new, then reviews (most overdue first)
-  return cards.sort((a, b) => {
+  return due.sort((a, b) => {
     const priorityMap = { learning: 0, new: 1, reviewing: 2, mature: 3 };
     const pa = a.lapses > 0 && a.status === 'learning' ? -1 : (priorityMap[a.status] ?? 2);
     const pb = b.lapses > 0 && b.status === 'learning' ? -1 : (priorityMap[b.status] ?? 2);
@@ -275,28 +532,52 @@ export function getDueCards() {
 
 // ── Settings ───────────────────────────────────────────────────────
 
-export function getSettings() {
-  return { ...DEFAULT_SETTINGS, ...(readStore(STORAGE_KEYS.settings) || {}) };
+export async function getSettings() {
+  if (isSupabaseConfigured) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const { data, error } = await supabase.from('settings').select('*').eq('user_id', user.id).single();
+      if (!error && data) return mapSettingsFromDb(data);
+    }
+  }
+  return { ...DEFAULT_SETTINGS, ...(readLocalStore(STORAGE_KEYS.settings) || {}) };
 }
 
-export function updateSettings(updates) {
-  const settings = getSettings();
-  const merged = { ...settings, ...updates };
-  writeStore(STORAGE_KEYS.settings, merged);
+export async function updateSettings(updates) {
+  const current = await getSettings();
+  const merged = { ...current, ...updates };
+
+  if (isSupabaseConfigured) {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      const dbRow = {
+        user_id: user.id,
+        formality: merged.formality,
+        level: merged.level,
+        focus_area: merged.focusArea,
+        max_improvements: merged.maxImprovements,
+        practice_mode: merged.practiceMode,
+      };
+      await supabase.from('settings').upsert(dbRow);
+      return merged;
+    }
+  }
+
+  writeLocalStore(STORAGE_KEYS.settings, merged);
   return merged;
 }
 
 // ── Stats ──────────────────────────────────────────────────────────
 
-export function getStats() {
-  const improvements = getImprovements();
-  const cards = getSrsCards();
-  const dueCards = getDueCards();
+export async function getStats() {
+  const improvements = await getImprovements();
+  const cards = await getSrsCards();
+  const dueCards = await getDueCards();
+  const sessions = await getSessions();
 
   const mature = cards.filter((c) => c.status === 'mature').length;
   const newCards = cards.filter((c) => c.status === 'new').length;
 
-  // Calculate streak
   const reviewDates = cards
     .filter((c) => c.lastReview)
     .map((c) => {
@@ -320,7 +601,7 @@ export function getStats() {
 
   return {
     totalImprovements: improvements.length,
-    totalSessions: getSessions().length,
+    totalSessions: sessions.length,
     dueToday: dueCards.length,
     newCards,
     mature,
@@ -331,29 +612,48 @@ export function getStats() {
 
 // ── Activity Logs ──────────────────────────────────────────────────
 
-export function getActivityLogs() {
-  return readStore(STORAGE_KEYS.activityLogs) || [];
+export async function getActivityLogs() {
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
+    if (!error && data) return data.map(mapActivityLogFromDb);
+  }
+  return readLocalStore(STORAGE_KEYS.activityLogs) || [];
 }
 
-export function logActivity({ type, durationSeconds, sessionId = null, topicId = null }) {
+export async function logActivity({ type, durationSeconds, sessionId = null, topicId = null }) {
   if (!durationSeconds || durationSeconds <= 0) return null;
-  const logs = getActivityLogs();
   const entry = {
     id: generateId(),
-    type, // 'review' | 'session'
+    type,
     durationSeconds: Math.round(durationSeconds),
     sessionId,
     topicId,
     createdAt: new Date().toISOString(),
   };
-  logs.unshift(entry);
-  writeStore(STORAGE_KEYS.activityLogs, logs);
 
-  // If sessionId is attached for session type, update durationSeconds on session record
+  if (isSupabaseConfigured) {
+    const { data, error } = await supabase.from('activity_logs').insert(mapActivityLogToDb(entry)).select().single();
+    if (!error && data) {
+      if (sessionId && type === 'session') {
+        const session = await getSession(sessionId);
+        if (session) {
+          await updateSession(sessionId, {
+            durationSeconds: (session.durationSeconds || 0) + Math.round(durationSeconds),
+          });
+        }
+      }
+      return mapActivityLogFromDb(data);
+    }
+  }
+
+  const logs = readLocalStore(STORAGE_KEYS.activityLogs) || [];
+  logs.unshift(entry);
+  writeLocalStore(STORAGE_KEYS.activityLogs, logs);
+
   if (sessionId && type === 'session') {
-    const session = getSession(sessionId);
+    const session = await getSession(sessionId);
     if (session) {
-      updateSession(sessionId, {
+      await updateSession(sessionId, {
         durationSeconds: (session.durationSeconds || 0) + Math.round(durationSeconds),
       });
     }
@@ -376,23 +676,20 @@ export function formatDuration(totalSeconds) {
   return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
 }
 
-export function getTopicTime(topicId) {
-  const topic = getTopic(topicId);
+export async function getTopicTime(topicId) {
+  const topic = await getTopic(topicId);
   if (!topic) return 0;
 
-  const sessions = getSessions().filter((s) => s.topicId === topicId);
+  const sessions = (await getSessions()).filter((s) => s.topicId === topicId);
   const sessionIds = new Set(sessions.map((s) => s.id));
-  
-  // Sum session practice durations (which accumulate logActivity session entries)
+
   const sessionPracticeTime = sessions.reduce((sum, s) => sum + (s.durationSeconds || 0), 0);
 
-  // Sum review activity logs matching this topicId or any session in this topic
-  const logs = getActivityLogs();
+  const logs = await getActivityLogs();
   const reviewTime = logs
     .filter((l) => l.type === 'review' && (l.topicId === topicId || (l.sessionId && sessionIds.has(l.sessionId))))
     .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
 
-  // Standalone session logs that had topicId set but no sessionId
   const standaloneSessionTime = logs
     .filter((l) => l.type === 'session' && l.topicId === topicId && !l.sessionId)
     .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
@@ -400,8 +697,8 @@ export function getTopicTime(topicId) {
   return sessionPracticeTime + reviewTime + standaloneSessionTime;
 }
 
-export function getActivityStats() {
-  const logs = getActivityLogs();
+export async function getActivityStats() {
+  const logs = await getActivityLogs();
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
 
@@ -431,28 +728,11 @@ export function getActivityStats() {
   };
 }
 
-// ── Migration ──────────────────────────────────────────────────────
-
-export function migrateSessionsToTopics() {
-  const sessions = getSessions();
-  const unmigrated = sessions.filter((s) => !s.topicId);
-  if (unmigrated.length === 0) return;
-
-  const updatedSessions = [...sessions];
-  unmigrated.forEach((session) => {
-    const topic = createTopic({ title: session.title || 'Untitled' });
-    addSessionToTopic(topic.id, session.id);
-    const idx = updatedSessions.findIndex((s) => s.id === session.id);
-    if (idx !== -1) updatedSessions[idx] = { ...updatedSessions[idx], topicId: topic.id };
-  });
-  writeStore(STORAGE_KEYS.sessions, updatedSessions);
-}
-
-export function getSessionTime(sessionId) {
-  const session = getSession(sessionId);
+export async function getSessionTime(sessionId) {
+  const session = await getSession(sessionId);
   if (!session) return 0;
   const directDuration = session.durationSeconds || 0;
-  const logs = getActivityLogs();
+  const logs = await getActivityLogs();
   const reviewTime = logs
     .filter((l) => l.type === 'review' && l.sessionId === sessionId)
     .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
@@ -476,16 +756,16 @@ export function countTextWords(text) {
   return { totalWords, uniqueWords, vocabularyDensity };
 }
 
-export function getSessionWordMetrics(sessionId) {
-  const session = getSession(sessionId);
+export async function getSessionWordMetrics(sessionId) {
+  const session = await getSession(sessionId);
   if (!session || !session.rawText) {
     return { totalWords: 0, uniqueWords: 0, vocabularyDensity: 0 };
   }
   return countTextWords(session.rawText);
 }
 
-export function getTopicWordMetrics(topicId) {
-  const sessions = getSessions().filter((s) => s.topicId === topicId && s.rawText);
+export async function getTopicWordMetrics(topicId) {
+  const sessions = (await getSessions()).filter((s) => s.topicId === topicId && s.rawText);
   if (sessions.length === 0) {
     return { totalWords: 0, uniqueWords: 0, vocabularyDensity: 0, sessionCountWithText: 0 };
   }
@@ -509,8 +789,8 @@ export function getTopicWordMetrics(topicId) {
   };
 }
 
-export function getTodayWordMetrics() {
-  const sessions = getSessions();
+export async function getTodayWordMetrics() {
+  const sessions = await getSessions();
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
   let todayWords = 0;
@@ -528,8 +808,8 @@ export function getTodayWordMetrics() {
   return todayWords;
 }
 
-export function getAllTimeWordMetrics() {
-  const sessions = getSessions().filter((s) => s.rawText);
+export async function getAllTimeWordMetrics() {
+  const sessions = (await getSessions()).filter((s) => s.rawText);
   if (sessions.length === 0) {
     return { totalWords: 0, uniqueWords: 0, avgDensity: 0, sessionCountWithText: 0 };
   }
@@ -560,125 +840,175 @@ export function getAllTimeWordMetrics() {
   };
 }
 
-// ── Topics with sessions (dashboard helper) ─────────────────────────
-
-export function getTopicsWithSessions() {
-  const topics = getTopics();
-  const allSessions = getSessions();
+export async function getTopicsWithSessions() {
+  const topics = await getTopics();
+  const allSessions = await getSessions();
+  const improvements = await getImprovements();
   const sessionMap = new Map(allSessions.map((s) => [s.id, s]));
 
-  const enriched = topics.map((topic) => {
-    const sessions = topic.sessionIds
-      .map((id) => {
-        const s = sessionMap.get(id);
-        if (!s) return null;
-        const wordMetrics = countTextWords(s.rawText);
-        return {
-          ...s,
-          totalTimeSeconds: getSessionTime(s.id),
-          totalWords: wordMetrics.totalWords,
-          uniqueWords: wordMetrics.uniqueWords,
-          vocabularyDensity: wordMetrics.vocabularyDensity,
-        };
-      })
-      .filter(Boolean);
-    const totalPhrases = sessions.reduce(
-      (sum, s) => sum + getImprovementsBySession(s.id).length,
-      0
-    );
-    const latestDate = sessions.reduce((latest, s) => {
-      const d = new Date(s.createdAt);
-      return d > latest ? d : latest;
-    }, new Date(0));
-    const totalTimeSeconds = getTopicTime(topic.id);
-    const topicWordMetrics = getTopicWordMetrics(topic.id);
+  const enriched = await Promise.all(
+    topics.map(async (topic) => {
+      const sessions = (
+        await Promise.all(
+          (topic.sessionIds || []).map(async (id) => {
+            const s = sessionMap.get(id);
+            if (!s) return null;
+            const wordMetrics = countTextWords(s.rawText);
+            const totalTimeSeconds = await getSessionTime(s.id);
+            return {
+              ...s,
+              totalTimeSeconds,
+              totalWords: wordMetrics.totalWords,
+              uniqueWords: wordMetrics.uniqueWords,
+              vocabularyDensity: wordMetrics.vocabularyDensity,
+            };
+          })
+        )
+      ).filter(Boolean);
 
-    return {
-      ...topic,
-      sessions,
-      totalPhrases,
-      latestDate,
-      totalTimeSeconds,
-      totalWords: topicWordMetrics.totalWords,
-      uniqueWords: topicWordMetrics.uniqueWords,
-      vocabularyDensity: topicWordMetrics.vocabularyDensity,
-    };
-  });
+      const totalPhrases = sessions.reduce((sum, s) => {
+        const sessionImps = improvements.filter((i) => i.sessionId === s.id);
+        return sum + sessionImps.length;
+      }, 0);
 
-  // Sort by most recent session date descending
+      const latestDate = sessions.reduce((latest, s) => {
+        const d = new Date(s.createdAt);
+        return d > latest ? d : latest;
+      }, new Date(0));
+
+      const totalTimeSeconds = await getTopicTime(topic.id);
+      const topicWordMetrics = await getTopicWordMetrics(topic.id);
+
+      return {
+        ...topic,
+        sessions,
+        totalPhrases,
+        latestDate,
+        totalTimeSeconds,
+        totalWords: topicWordMetrics.totalWords,
+        uniqueWords: topicWordMetrics.uniqueWords,
+        vocabularyDensity: topicWordMetrics.vocabularyDensity,
+      };
+    })
+  );
+
   enriched.sort((a, b) => b.latestDate - a.latestDate);
   return enriched;
 }
 
 // ── Export / Import ────────────────────────────────────────────────
 
-export function exportAllData() {
+export async function exportAllData() {
   return {
     app: 'rip-it-out',
     version: '1.0',
     exportedAt: new Date().toISOString(),
-    settings: getSettings(),
-    topics: getTopics(),
-    sessions: getSessions(),
-    improvements: getImprovements(),
-    srsCards: getSrsCards(),
-    activityLogs: getActivityLogs(),
+    settings: await getSettings(),
+    topics: await getTopics(),
+    sessions: await getSessions(),
+    improvements: await getImprovements(),
+    srsCards: await getSrsCards(),
+    activityLogs: await getActivityLogs(),
   };
 }
 
-export function importData(data, mode = 'merge') {
+export async function importData(data, mode = 'merge') {
   if (data.app !== 'rip-it-out') throw new Error('Invalid export file');
 
   if (mode === 'replace') {
-    writeStore(STORAGE_KEYS.topics, data.topics || []);
-    writeStore(STORAGE_KEYS.sessions, data.sessions || []);
-    writeStore(STORAGE_KEYS.improvements, data.improvements || []);
-    writeStore(STORAGE_KEYS.srsCards, data.srsCards || []);
-    writeStore(STORAGE_KEYS.activityLogs, data.activityLogs || []);
-    if (data.settings) writeStore(STORAGE_KEYS.settings, data.settings);
+    if (isSupabaseConfigured) {
+      await supabase.from('activity_logs').delete().neq('id', '');
+      await supabase.from('srs_cards').delete().neq('improvement_id', '');
+      await supabase.from('improvements').delete().neq('id', '');
+      await supabase.from('sessions').delete().neq('id', '');
+      await supabase.from('topics').delete().neq('id', '');
+
+      if (data.topics) await supabase.from('topics').insert(data.topics.map(mapTopicToDb));
+      if (data.sessions) await supabase.from('sessions').insert(data.sessions.map(mapSessionToDb));
+      if (data.improvements) await supabase.from('improvements').insert(data.improvements.map(mapImprovementToDb));
+      if (data.srsCards) await supabase.from('srs_cards').insert(data.srsCards.map(mapSrsCardToDb));
+      if (data.activityLogs) await supabase.from('activity_logs').insert(data.activityLogs.map(mapActivityLogToDb));
+      if (data.settings) await updateSettings(data.settings);
+      return;
+    }
+
+    writeLocalStore(STORAGE_KEYS.topics, data.topics || []);
+    writeLocalStore(STORAGE_KEYS.sessions, data.sessions || []);
+    writeLocalStore(STORAGE_KEYS.improvements, data.improvements || []);
+    writeLocalStore(STORAGE_KEYS.srsCards, data.srsCards || []);
+    writeLocalStore(STORAGE_KEYS.activityLogs, data.activityLogs || []);
+    if (data.settings) writeLocalStore(STORAGE_KEYS.settings, data.settings);
     return;
   }
 
-  // Merge mode: add items with new IDs that don't exist yet
+  // Merge mode
   if (data.topics) {
-    const existing = getTopics();
+    const existing = await getTopics();
     const existingIds = new Set(existing.map((t) => t.id));
     const newItems = data.topics.filter((t) => !existingIds.has(t.id));
-    writeStore(STORAGE_KEYS.topics, [...existing, ...newItems]);
+    if (isSupabaseConfigured && newItems.length > 0) {
+      await supabase.from('topics').insert(newItems.map(mapTopicToDb));
+    } else if (newItems.length > 0) {
+      writeLocalStore(STORAGE_KEYS.topics, [...existing, ...newItems]);
+    }
   }
 
   if (data.sessions) {
-    const existing = getSessions();
+    const existing = await getSessions();
     const existingIds = new Set(existing.map((s) => s.id));
     const newItems = data.sessions.filter((s) => !existingIds.has(s.id));
-    writeStore(STORAGE_KEYS.sessions, [...existing, ...newItems]);
+    if (isSupabaseConfigured && newItems.length > 0) {
+      await supabase.from('sessions').insert(newItems.map(mapSessionToDb));
+    } else if (newItems.length > 0) {
+      writeLocalStore(STORAGE_KEYS.sessions, [...existing, ...newItems]);
+    }
   }
 
   if (data.improvements) {
-    const existing = getImprovements();
+    const existing = await getImprovements();
     const existingIds = new Set(existing.map((i) => i.id));
     const newItems = data.improvements.filter((i) => !existingIds.has(i.id));
-    writeStore(STORAGE_KEYS.improvements, [...existing, ...newItems]);
+    if (isSupabaseConfigured && newItems.length > 0) {
+      await supabase.from('improvements').insert(newItems.map(mapImprovementToDb));
+    } else if (newItems.length > 0) {
+      writeLocalStore(STORAGE_KEYS.improvements, [...existing, ...newItems]);
+    }
   }
 
   if (data.srsCards) {
-    const existing = getSrsCards();
+    const existing = await getSrsCards();
     const existingIds = new Set(existing.map((c) => c.improvementId));
     const newItems = data.srsCards.filter((c) => !existingIds.has(c.improvementId));
-    writeStore(STORAGE_KEYS.srsCards, [...existing, ...newItems]);
+    if (isSupabaseConfigured && newItems.length > 0) {
+      await supabase.from('srs_cards').insert(newItems.map(mapSrsCardToDb));
+    } else if (newItems.length > 0) {
+      writeLocalStore(STORAGE_KEYS.srsCards, [...existing, ...newItems]);
+    }
   }
 
   if (data.activityLogs) {
-    const existing = getActivityLogs();
+    const existing = await getActivityLogs();
     const existingIds = new Set(existing.map((l) => l.id));
     const newItems = data.activityLogs.filter((l) => !existingIds.has(l.id));
-    writeStore(STORAGE_KEYS.activityLogs, [...existing, ...newItems]);
+    if (isSupabaseConfigured && newItems.length > 0) {
+      await supabase.from('activity_logs').insert(newItems.map(mapActivityLogToDb));
+    } else if (newItems.length > 0) {
+      writeLocalStore(STORAGE_KEYS.activityLogs, [...existing, ...newItems]);
+    }
   }
 }
 
-export function clearAllData() {
-  Object.values(STORAGE_KEYS).forEach((key) => localStorage.removeItem(key));
+export async function clearAllData() {
+  if (isSupabaseConfigured) {
+    await supabase.from('activity_logs').delete().neq('id', '');
+    await supabase.from('srs_cards').delete().neq('improvement_id', '');
+    await supabase.from('improvements').delete().neq('id', '');
+    await supabase.from('sessions').delete().neq('id', '');
+    await supabase.from('topics').delete().neq('id', '');
+  }
+  Object.values(STORAGE_KEYS).forEach((key) => {
+    try {
+      localStorage.removeItem(key);
+    } catch {}
+  });
 }
-
-// ── Module-level migration (runs once on import) ───────────────────
-migrateSessionsToTopics();
