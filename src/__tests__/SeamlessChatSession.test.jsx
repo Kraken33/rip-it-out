@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
@@ -20,20 +20,17 @@ vi.mock('../services/aiService', () => ({
     if (onChunk) onChunk('Hello! That sounds fascinating.');
     return 'Hello! That sounds fascinating.';
   }),
-  evaluateSingleMessage: vi.fn().mockResolvedValue({
-    improvements: [
-      {
-        construction: 'Simple Past Irregular',
-        original: 'readed',
-        improved: 'read',
-        explanation: 'Past tense of read is pronounced red.',
-        category: 'grammar',
-        spoken_frequency: 'high',
-        context: 'I readed chapter 3',
-      },
-    ],
-  }),
   transcribeAudio: vi.fn().mockResolvedValue('Transcribed audio text'),
+}));
+
+vi.mock('../components/AudioPlayerButton', () => ({
+  default: ({ text }) => <button aria-label="Listen to audio">{text}</button>,
+}));
+
+vi.mock('../services/audioPlayer', () => ({
+  playText: vi.fn(),
+  stopAudio: vi.fn(),
+  isPlayingText: vi.fn().mockReturnValue(false),
 }));
 
 describe('SeamlessChatSession Component', () => {
@@ -57,7 +54,7 @@ describe('SeamlessChatSession Component', () => {
     );
 
     expect(screen.getByText(/Seamless AI Coach/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/"Atomic Habits Chapter 3"/i)[0]).toBeInTheDocument();
+    expect(screen.getAllByText(/\"Atomic Habits Chapter 3\"/i)[0]).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText(/Hi there! Tell me about the book/i)).toBeInTheDocument();
@@ -82,6 +79,33 @@ describe('SeamlessChatSession Component', () => {
       expect(screen.getByText('Hello! That sounds fascinating.')).toBeInTheDocument();
     });
   });
+
+  it('calls onFinish with concatenated user text when Finish Conversation button is clicked', async () => {
+    const onFinishMock = vi.fn();
+    const sessionWithMessages = {
+      id: 's_test_finish',
+      title: 'Atomic Habits Chapter 3',
+      sourceType: 'book',
+      messages: [
+        { id: 'm1', role: 'user', content: 'I readed chapter 3 yesterday.' },
+        { id: 'm2', role: 'assistant', content: 'That is great!' },
+        { id: 'm3', role: 'user', content: 'It was very interesting book.' },
+      ],
+    };
+
+    render(
+      <MemoryRouter>
+        <SeamlessChatSession session={sessionWithMessages} settings={dummySettings} onFinish={onFinishMock} />
+      </MemoryRouter>
+    );
+
+    const finishBtn = screen.getByRole('button', { name: /Finish Conversation →/i });
+    fireEvent.click(finishBtn);
+
+    await waitFor(() => {
+      expect(onFinishMock).toHaveBeenCalledWith('I readed chapter 3 yesterday.\nIt was very interesting book.');
+    });
+  });
 });
 
 describe('SeamlessChatViewerModal Component', () => {
@@ -90,7 +114,7 @@ describe('SeamlessChatViewerModal Component', () => {
     title: 'Podcast Summary',
     sourceType: 'podcast',
     messages: [
-      { id: 'm1', role: 'user', content: 'I readed chapter 3', isImproved: true, improvements: [{ original: 'readed', improved: 'read', explanation: 'past tense' }] },
+      { id: 'm1', role: 'user', content: 'I listened to this podcast' },
       { id: 'm2', role: 'assistant', content: 'Great job!' },
     ],
   };

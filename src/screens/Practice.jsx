@@ -9,16 +9,20 @@ import {
   logActivity
 } from '../store';
 import { processReview, RATINGS } from '../srs';
-import { generatePracticePrompt } from '../prompts';
+import { generatePracticePrompt, generateTranslationPracticePrompt } from '../prompts';
 import AudioPlayerButton from '../components/AudioPlayerButton';
+import TranslationPracticeSession from './TranslationPracticeSession';
 
 export default function Practice() {
   const navigate = useNavigate();
   
   const [step, setStep] = useState('loading');
+  const [practiceType, setPracticeType] = useState('translation'); // 'translation' | 'scenario'
+  const [translationSubMode, setTranslationSubMode] = useState('seamless'); // 'seamless' | 'prompt'
   const [selectedCards, setSelectedCards] = useState([]);
   const [improvements, setImprovements] = useState([]);
   const [promptText, setPromptText] = useState('');
+  const [translationPromptText, setTranslationPromptText] = useState('');
   const [copied, setCopied] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [startTime, setStartTime] = useState(null);
@@ -37,10 +41,10 @@ export default function Practice() {
         }
 
         const sorted = [...allDue].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
-        const top5 = sorted.slice(0, 5);
+        const top20 = sorted.slice(0, 20);
 
         const imps = (
-          await Promise.all(top5.map((card) => getImprovement(card.improvementId)))
+          await Promise.all(top20.map((card) => getImprovement(card.improvementId)))
         ).filter(Boolean);
 
         if (!isMounted) return;
@@ -50,15 +54,17 @@ export default function Practice() {
           return;
         }
 
-        setSelectedCards(top5);
+        setSelectedCards(top20);
         setImprovements(imps);
 
         const st = await getSettings();
-        const prompt = generatePracticePrompt(imps, st);
+        const scenarioPrompt = generatePracticePrompt(imps.slice(0, 5), st);
+        const transPrompt = generateTranslationPracticePrompt(imps, st);
 
         if (isMounted) {
           setSettings(st);
-          setPromptText(prompt);
+          setPromptText(scenarioPrompt);
+          setTranslationPromptText(transPrompt);
           setStep('prompt');
           setStartTime(Date.now());
         }
@@ -74,15 +80,18 @@ export default function Practice() {
     };
   }, []);
 
-  const handleCopy = useCallback(() => {
+  const handleCopy = useCallback((textToCopy) => {
     if (!startTime) setStartTime(Date.now());
-    navigator.clipboard.writeText(promptText).then(() => {
+    navigator.clipboard.writeText(textToCopy).then(() => {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
-  }, [promptText, startTime]);
+  }, [startTime]);
 
-  const startRating = useCallback(async () => {
+  const startRating = useCallback(async (customCards) => {
+    if (customCards && Array.isArray(customCards) && customCards.length > 0) {
+      setSelectedCards(customCards);
+    }
     if (startTime) {
       const durationSeconds = Math.round((Date.now() - startTime) / 1000);
       if (durationSeconds > 0) {
@@ -201,26 +210,32 @@ export default function Practice() {
           <div className="pl-3 border-l-2 border-purple-500">
             <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-1">Target Construction</div>
             <div className="text-xl font-bold text-white">
-              "{currentImp.construction || currentImp.improved}"
+              "{currentImp?.construction || currentImp?.improved || 'Target Phrase'}"
             </div>
           </div>
 
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center justify-between">
-              <span>Example / Natural Usage</span>
-              <AudioPlayerButton text={currentImp.improved} settings={settings} size="sm" />
+          {currentImp?.improved && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center justify-between">
+                <span>Example / Natural Usage</span>
+                <AudioPlayerButton text={currentImp.improved} settings={settings} size="sm" />
+              </div>
+              <div className="text-sm text-emerald-400 font-medium">
+                "{currentImp.improved}"
+              </div>
             </div>
-            <div className="text-sm text-emerald-400 font-medium">
-              "{currentImp.improved}"
+          )}
+
+          {currentImp?.original && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Original Wording</div>
+              <div className="text-sm text-rose-400 line-through opacity-80 font-medium">
+                "{currentImp.original}"
+              </div>
             </div>
-          </div>
+          )}
 
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Original Wording</div>
-          <div className="text-sm text-rose-400 line-through opacity-80 font-medium">
-            "{currentImp.original}"
-          </div>
-
-          {currentImp.explanation && (
+          {currentImp?.explanation && (
             <div className="pt-2 border-t border-gray-800">
               <div className="text-xs text-gray-300 italic bg-gray-900/60 p-3 rounded border border-gray-800">
                 {currentImp.explanation}
@@ -249,44 +264,195 @@ export default function Practice() {
     );
   }
 
+  // Interactive Seamless AI Session for Translation Practice
+  if (practiceType === 'translation' && translationSubMode === 'seamless') {
+    return (
+      <div className="max-w-4xl mx-auto space-y-4 py-2">
+        {/* Practice Mode Selector Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-3 bg-[#11121c] p-2 rounded-xl border border-gray-800">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setPracticeType('translation')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                practiceType === 'translation'
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              🌐 Translation Practice
+            </button>
+            <button
+              onClick={() => setPracticeType('scenario')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+                practiceType === 'scenario'
+                  ? 'bg-purple-600 text-white shadow'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              💬 Scenario Q&A (Prompt #3)
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setTranslationSubMode('seamless')}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                translationSubMode === 'seamless'
+                  ? 'bg-purple-900/80 text-purple-200 border border-purple-600'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              ✨ Seamless AI
+            </button>
+            <button
+              onClick={() => setTranslationSubMode('prompt')}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                translationSubMode === 'prompt'
+                  ? 'bg-purple-900/80 text-purple-200 border border-purple-600'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              📋 Copy Prompt #5
+            </button>
+          </div>
+        </div>
+
+        <TranslationPracticeSession
+          allCards={improvements}
+          settings={settings}
+          onFinish={(practicedCards) => startRating(practicedCards)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in py-2">
-      <header className="space-y-1">
-        <h1 className="text-2xl font-bold text-white">
-          Russian Scenario Practice Mode
-        </h1>
-        <p className="text-xs text-gray-400 leading-relaxed">
-          Copy Prompt #3 to your LLM (ChatGPT, Claude, Gemini). The LLM will ask you 5 scenario questions in Russian. Answer them in English using your targeted constructions!
-        </p>
-      </header>
-
-      <div className="glass-panel p-5 space-y-3">
-        <div className="flex justify-between items-center pb-2 border-b border-gray-800">
-          <div className="text-xs font-bold text-purple-400 uppercase tracking-wider">
-            Prompt #3 • {improvements.length} Due {improvements.length === 1 ? 'Phrase' : 'Phrases'}
-          </div>
+      {/* Mode Selector Header */}
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#11121c] p-2 rounded-xl border border-gray-800">
+        <div className="flex items-center gap-2">
           <button
-            id="btn-copy-prompt"
-            onClick={handleCopy}
-            className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+            onClick={() => setPracticeType('translation')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              practiceType === 'translation'
+                ? 'bg-purple-600 text-white shadow'
+                : 'text-gray-400 hover:text-white'
+            }`}
           >
-            {copied ? 'Copied! ✓' : 'Copy Prompt #3'}
+            🌐 Translation Practice
+          </button>
+          <button
+            onClick={() => setPracticeType('scenario')}
+            className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
+              practiceType === 'scenario'
+                ? 'bg-purple-600 text-white shadow'
+                : 'text-gray-400 hover:text-white'
+            }`}
+          >
+            💬 Scenario Q&A (Prompt #3)
           </button>
         </div>
 
-        <div className="bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5">
-          <textarea
-            readOnly
-            value={promptText}
-            className="w-full h-80 bg-transparent text-gray-300 text-xs font-mono leading-relaxed resize-y focus:outline-none"
-          />
-        </div>
+        {practiceType === 'translation' && (
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setTranslationSubMode('seamless')}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                translationSubMode === 'seamless'
+                  ? 'bg-purple-900/80 text-purple-200 border border-purple-600'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              ✨ Seamless AI
+            </button>
+            <button
+              onClick={() => setTranslationSubMode('prompt')}
+              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
+                translationSubMode === 'prompt'
+                  ? 'bg-purple-900/80 text-purple-200 border border-purple-600'
+                  : 'text-gray-400 hover:text-gray-200'
+              }`}
+            >
+              📋 Copy Prompt #5
+            </button>
+          </div>
+        )}
       </div>
+
+      {practiceType === 'translation' ? (
+        <>
+          <header className="space-y-1">
+            <h1 className="text-2xl font-bold text-white">
+              Russian Translation Practice (Prompt #5)
+            </h1>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Copy Prompt #5 to your LLM (ChatGPT, Claude, Gemini). The LLM will generate Russian passages with highlighted target constructions across 4-5 rounds. Translate them to English!
+            </p>
+          </header>
+
+          <div className="glass-panel p-5 space-y-3">
+            <div className="flex justify-between items-center pb-2 border-b border-gray-800">
+              <div className="text-xs font-bold text-purple-400 uppercase tracking-wider">
+                Prompt #5 • {improvements.length} Targeted Phrases
+              </div>
+              <button
+                id="btn-copy-prompt-5"
+                onClick={() => handleCopy(translationPromptText)}
+                className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+              >
+                {copied ? 'Copied! ✓' : 'Copy Prompt #5'}
+              </button>
+            </div>
+
+            <div className="bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5">
+              <textarea
+                readOnly
+                value={translationPromptText}
+                className="w-full h-80 bg-transparent text-gray-300 text-xs font-mono leading-relaxed resize-y focus:outline-none"
+              />
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <header className="space-y-1">
+            <h1 className="text-2xl font-bold text-white">
+              Russian Scenario Practice Mode
+            </h1>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              Copy Prompt #3 to your LLM (ChatGPT, Claude, Gemini). The LLM will ask you 5 scenario questions in Russian. Answer them in English using your targeted constructions!
+            </p>
+          </header>
+
+          <div className="glass-panel p-5 space-y-3">
+            <div className="flex justify-between items-center pb-2 border-b border-gray-800">
+              <div className="text-xs font-bold text-purple-400 uppercase tracking-wider">
+                Prompt #3 • {improvements.length} Due {improvements.length === 1 ? 'Phrase' : 'Phrases'}
+              </div>
+              <button
+                id="btn-copy-prompt"
+                onClick={() => handleCopy(promptText)}
+                className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
+              >
+                {copied ? 'Copied! ✓' : 'Copy Prompt #3'}
+              </button>
+            </div>
+
+            <div className="bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5">
+              <textarea
+                readOnly
+                value={promptText}
+                className="w-full h-80 bg-transparent text-gray-300 text-xs font-mono leading-relaxed resize-y focus:outline-none"
+              />
+            </div>
+          </div>
+        </>
+      )}
 
       <div className="flex justify-end">
         <button
           id="btn-done-practicing"
-          onClick={startRating}
+          onClick={() => startRating(improvements)}
           className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition-all shadow cursor-pointer"
         >
           I'm Done Practicing → Rate Recall

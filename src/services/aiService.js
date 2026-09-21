@@ -299,16 +299,14 @@ Respond naturally to what they share, validate their ideas, and ask 1 engaging f
 }
 
 /**
- * Evaluate a single user message turn and extract improvements
- * @param {string} userText
- * @param {Object} settings
- * @returns {Promise<{ improvements: Array }>}
+ * Stream translation practice completion for a round of target constructions
+ * @param {Array} roundCards Target construction items for current round
+ * @param {Array} messages List of prior message objects { role, content }
+ * @param {Object} settings User configuration settings
+ * @param {Function} [onChunk] Callback for streaming text updates
+ * @returns {Promise<string>} Full assistant reply text
  */
-export async function evaluateSingleMessage(userText, settings) {
-  if (!userText || !userText.trim()) {
-    return { improvements: [] };
-  }
-
+export async function streamTranslationPracticeCompletion(roundCards = [], messages = [], settings = {}, onChunk) {
   const groqKey = settings.groqApiKey?.trim();
   const openaiKey = settings.openaiApiKey?.trim();
 
@@ -326,33 +324,29 @@ export async function evaluateSingleMessage(userText, settings) {
     ? (settings.groqModel || 'openai/gpt-oss-20b')
     : 'gpt-4o-mini';
 
-  const maxImp = settings.maxImprovements || 5;
+  const phraseList = roundCards
+    .map((c, i) => `${i + 1}. Construction: "${c.construction || c.improved}" (Target usage: "${c.improved}")`)
+    .join('\n');
 
-  const systemMessage = `You are an English speaking coach analyzing a user message turn.
-Identify up to ${maxImp} spoken English improvements in their text and return them as JSON.
-Formality: ${settings.formality || 'casual'}. Level: ${settings.level || 'intermediate'}. Focus: ${settings.focusArea === 'all' ? 'any aspect' : (settings.focusArea || 'any aspect')}.
+  const systemMessage = `You are an English speaking coach and translation trainer.
+Your task is to run a Russian-to-English translation practice round.
 
-Rules for fields:
-- "construction": MUST be the abstracted pattern or phrase structure (e.g. invite [someone] over to [place], want to [verb], test if [something] works). NEVER put error descriptions or titles here.
-- "original": the exact phrase the speaker used.
-- "improved": the more natural spoken sentence version.
-- "explanation": concise explanation of why this phrasing sounds more natural in spoken English.
-- "category": must be one of: grammar, vocabulary, collocation, idiom, pronunciation, structure
-- "spoken_frequency": must be one of: very_high, high, medium
+The target constructions for this round are:
+${phraseList}
 
-You MUST respond with ONLY a valid JSON object in this exact format:
-{
-  "improvements": [
-    {
-      "construction": "abstracted pattern (e.g. want to [verb])",
-      "original": "exact phrase user used",
-      "improved": "natural spoken English version",
-      "explanation": "why this is more natural",
-      "category": "one of: grammar, vocabulary, collocation, idiom, pronunciation, structure",
-      "spoken_frequency": "one of: very_high, high, medium"
-    }
-  ]
-}`;
+Rules:
+1. If generating a new passage (or starting a round):
+   Write a short, natural passage in RUSSIAN (на русском языке) containing natural Russian equivalents of these target constructions.
+   CRITICAL TAG FORMAT: Wrap each targeted Russian phrase in double brackets like: [[Russian phrase|Target English Construction]] (e.g. [[пригласил друга в гости|invite over]]).
+2. If evaluating user's translation:
+   Briefly evaluate how accurately and naturally they translated the Russian text into English and used the target constructions. Point out any errors and give friendly feedback.
+
+Constraints: Level: ${settings.level || 'intermediate'}. Formality: ${settings.formality || 'casual'}. Keep response concise and helpful.`;
+
+  const formattedMessages = [
+    { role: 'system', content: systemMessage },
+    ...messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
 
   const response = await fetch(endpoint, {
     method: 'POST',
@@ -362,18 +356,15 @@ You MUST respond with ONLY a valid JSON object in this exact format:
     },
     body: JSON.stringify({
       model: modelName,
-      messages: [
-        { role: 'system', content: systemMessage },
-        { role: 'user', content: `Analyze this text and return improvements JSON:\n\n"${userText}"` },
-      ],
-      temperature: 0.3,
-      max_tokens: 4000,
+      messages: formattedMessages,
+      temperature: 0.7,
+      max_tokens: 1000,
     }),
   });
 
   if (!response.ok) {
     const errText = await response.text();
-    let msg = `Evaluation failed (${response.status})`;
+    let msg = `Translation practice completion failed (${response.status})`;
     try {
       const errJson = JSON.parse(errText);
       msg = errJson.error?.message || msg;
@@ -382,20 +373,14 @@ You MUST respond with ONLY a valid JSON object in this exact format:
   }
 
   const data = await response.json();
-  const rawContent = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning || '';
-
-  const parsed = parseImportJSON(rawContent);
-  if (!parsed.success) {
-    throw new Error(parsed.error || 'Failed to parse evaluation response.');
+  const reply = data.choices?.[0]?.message?.content || '';
+  if (onChunk && reply) {
+    onChunk(reply);
   }
-
-  const improvementsWithContext = parsed.improvements.map((imp) => ({
-    ...imp,
-    context: imp.context || userText.trim(),
-  }));
-
-  return { improvements: improvementsWithContext };
+  return reply;
 }
+
+
 
 /**
  * Fetch text-to-speech audio Blob from OpenAI Speech API

@@ -35,14 +35,14 @@ The system SHALL provide a mode switcher allowing users to choose between automa
 - **AND** the user can freely toggle to `Prompt Copy/Paste` to manually copy prompts if desired
 
 ### Requirement 3: Automated In-App Voice Recording & AI Analysis
-The system SHALL support capturing spoken audio and sending requests directly to AI models to generate structured improvements.
+The system SHALL support capturing spoken audio and sending requests directly to AI models to generate structured improvements upon completing a session.
 
-#### Scenario: User speaks a description in Seamless Mode
-- **GIVEN** the user is in a session with `Seamless AI` mode active
-- **WHEN** the user clicks the microphone button and speaks their description
-- **THEN** the system MUST transcribe the speech using STT (Whisper API or Web Speech API)
-- **AND** send the description directly to Groq LLM (`openai/gpt-oss-20b`)
-- **AND** parse the JSON response automatically into improvement items and SRS cards without user copy/pasting
+#### Scenario: User completes seamless session and triggers end-of-session evaluation
+- **GIVEN** the user is in a session with `Seamless AI` mode active and has recorded or typed multiple message turns
+- **WHEN** the user clicks "Finish Conversation"
+- **THEN** the system MUST join all user messages into a single text block
+- **AND** send the combined text to the AI model (`generateSeamlessSessionFeedback`)
+- **AND** automatically parse the JSON response into improvement items for review in Step 4
 
 ### Requirement 4: Audio Playback for Spoken English Constructions
 The system SHALL allow users to listen to spoken pronunciation of constructions and sentences.

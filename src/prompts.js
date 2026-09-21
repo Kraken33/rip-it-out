@@ -129,6 +129,40 @@ ${phraseList}
 Keep sentences short (under 15 words), casual, and varied in topic.`;
 }
 
+/**
+ * Prompt #5 — Multi-Round Translation Practice Prompt
+ * Instructs LLM to generate Russian passages with tagged target constructions across 4-5 rounds.
+ */
+export function generateTranslationPracticePrompt(improvements, settings) {
+  const phraseList = improvements
+    .map(
+      (imp, i) =>
+        `${i + 1}. Construction: "${imp.construction || imp.improved}"
+   Example / Usage: "${imp.improved}"`
+    )
+    .join('\n\n');
+
+  return `You are an English speaking coach and translation trainer.
+
+I am practicing the following ${improvements.length} English constructions today:
+
+${phraseList}
+
+Your task:
+1. Divide these constructions across 4 to 5 short practice rounds (3 to 5 constructions per round).
+2. For ROUND 1, write a short, natural passage in RUSSIAN (на русском языке). In the passage, embed the target constructions translated into natural Russian.
+3. CRITICAL FORMATTING: Wrap each targeted Russian phrase using double brackets like this: [[Russian phrase|Target English Construction]] (e.g. [[пригласил друга в гости|invite over]]).
+4. Stop and wait for my ENGLISH translation of the passage.
+5. After I translate into English, evaluate how accurately and naturally I used the target constructions, offer quick feedback, and then present ROUND 2 with the next passage.
+
+Constraints:
+- Russian passages must sound natural and conversational.
+- Target level: ${settings?.level || 'intermediate'}
+- Focus area: Spoken English translation accuracy.
+
+Please start with ROUND 1 now (give the Russian passage with tagged constructions and ask me to translate it to English):`;
+}
+
 // ── JSON Import Parser ─────────────────────────────────────────────
 
 /**

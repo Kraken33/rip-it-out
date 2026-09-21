@@ -1,9 +1,6 @@
-# Russian Practice Specification
+# Spec Delta — Russian Practice
 
-## Purpose
-Prompt external LLMs with 5 Russian scenario questions for practicing English constructions.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Russian Practice Prompt
 The system SHALL generate prompt structures for Russian language practice using targeted English constructions, supporting both open-ended Scenario Questions (Prompt #3) and Multi-Round Translation Exercises (Prompt #5).
@@ -15,6 +12,8 @@ The system SHALL generate prompt structures for Russian language practice using 
 #### Scenario: Prompt Generation for Multi-Round Translation
 - **WHEN** user selects prompt-based translation practice mode with 20 upcoming cards
 - **THEN** Prompt #5 is generated instructing the LLM to run a 4-5 round exercise in Russian, embedding 3-5 target constructions per round with visual bracket tags `[[Russian phrase|target construction]]`, awaiting English translation after each round.
+
+## ADDED Requirements
 
 ### Requirement: Multi-Round Russian Translation Practice
 The system SHALL batch top ~20 upcoming or due SRS cards into 4-5 rounds of 3-5 target constructions per passage for Russian-to-English translation practice.

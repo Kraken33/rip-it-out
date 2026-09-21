@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildAnnotatedText } from '../textAnnotator';
+import { buildAnnotatedText, parseTaggedPassage } from '../textAnnotator';
 
 describe('buildAnnotatedText', () => {
   it('handles empty input gracefully', () => {
@@ -64,5 +64,28 @@ describe('buildAnnotatedText', () => {
     expect(result.unmatchedCount).toBe(1);
     expect(result.segments).toHaveLength(1);
     expect(result.segments[0]).toEqual({ type: 'text', content: 'I went to the store today.' });
+  });
+});
+
+describe('parseTaggedPassage', () => {
+  it('handles empty input gracefully', () => {
+    expect(parseTaggedPassage('')).toEqual([]);
+    expect(parseTaggedPassage(null)).toEqual([]);
+  });
+
+  it('correctly parses plain text without tags', () => {
+    expect(parseTaggedPassage('Привет, как дела?')).toEqual([
+      { text: 'Привет, как дела?', isHighlight: false },
+    ]);
+  });
+
+  it('extracts tagged Russian text and target English construction', () => {
+    const text = 'Вчера я [[пригласил друга в гости|invite over]], но он отказался.';
+    const segments = parseTaggedPassage(text);
+    expect(segments).toEqual([
+      { text: 'Вчера я ', isHighlight: false },
+      { text: 'пригласил друга в гости', isHighlight: true, target: 'invite over' },
+      { text: ', но он отказался.', isHighlight: false },
+    ]);
   });
 });

@@ -91,3 +91,48 @@ export function buildAnnotatedText(rawText, improvements = []) {
     unmatchedCount: improvements.length - nonOverlapping.length,
   };
 }
+
+/**
+ * Parses a Russian text passage containing tagged target constructions:
+ * e.g., "Вчера я [[пригласил друга в гости|invite over]], но он отказался."
+ *
+ * @param {string} text
+ * @returns {Array<{ text: string, isHighlight: boolean, target?: string }>}
+ */
+export function parseTaggedPassage(text) {
+  if (!text || typeof text !== 'string') return [];
+
+  const segments = [];
+  const regex = /\[\[(.*?)(?:\|(.*?))?\]\]/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      segments.push({
+        text: text.slice(lastIndex, match.index),
+        isHighlight: false,
+      });
+    }
+
+    const ruText = (match[1] || '').trim();
+    const targetEn = (match[2] || '').trim();
+
+    segments.push({
+      text: ruText,
+      isHighlight: true,
+      target: targetEn || undefined,
+    });
+
+    lastIndex = regex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    segments.push({
+      text: text.slice(lastIndex),
+      isHighlight: false,
+    });
+  }
+
+  return segments;
+}

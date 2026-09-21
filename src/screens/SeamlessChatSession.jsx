@@ -1,19 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { addImprovements, updateSession, logActivity, addSessionText } from '../store';
-import { streamSeamlessChatCompletion, evaluateSingleMessage } from '../services/aiService';
+import { updateSession, logActivity, addSessionText } from '../store';
+import { streamSeamlessChatCompletion } from '../services/aiService';
 import AudioRecorder from '../components/AudioRecorder';
-import AudioPlayerButton from '../components/AudioPlayerButton';
-import { buildAnnotatedText } from '../textAnnotator';
 
-export default function SeamlessChatSession({ session: initialSession, settings }) {
-  const navigate = useNavigate();
-  const [session, setSession] = useState(initialSession);
+export default function SeamlessChatSession({ session: initialSession, settings, onFinish }) {
+  const [session] = useState(initialSession);
   const [messages, setMessages] = useState(initialSession?.messages || []);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(false);
-  const [evaluatingMap, setEvaluatingMap] = useState({});
-  const [addedImprovementsMap, setAddedImprovementsMap] = useState({});
   const [errorMsg, setErrorMsg] = useState('');
   const [startTime] = useState(Date.now());
   const messagesEndRef = useRef(null);
@@ -48,8 +42,6 @@ export default function SeamlessChatSession({ session: initialSession, settings 
       id: `user_${Date.now()}`,
       role: 'user',
       content: text,
-      isImproved: false,
-      improvements: [],
       createdAt: new Date().toISOString(),
     };
 
@@ -94,52 +86,12 @@ export default function SeamlessChatSession({ session: initialSession, settings 
     }
   };
 
-  const handleEvaluateMessage = async (msgId, userText) => {
-    setEvaluatingMap((prev) => ({ ...prev, [msgId]: true }));
-    setErrorMsg('');
-
-    try {
-      const res = await evaluateSingleMessage(userText, settings);
-      const updated = messages.map((m) => {
-        if (m.id === msgId) {
-          return {
-            ...m,
-            isImproved: true,
-            improvements: res.improvements || [],
-          };
-        }
-        return m;
-      });
-
-      setMessages(updated);
-      await updateSession(session.id, { messages: updated });
-    } catch (err) {
-      console.error('Evaluation error:', err);
-      setErrorMsg(err.message || 'Failed to evaluate message improvements.');
-    } finally {
-      setEvaluatingMap((prev) => ({ ...prev, [msgId]: false }));
-    }
-  };
-
-  const handleAddToStudyList = async (imp, msgContext) => {
-    try {
-      const itemWithContext = {
-        ...imp,
-        context: imp.context || msgContext || '',
-      };
-      await addImprovements(session.id, [itemWithContext]);
-      setAddedImprovementsMap((prev) => ({ ...prev, [imp.original]: true }));
-    } catch (err) {
-      console.error('Error adding to study list:', err);
-    }
-  };
-
   const handleFinishSession = async () => {
     try {
       setLoading(true);
       const durationSeconds = Math.round((Date.now() - startTime) / 1000);
 
-      // Concatenate user text for rawText metric compatibility
+      // Concatenate user text for feedback analysis & rawText metric compatibility
       const userFullText = messages
         .filter((m) => m.role === 'user')
         .map((m) => m.content)
@@ -158,7 +110,9 @@ export default function SeamlessChatSession({ session: initialSession, settings 
         });
       }
 
-      navigate('/');
+      if (onFinish) {
+        onFinish(userFullText);
+      }
     } catch (err) {
       console.error('Error finishing session:', err);
     } finally {
@@ -183,11 +137,12 @@ export default function SeamlessChatSession({ session: initialSession, settings 
         </div>
 
         <button
+          id="btn-finish-seamless-session"
           onClick={handleFinishSession}
           disabled={loading}
           className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50"
         >
-          Finish Session ✓
+          Finish Conversation →
         </button>
       </div>
 
@@ -208,51 +163,10 @@ export default function SeamlessChatSession({ session: initialSession, settings 
           }
 
           // User turn
-          const isEvaluating = evaluatingMap[m.id];
-          const hasImprovements = m.isImproved && Array.isArray(m.improvements) && m.improvements.length > 0;
-
           return (
             <div key={m.id} className="flex flex-col items-end gap-1.5 ml-auto max-w-[90%]">
               <div className="glass-panel p-4 rounded-2xl rounded-tr-sm text-sm leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
-                {!m.isImproved ? (
-                  <p className="whitespace-pre-wrap">{m.content}</p>
-                ) : (
-                  <UserAnnotatedMessage
-                    userText={m.content}
-                    improvements={m.improvements}
-                    addedMap={addedImprovementsMap}
-                    onAddToStudyList={(imp) => handleAddToStudyList(imp, m.content)}
-                    settings={settings}
-                  />
-                )}
-              </div>
-
-              {/* Action row */}
-              <div className="flex items-center gap-2 px-1">
-                {!m.isImproved && (
-                  <button
-                    onClick={() => handleEvaluateMessage(m.id, m.content)}
-                    disabled={isEvaluating}
-                    className="text-[11px] font-bold px-2.5 py-1 rounded-lg bg-purple-600/20 hover:bg-purple-600/40 text-purple-300 border border-purple-500/30 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
-                  >
-                    {isEvaluating ? (
-                      <span className="flex items-center gap-1">
-                        <svg className="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                        </svg>
-                        Evaluating...
-                      </span>
-                    ) : (
-                      <span>✨ Improve Message</span>
-                    )}
-                  </button>
-                )}
-                {m.isImproved && (
-                  <span className="text-[10px] text-emerald-400 font-semibold px-2 py-0.5 rounded bg-emerald-950/60 border border-emerald-800/40">
-                    ✓ {m.improvements?.length || 0} Improvements Found
-                  </span>
-                )}
+                <p className="whitespace-pre-wrap">{m.content}</p>
               </div>
             </div>
           );
@@ -301,84 +215,6 @@ export default function SeamlessChatSession({ session: initialSession, settings 
           </button>
         </form>
       </div>
-    </div>
-  );
-}
-
-function UserAnnotatedMessage({ userText, improvements = [], addedMap = {}, onAddToStudyList, settings }) {
-  const { segments } = buildAnnotatedText(userText, improvements);
-  const [activeIdx, setActiveIdx] = useState(null);
-
-  return (
-    <div className="whitespace-pre-wrap leading-relaxed text-sm">
-      {segments.map((seg, idx) => {
-        if (seg.type === 'text') {
-          return <span key={idx}>{seg.content}</span>;
-        }
-
-        const isAdded = addedMap[seg.original];
-        const isOpen = activeIdx === idx;
-
-        return (
-          <span
-            key={idx}
-            className="relative inline-block my-0.5 mx-1 cursor-pointer group"
-            onClick={() => setActiveIdx(isOpen ? null : idx)}
-          >
-            <span className="line-through text-rose-400 bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-800/40 mr-1">
-              {seg.original}
-            </span>
-            <span className="text-emerald-300 font-semibold bg-emerald-950/80 px-1.5 py-0.5 rounded border border-emerald-700/60">
-              {seg.improved}
-            </span>
-
-            {/* Hover Tooltip Popover */}
-            <div className="hidden group-hover:block absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-72 p-3.5 bg-[#12131f] text-xs text-gray-200 rounded-xl border border-purple-500/50 shadow-2xl z-20 space-y-2 pointer-events-auto">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider">
-                  {seg.category || 'grammar'}
-                </span>
-                <AudioPlayerButton text={seg.improved} settings={settings} size="sm" />
-              </div>
-
-              {seg.construction && (
-                <div className="font-bold text-purple-300">
-                  Pattern: "{seg.construction}"
-                </div>
-              )}
-
-              <div className="space-y-1 bg-[#0a0b12] p-2 rounded border border-gray-800">
-                <p className="text-rose-400 line-through">🔴 Original: "{seg.original}"</p>
-                <p className="text-emerald-400 font-semibold">🟢 Improved: "{seg.improved}"</p>
-              </div>
-
-              <p className="text-gray-300">{seg.explanation}</p>
-
-              {seg.context && (
-                <div className="text-[11px] text-gray-400 bg-gray-900/60 p-1.5 rounded border border-gray-800 italic">
-                  Context: "{seg.context}"
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAddToStudyList(seg);
-                }}
-                disabled={isAdded}
-                className={`w-full py-1.5 px-3 rounded-lg font-bold text-xs transition cursor-pointer flex items-center justify-center gap-1 ${
-                  isAdded
-                    ? 'bg-emerald-950 text-emerald-400 border border-emerald-800 cursor-default'
-                    : 'bg-purple-600 hover:bg-purple-500 text-white shadow'
-                }`}
-              >
-                {isAdded ? '✓ Added to Study List' : '➕ Add to Study List'}
-              </button>
-            </div>
-          </span>
-        );
-      })}
     </div>
   );
 }

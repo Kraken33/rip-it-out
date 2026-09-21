@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { transcribeAudio, generateSeamlessSessionFeedback, fetchOpenAITTS } from '../services/aiService';
+import { transcribeAudio, generateSeamlessSessionFeedback, fetchOpenAITTS, streamTranslationPracticeCompletion } from '../services/aiService';
 
 describe('AI Service Layer', () => {
   beforeEach(() => {
@@ -78,6 +78,30 @@ describe('AI Service Layer', () => {
           headers: expect.objectContaining({ Authorization: 'Bearer gsk_123' }),
         })
       );
+    });
+  });
+
+  describe('streamTranslationPracticeCompletion', () => {
+    it('throws error when no API key is set', async () => {
+      await expect(streamTranslationPracticeCompletion([], [], {})).rejects.toThrow('No API Key configured');
+    });
+
+    it('calls OpenAI endpoint and streams response chunk', async () => {
+      const roundCards = [{ construction: 'invite over', improved: 'I invited him over' }];
+      const messages = [{ role: 'user', content: 'Translate this' }];
+      const settings = { openaiApiKey: 'sk-test123' };
+      const onChunk = vi.fn();
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Вчера я [[пригласил друга|invite over]]' } }],
+        }),
+      });
+
+      const reply = await streamTranslationPracticeCompletion(roundCards, messages, settings, onChunk);
+      expect(reply).toContain('пригласил друга');
+      expect(onChunk).toHaveBeenCalledWith(reply);
     });
   });
 

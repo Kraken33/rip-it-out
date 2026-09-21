@@ -149,15 +149,19 @@ export default function Session() {
     }
   }, [startTime]);
 
-  const handleSeamlessSubmit = async (userText) => {
-    if (!userText || !userText.trim()) return;
+  const handleSeamlessFinish = async (userText) => {
+    if (!userText || !userText.trim()) {
+      navigate('/');
+      return;
+    }
     setSeamlessError('');
+    setRawTextInput(userText);
+    setStep(3);
     setLoading(true);
 
     try {
       const res = await generateSeamlessSessionFeedback(session, settings, userText);
       setParsedImprovements(res.improvements);
-      setRawTextInput(userText);
       setStep(4);
     } catch (err) {
       console.error('Seamless AI processing error:', err);
@@ -370,7 +374,7 @@ export default function Session() {
       )}
 
       {step === 2 && mode === 'seamless' && (
-        <SeamlessChatSession session={session} settings={settings} />
+        <SeamlessChatSession session={session} settings={settings} onFinish={handleSeamlessFinish} />
       )}
 
       {step === 2 && mode === 'prompt' && (
@@ -409,7 +413,30 @@ export default function Session() {
         </div>
       )}
 
-      {step === 3 && (
+      {step === 3 && mode === 'seamless' && (
+        <div className="glass-panel p-8 text-center space-y-4 animate-fade-in">
+          <div className="w-12 h-12 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <h2 className="text-xl font-bold text-white">Analyzing Your Spoken English...</h2>
+          <p className="text-sm text-gray-400 max-w-md mx-auto">
+            Our AI coach is reviewing all your messages from this session to identify natural reusable constructions, collocations, and phrasing improvements.
+          </p>
+          {seamlessError && (
+            <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-semibold max-w-md mx-auto space-y-2">
+              <p>⚠️ {seamlessError}</p>
+              <div>
+                <button
+                  onClick={() => handleSeamlessFinish(rawTextInput)}
+                  className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg font-bold text-xs transition cursor-pointer shadow"
+                >
+                  Retry AI Evaluation
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {step === 3 && mode === 'prompt' && (
         <div className="space-y-4">
           <div className="glass-panel p-5 space-y-4">
             <div className="flex items-center justify-between">

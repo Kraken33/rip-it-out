@@ -4,6 +4,7 @@ import {
   generateExportPrompt, 
   generatePracticePrompt, 
   generateExamplesPrompt, 
+  generateTranslationPracticePrompt,
   parseImportJSON 
 } from '../prompts';
 
@@ -36,6 +37,14 @@ describe('Prompt Orchestrator & Parser', () => {
     const imps = [{ construction: 'invite [someone] over', original: 'invited him home', improved: 'invited him over', explanation: 'natural' }];
     const prompt = generateExamplesPrompt(imps);
     expect(prompt).toContain('Construction: "invite [someone] over"');
+  });
+
+  it('generateTranslationPracticePrompt formats prompt for multi-round Russian translation practice', () => {
+    const imps = [{ construction: 'invite over', improved: 'I invited him over' }];
+    const prompt = generateTranslationPracticePrompt(imps, dummySettings);
+    expect(prompt).toContain('ROUND 1');
+    expect(prompt).toContain('[[Russian phrase|Target English Construction]]');
+    expect(prompt).toContain('invite over');
   });
 
   describe('parseImportJSON', () => {
