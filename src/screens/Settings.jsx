@@ -3,6 +3,7 @@ import {
   getSettings, updateSettings, getStats,
   exportAllData, importData, clearAllData
 } from '../store';
+import { validateGroqKey, validateOpenAIKey } from '../services/aiService';
 
 function PillGroup({ label, options, value, onChange }) {
   return (
@@ -16,8 +17,9 @@ function PillGroup({ label, options, value, onChange }) {
           return (
             <button
               key={opt.value}
+              type="button"
               onClick={() => onChange(opt.value)}
-              className={`px-4 py-2 text-sm rounded-[var(--radius-md)] transition-colors ${
+              className={`px-4 py-2 text-sm rounded-[var(--radius-md)] transition-colors cursor-pointer ${
                 isSelected
                   ? 'bg-[var(--accent)] text-[var(--bg-base)] font-medium glow'
                   : 'bg-[var(--bg-elevated)] text-[var(--text-primary)] hover:bg-[var(--bg-overlay)]'
@@ -38,6 +40,18 @@ export default function Settings() {
   const [importMode, setImportMode] = useState('merge');
   const [dangerConfirmStep, setDangerConfirmStep] = useState(0);
   const [loading, setLoading] = useState(true);
+
+  // Key Inputs Local State
+  const [groqInput, setGroqInput] = useState('');
+  const [openaiInput, setOpenaiInput] = useState('');
+  const [showGroqKey, setShowGroqKey] = useState(false);
+  const [showOpenAIKey, setShowOpenAIKey] = useState(false);
+  const [keysSavedStatus, setKeysSavedStatus] = useState(false);
+
+  // Connection Test States
+  const [groqTest, setGroqTest] = useState({ testing: false, valid: null, error: '' });
+  const [openaiTest, setOpenaiTest] = useState({ testing: false, valid: null, error: '' });
+
   const fileInputRef = useRef(null);
 
   const loadData = useCallback(async () => {
@@ -45,6 +59,8 @@ export default function Settings() {
       setLoading(true);
       const [st, stts] = await Promise.all([getSettings(), getStats()]);
       setSettings(st);
+      setGroqInput(st.groqApiKey || '');
+      setOpenaiInput(st.openaiApiKey || '');
       setStats(stts);
     } catch (err) {
       console.error('Error loading settings:', err);
@@ -61,6 +77,63 @@ export default function Settings() {
     const newSettings = { ...settings, [key]: value };
     setSettings(newSettings);
     await updateSettings(newSettings);
+  };
+
+  const handleSaveKeys = async (e) => {
+    if (e) e.preventDefault();
+    const newSettings = {
+      ...settings,
+      groqApiKey: groqInput.trim(),
+      openaiApiKey: openaiInput.trim(),
+    };
+    setSettings(newSettings);
+    await updateSettings(newSettings);
+    setKeysSavedStatus(true);
+    setTimeout(() => setKeysSavedStatus(false), 3000);
+  };
+
+  const handleTestGroq = async () => {
+    const keyToTest = groqInput.trim();
+    if (!keyToTest) {
+      setGroqTest({ testing: false, valid: false, error: 'Please enter a Groq API Key first.' });
+      return;
+    }
+    setGroqTest({ testing: true, valid: null, error: '' });
+    const isValid = await validateGroqKey(keyToTest);
+    setGroqTest({
+      testing: false,
+      valid: isValid,
+      error: isValid ? '' : 'Invalid API key or network error.',
+    });
+    if (isValid) {
+      const saved = await updateSettings({ groqApiKey: keyToTest });
+      setSettings(saved);
+      setGroqInput(saved.groqApiKey || '');
+      setKeysSavedStatus(true);
+      setTimeout(() => setKeysSavedStatus(false), 3000);
+    }
+  };
+
+  const handleTestOpenAI = async () => {
+    const keyToTest = openaiInput.trim();
+    if (!keyToTest) {
+      setOpenaiTest({ testing: false, valid: false, error: 'Please enter an OpenAI API Key first.' });
+      return;
+    }
+    setOpenaiTest({ testing: true, valid: null, error: '' });
+    const isValid = await validateOpenAIKey(keyToTest);
+    setOpenaiTest({
+      testing: false,
+      valid: isValid,
+      error: isValid ? '' : 'Invalid API key or network error.',
+    });
+    if (isValid) {
+      const saved = await updateSettings({ openaiApiKey: keyToTest });
+      setSettings(saved);
+      setOpenaiInput(saved.openaiApiKey || '');
+      setKeysSavedStatus(true);
+      setTimeout(() => setKeysSavedStatus(false), 3000);
+    }
   };
 
   const handleExport = async () => {
@@ -194,6 +267,192 @@ export default function Settings() {
             ]}
           />
         </div>
+      </section>
+
+      {/* AI Integrations & API Keys */}
+      <section className="glass p-8 sm:p-10 rounded-[var(--radius-xl)] space-y-8 border border-[var(--border-subtle)] shadow-xl">
+        <div className="border-b border-[var(--border-subtle)] pb-4 flex flex-col sm:flex-row justify-between sm:items-center gap-2">
+          <div>
+            <h2 className="text-2xl font-bold text-[var(--text-primary)]">AI Integrations & Audio</h2>
+            <p className="text-xs text-[var(--text-secondary)] mt-1">Configure optional API keys to enable 1-click in-app voice coaching and realistic text-to-speech.</p>
+          </div>
+          <span className="text-xs px-3 py-1 bg-[var(--accent)]/15 border border-[var(--accent)]/30 text-[var(--accent)] font-semibold rounded-full w-fit">
+            Client-side API Keys
+          </span>
+        </div>
+
+        <form onSubmit={handleSaveKeys} className="space-y-6">
+          <PillGroup
+            label="Default Session Interaction Mode"
+            value={settings.defaultMode || 'seamless'}
+            onChange={(val) => handleSettingChange('defaultMode', val)}
+            options={[
+              { label: '✨ Seamless AI (1-Click)', value: 'seamless' },
+              { label: '📋 Prompt Copy/Paste', value: 'prompt' }
+            ]}
+          />
+
+          {/* Groq API Key */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label htmlFor="groq-key-input" className="block text-sm font-medium text-[var(--text-secondary)]">
+                Groq API Key <span className="text-xs text-[var(--accent)] font-normal">(Free tier available - Whisper STT & Llama 3)</span>
+              </label>
+              <a
+                href="https://console.groq.com/keys"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-[var(--accent)] hover:underline font-semibold"
+              >
+                Get Free Groq Key ↗
+              </a>
+            </div>
+
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  id="groq-key-input"
+                  type={showGroqKey ? 'text' : 'password'}
+                  placeholder="gsk_..."
+                  value={groqInput}
+                  onChange={(e) => setGroqInput(e.target.value)}
+                  onBlur={() => handleSaveKeys()}
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] px-4 py-3 rounded-[var(--radius-md)] text-sm font-mono focus:outline-none focus:border-[var(--accent)] pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowGroqKey(!showGroqKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                >
+                  {showGroqKey ? '🙈 Hide' : '👁️ Show'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleTestGroq}
+                disabled={groqTest.testing}
+                className="px-4 py-3 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-bold text-xs rounded-[var(--radius-md)] transition-all cursor-pointer whitespace-nowrap"
+              >
+                {groqTest.testing ? 'Testing...' : 'Test Key'}
+              </button>
+            </div>
+
+            {groqTest.valid !== null && (
+              <p className={`text-xs font-semibold ${groqTest.valid ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {groqTest.valid ? '✅ Groq API key is valid and working!' : `❌ ${groqTest.error}`}
+              </p>
+            )}
+          </div>
+
+          {/* Groq Model Selector */}
+          <PillGroup
+            label="Groq Chat Model"
+            value={settings.groqModel || 'openai/gpt-oss-20b'}
+            onChange={(val) => handleSettingChange('groqModel', val)}
+            options={[
+              { label: 'GPT-OSS 20B (Fast)', value: 'openai/gpt-oss-20b' },
+              { label: 'GPT-OSS 120B (Powerful)', value: 'openai/gpt-oss-120b' },
+              { label: 'Qwen 3.8 27B', value: 'qwen/qwen3.8-27b' },
+            ]}
+          />
+
+          {/* OpenAI API Key */}
+          <div className="space-y-2">
+            <div className="flex justify-between items-center">
+              <label htmlFor="openai-key-input" className="block text-sm font-medium text-[var(--text-secondary)]">
+                OpenAI API Key <span className="text-xs text-[var(--text-muted)] font-normal">(Optional - Unlocks realistic Neural TTS)</span>
+              </label>
+              <a
+                href="https://platform.openai.com/api-keys"
+                target="_blank"
+                rel="noreferrer"
+                className="text-xs text-[var(--accent)] hover:underline font-semibold"
+              >
+                Get OpenAI Key ↗
+              </a>
+            </div>
+
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <input
+                  id="openai-key-input"
+                  type={showOpenAIKey ? 'text' : 'password'}
+                  placeholder="sk-..."
+                  value={openaiInput}
+                  onChange={(e) => setOpenaiInput(e.target.value)}
+                  onBlur={() => handleSaveKeys()}
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] px-4 py-3 rounded-[var(--radius-md)] text-sm font-mono focus:outline-none focus:border-[var(--accent)] pr-12"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowOpenAIKey(!showOpenAIKey)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] cursor-pointer"
+                >
+                  {showOpenAIKey ? '🙈 Hide' : '👁️ Show'}
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleTestOpenAI}
+                disabled={openaiTest.testing}
+                className="px-4 py-3 bg-[var(--bg-elevated)] hover:bg-[var(--bg-overlay)] border border-[var(--border-subtle)] text-[var(--text-primary)] font-bold text-xs rounded-[var(--radius-md)] transition-all cursor-pointer whitespace-nowrap"
+              >
+                {openaiTest.testing ? 'Testing...' : 'Test Key'}
+              </button>
+            </div>
+
+            {openaiTest.valid !== null && (
+              <p className={`text-xs font-semibold ${openaiTest.valid ? 'text-emerald-400' : 'text-rose-400'}`}>
+                {openaiTest.valid ? '✅ OpenAI API key is valid and working!' : `❌ ${openaiTest.error}`}
+              </p>
+            )}
+          </div>
+
+          {/* TTS Engine Selector */}
+          <PillGroup
+            label="Text-to-Speech Engine"
+            value={settings.ttsEngine || 'browser'}
+            onChange={(val) => handleSettingChange('ttsEngine', val)}
+            options={[
+              { label: '🌐 Browser Default (Free)', value: 'browser' },
+              { label: '🎙️ OpenAI Neural TTS (High Quality)', value: 'openai' }
+            ]}
+          />
+
+          {settings.ttsEngine === 'openai' && (
+            <PillGroup
+              label="OpenAI Voice"
+              value={settings.ttsVoice || 'alloy'}
+              onChange={(val) => handleSettingChange('ttsVoice', val)}
+              options={[
+                { label: 'Alloy (Neutral)', value: 'alloy' },
+                { label: 'Nova (Warm)', value: 'nova' },
+                { label: 'Shimmer (Clear)', value: 'shimmer' },
+                { label: 'Onyx (Deep)', value: 'onyx' },
+                { label: 'Echo (Calm)', value: 'echo' },
+                { label: 'Fable (Expressive)', value: 'fable' }
+              ]}
+            />
+          )}
+
+          {/* Save Button & Feedback */}
+          <div className="pt-2 flex items-center gap-4">
+            <button
+              id="btn-save-keys"
+              type="submit"
+              className="bg-[var(--accent)] hover:bg-[var(--accent-glow)] text-white px-6 py-3.5 rounded-[var(--radius-md)] font-bold text-sm transition-all shadow-[0_0_15px_hsla(262,83%,65%,0.3)] cursor-pointer"
+            >
+              Save API Keys &amp; Preferences
+            </button>
+            {keysSavedStatus && (
+              <span className="text-xs font-bold text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-lg animate-fade-in">
+                Saved! ✓
+              </span>
+            )}
+          </div>
+        </form>
       </section>
 
       {/* Data Management */}

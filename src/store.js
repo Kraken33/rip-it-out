@@ -15,6 +15,12 @@ const DEFAULT_SETTINGS = {
   focusArea: 'all',
   maxImprovements: 5,
   practiceMode: 'flashcard',
+  groqApiKey: '',
+  groqModel: 'openai/gpt-oss-20b',
+  openaiApiKey: '',
+  ttsEngine: 'browser',
+  ttsVoice: 'alloy',
+  defaultMode: 'seamless',
 };
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -144,6 +150,12 @@ function mapSettingsFromDb(r) {
     focusArea: r.focus_area || DEFAULT_SETTINGS.focusArea,
     maxImprovements: r.max_improvements ?? DEFAULT_SETTINGS.maxImprovements,
     practiceMode: r.practice_mode || DEFAULT_SETTINGS.practiceMode,
+    groqApiKey: r.groq_api_key ?? DEFAULT_SETTINGS.groqApiKey,
+    groqModel: r.groq_model || 'openai/gpt-oss-20b',
+    openaiApiKey: r.openai_api_key ?? DEFAULT_SETTINGS.openaiApiKey,
+    ttsEngine: r.tts_engine || DEFAULT_SETTINGS.ttsEngine,
+    ttsVoice: r.tts_voice || DEFAULT_SETTINGS.ttsVoice,
+    defaultMode: r.default_mode || DEFAULT_SETTINGS.defaultMode,
   };
 }
 
@@ -533,37 +545,57 @@ export async function getDueCards() {
 // ── Settings ───────────────────────────────────────────────────────
 
 export async function getSettings() {
+  const localSettings = readLocalStore(STORAGE_KEYS.settings) || {};
+  let dbSettings = {};
+
   if (isSupabaseConfigured) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const { data, error } = await supabase.from('settings').select('*').eq('user_id', user.id).single();
-      if (!error && data) return mapSettingsFromDb(data);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase.from('settings').select('*').eq('user_id', user.id).single();
+        if (!error && data) {
+          dbSettings = mapSettingsFromDb(data);
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase getSettings error:', err);
     }
   }
-  return { ...DEFAULT_SETTINGS, ...(readLocalStore(STORAGE_KEYS.settings) || {}) };
+
+  return { ...DEFAULT_SETTINGS, ...dbSettings, ...localSettings };
 }
 
 export async function updateSettings(updates) {
   const current = await getSettings();
   const merged = { ...current, ...updates };
 
+  writeLocalStore(STORAGE_KEYS.settings, merged);
+
   if (isSupabaseConfigured) {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (user) {
-      const dbRow = {
-        user_id: user.id,
-        formality: merged.formality,
-        level: merged.level,
-        focus_area: merged.focusArea,
-        max_improvements: merged.maxImprovements,
-        practice_mode: merged.practiceMode,
-      };
-      await supabase.from('settings').upsert(dbRow);
-      return merged;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const dbRow = {
+          user_id: user.id,
+          formality: merged.formality,
+          level: merged.level,
+          focus_area: merged.focusArea,
+          max_improvements: merged.maxImprovements,
+          practice_mode: merged.practiceMode,
+          groq_api_key: merged.groqApiKey,
+          groq_model: merged.groqModel,
+          openai_api_key: merged.openaiApiKey,
+          tts_engine: merged.ttsEngine,
+          tts_voice: merged.ttsVoice,
+          default_mode: merged.defaultMode,
+        };
+        await supabase.from('settings').upsert(dbRow);
+      }
+    } catch (err) {
+      console.warn('Supabase updateSettings error:', err);
     }
   }
 
-  writeLocalStore(STORAGE_KEYS.settings, merged);
   return merged;
 }
 

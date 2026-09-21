@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { getDueCards, getImprovement, getSession, updateSrsCard, getSrsCards, logActivity } from '../store';
+import { getDueCards, getImprovement, getSession, updateSrsCard, getSrsCards, logActivity, getSettings } from '../store';
 import { processReview } from '../srs';
 import { generateExamplesPrompt } from '../prompts';
+import AudioPlayerButton from '../components/AudioPlayerButton';
 
 export default function Review() {
   const [queue, setQueue] = useState([]);
@@ -24,6 +25,7 @@ export default function Review() {
 
   const [nextDue, setNextDue] = useState(null);
   const [copied, setCopied] = useState(false);
+  const [settings, setSettings] = useState(null);
 
   useEffect(() => {
     startTimeRef.current = Date.now();
@@ -32,7 +34,8 @@ export default function Review() {
     async function loadCards() {
       try {
         setLoading(true);
-        const due = await getDueCards();
+        const [st, due] = await Promise.all([getSettings(), getDueCards()]);
+        if (isMounted) setSettings(st);
 
         if (due.length > 0) {
           const hydratedQueue = (
@@ -263,7 +266,10 @@ export default function Review() {
         {showAnswer ? (
           <div className="animate-fade-in border-t border-gray-800 pt-6 space-y-6 flex flex-col">
             <div className="text-center space-y-3">
-              <div className="text-xs uppercase font-bold text-emerald-400 tracking-wider">Example & Natural Usage</div>
+              <div className="text-xs uppercase font-bold text-emerald-400 tracking-wider flex items-center justify-center gap-2">
+                <span>Example & Natural Usage</span>
+                <AudioPlayerButton text={currentCard.improvement.improved} settings={settings} size="sm" />
+              </div>
               <h3 className="text-xl sm:text-2xl md:text-3xl font-extrabold text-white leading-relaxed">
                 "{currentCard.improvement.improved}"
               </h3>

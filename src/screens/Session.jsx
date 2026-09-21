@@ -4,7 +4,6 @@ import {
   createSession, 
   addImprovements, 
   addSessionText,
-  findDuplicate,
   getSettings,
   getSessions,
   logActivity
@@ -14,6 +13,10 @@ import {
   generateExportPrompt, 
   parseImportJSON 
 } from '../prompts';
+import { generateSeamlessSessionFeedback } from '../services/aiService';
+import ModeToggle from '../components/ModeToggle';
+import AudioRecorder from '../components/AudioRecorder';
+import AudioPlayerButton from '../components/AudioPlayerButton';
 
 const SOURCE_TYPES = [
   { id: 'video', label: 'Video', icon: '▶️' },
@@ -27,9 +30,11 @@ export default function Session() {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [settings, setSettings] = useState(null);
+  const [mode, setMode] = useState('seamless');
   const [existingSessions, setExistingSessions] = useState([]);
   const [startTime, setStartTime] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [seamlessError, setSeamlessError] = useState('');
 
   useEffect(() => {
     let isMounted = true;
@@ -39,6 +44,7 @@ export default function Session() {
         if (isMounted) {
           setSettings(st);
           setExistingSessions(sess);
+          setMode(st?.defaultMode || 'seamless');
         }
       } catch (err) {
         console.error('Error loading session screen data:', err);
@@ -91,6 +97,7 @@ export default function Session() {
 
   // Data State
   const [session, setSession] = useState(null);
+  const [descriptionText, setDescriptionText] = useState('');
   const [jsonInput, setJsonInput] = useState('');
   const [rawTextInput, setRawTextInput] = useState('');
   const [parseError, setParseError] = useState('');
@@ -140,6 +147,24 @@ export default function Session() {
       console.error('Failed to copy text: ', err);
     }
   }, [startTime]);
+
+  const handleSeamlessSubmit = async (userText) => {
+    if (!userText || !userText.trim()) return;
+    setSeamlessError('');
+    setLoading(true);
+
+    try {
+      const res = await generateSeamlessSessionFeedback(session, settings, userText);
+      setParsedImprovements(res.improvements);
+      setRawTextInput(userText);
+      setStep(4);
+    } catch (err) {
+      console.error('Seamless AI processing error:', err);
+      setSeamlessError(err.message || 'Failed to process AI improvements.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleImport = useCallback(() => {
     setParseError('');
@@ -199,8 +224,11 @@ export default function Session() {
 
   return (
     <div className="w-full space-y-6 animate-fade-in max-w-2xl mx-auto py-2">
-      <div className="space-y-3">
-        <h1 className="text-2xl sm:text-3xl font-bold text-white">New Practice Session</h1>
+      <div className="space-y-4">
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
+          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight pt-1">New Practice Session</h1>
+          <ModeToggle mode={mode} onChange={setMode} settings={settings} />
+        </div>
 
         {/* Progress Indicator */}
         <div className="pt-2">
@@ -334,13 +362,75 @@ export default function Session() {
               disabled={!title || !sourceType || loading}
               className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-base py-3.5 px-6 rounded-xl transition-all shadow flex items-center justify-center gap-2 cursor-pointer"
             >
-              {loading ? 'Creating Session...' : 'Generate Prompt #1 (Description) →'}
+              {loading ? 'Creating Session...' : mode === 'seamless' ? 'Start Seamless Voice Session →' : 'Generate Prompt #1 (Description) →'}
             </button>
           </div>
         </form>
       )}
 
-      {step === 2 && (
+      {step === 2 && mode === 'seamless' && (
+        <div className="space-y-4">
+          <div className="glass-panel p-6 space-y-6">
+            <div>
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <span>✨ Seamless Voice Session — "{session?.title}"</span>
+              </h2>
+              <p className="text-xs text-gray-300 mt-1">
+                Speak or type what you {SOURCE_TYPES.find((t) => t.id === session?.sourceType)?.label?.toLowerCase() || 'consumed'}. AI will analyze your spoken English directly.
+              </p>
+            </div>
+
+            <AudioRecorder
+              settings={settings}
+              onTranscribed={(text) => {
+                setDescriptionText((prev) => (prev ? `${prev} ${text}` : text));
+              }}
+              onError={(err) => setSeamlessError(err)}
+            />
+
+            <div className="space-y-2">
+              <label htmlFor="seamless-text" className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
+                Transcribed / Spoken Description
+              </label>
+              <textarea
+                id="seamless-text"
+                value={descriptionText}
+                onChange={(e) => setDescriptionText(e.target.value)}
+                placeholder="Speak using the button above or type your description here in English..."
+                rows={4}
+                className="w-full bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-all resize-y font-medium"
+              />
+            </div>
+
+            {seamlessError && (
+              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
+                <p className="font-bold mb-0.5">Error</p>
+                <p>{seamlessError}</p>
+              </div>
+            )}
+
+            <button
+              onClick={() => handleSeamlessSubmit(descriptionText)}
+              disabled={!descriptionText.trim() || loading}
+              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold text-base py-3.5 px-6 rounded-xl transition-all shadow flex items-center justify-center gap-2 cursor-pointer"
+            >
+              {loading ? (
+                <span className="flex items-center gap-2">
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  <span>AI Analyzing Spoken English...</span>
+                </span>
+              ) : (
+                'Get Instant AI Improvements ✨'
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {step === 2 && mode === 'prompt' && (
         <div className="space-y-4">
           <div className="glass-panel p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -478,13 +568,16 @@ export default function Session() {
           <div className="space-y-3">
             {parsedImprovements.map((imp, idx) => (
               <div key={idx} className="glass-panel p-4 space-y-2 relative">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
-                    {imp.category}
-                  </span>
-                  <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
-                    {imp.spoken_frequency?.replace('_', ' ')} freq
-                  </span>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
+                      {imp.category}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
+                      {imp.spoken_frequency?.replace('_', ' ')} freq
+                    </span>
+                  </div>
+                  <AudioPlayerButton text={imp.improved || imp.construction} settings={settings} size="sm" />
                 </div>
 
                 <div>
@@ -492,8 +585,8 @@ export default function Session() {
                   <p className="text-base font-extrabold text-purple-300 text-glow">
                     "{imp.construction || imp.improved}"
                   </p>
-                  <p className="text-xs text-emerald-400 font-medium">
-                    Example: "{imp.improved}"
+                  <p className="text-xs text-emerald-400 font-medium flex items-center gap-2">
+                    <span>Example: "{imp.improved}"</span>
                   </p>
                   <p className="text-xs text-rose-400 line-through opacity-80 pt-0.5">
                     Original: "{imp.original}"

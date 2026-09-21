@@ -38,12 +38,12 @@ describe('Session Wizard Component', () => {
     const videoButton = screen.getByText('Video');
     fireEvent.click(videoButton);
 
-    const submitBtn = screen.getByRole('button', { name: /Generate Prompt #1/i });
+    const submitBtn = screen.getByRole('button', { name: /(Generate Prompt #1|Start Seamless Voice Session)/i });
     fireEvent.click(submitBtn);
 
     // createSession is now async, so wait for step 2 content
     await waitFor(() =>
-      expect(screen.getByText(/Step 1: Describe Content/i)).toBeInTheDocument()
+      expect(screen.getByText(/(Seamless Voice Session|Step 1: Describe Content)/i)).toBeInTheDocument()
     );
     expect(screen.getByText(/My Video Session/i)).toBeInTheDocument();
   });

@@ -10,6 +10,7 @@ import {
 } from '../store';
 import { processReview, RATINGS } from '../srs';
 import { generatePracticePrompt } from '../prompts';
+import AudioPlayerButton from '../components/AudioPlayerButton';
 
 export default function Practice() {
   const navigate = useNavigate();
@@ -21,6 +22,7 @@ export default function Practice() {
   const [copied, setCopied] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [startTime, setStartTime] = useState(null);
+  const [settings, setSettings] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -51,10 +53,11 @@ export default function Practice() {
         setSelectedCards(top5);
         setImprovements(imps);
 
-        const settings = await getSettings();
-        const prompt = generatePracticePrompt(imps, settings);
+        const st = await getSettings();
+        const prompt = generatePracticePrompt(imps, st);
 
         if (isMounted) {
+          setSettings(st);
           setPromptText(prompt);
           setStep('prompt');
           setStartTime(Date.now());
@@ -203,7 +206,10 @@ export default function Practice() {
           </div>
 
           <div>
-            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Example / Natural Usage</div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center justify-between">
+              <span>Example / Natural Usage</span>
+              <AudioPlayerButton text={currentImp.improved} settings={settings} size="sm" />
+            </div>
             <div className="text-sm text-emerald-400 font-medium">
               "{currentImp.improved}"
             </div>
