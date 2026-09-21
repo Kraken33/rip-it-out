@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS public.sessions (
   notes TEXT DEFAULT '',
   duration_seconds INT DEFAULT 0,
   raw_text TEXT DEFAULT NULL,
+  messages JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   status TEXT NOT NULL DEFAULT 'created'
 );
@@ -51,6 +52,7 @@ CREATE TABLE IF NOT EXISTS public.improvements (
   explanation TEXT,
   category TEXT NOT NULL DEFAULT 'grammar',
   spoken_frequency TEXT NOT NULL DEFAULT 'high',
+  context TEXT DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_improvements_user_id ON public.improvements(user_id);

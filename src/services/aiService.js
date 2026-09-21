@@ -123,11 +123,19 @@ Your task: identify up to ${maxImp} spoken English improvements in their text an
 Focus on: natural phrasing, collocations, idioms, reusable constructions. Ignore missing articles (a/an/the).
 Formality: ${settings.formality}. Level: ${settings.level}. Focus: ${settings.focusArea === 'all' ? 'any aspect of spoken English' : settings.focusArea}.
 
+Rules for fields:
+- "construction": MUST be the abstracted pattern or phrase structure (e.g. invite [someone] over to [place], want to [verb], test if [something] works). NEVER put error descriptions or titles here.
+- "original": the exact phrase the speaker used.
+- "improved": the more natural spoken sentence version.
+- "explanation": concise explanation of why this phrasing sounds more natural in spoken English.
+- "category": must be one of: grammar, vocabulary, collocation, idiom, pronunciation, structure
+- "spoken_frequency": must be one of: very_high, high, medium
+
 You MUST respond with ONLY a valid JSON object in this exact format — no explanation, no markdown, no extra text:
 {
   "improvements": [
     {
-      "construction": "reusable pattern (e.g. invite [someone] over)",
+      "construction": "abstracted pattern (e.g. invite [someone] over)",
       "original": "the exact phrase the speaker used",
       "improved": "a natural spoken English version",
       "explanation": "why this sounds more natural in spoken English",
@@ -216,10 +224,177 @@ You MUST respond with ONLY a valid JSON object in this exact format — no expla
   }
 
   return {
-    improvements: parsed.improvements,
+    improvements: parsed.improvements.map(imp => ({ ...imp, context: imp.context || userDescriptionText })),
     rawResponse: rawContent,
-
   };
+}
+
+/**
+ * Stream conversational chat reply from AI coach
+ * @param {Object} session
+ * @param {Array} messages List of prior message objects { role, content }
+ * @param {Object} settings
+ * @param {Function} [onChunk] Callback for streaming text updates
+ * @returns {Promise<string>} Full assistant reply text
+ */
+export async function streamSeamlessChatCompletion(session, messages, settings, onChunk) {
+  const groqKey = settings.groqApiKey?.trim();
+  const openaiKey = settings.openaiApiKey?.trim();
+
+  if (!groqKey && !openaiKey) {
+    throw new Error('No API Key configured. Please add a Groq API Key or OpenAI API Key in Settings.');
+  }
+
+  const isGroq = Boolean(groqKey);
+  const apiKey = isGroq ? groqKey : openaiKey;
+  const endpoint = isGroq
+    ? 'https://api.groq.com/openai/v1/chat/completions'
+    : 'https://api.openai.com/v1/chat/completions';
+
+  const modelName = isGroq
+    ? (settings.groqModel || 'openai/gpt-oss-20b')
+    : 'gpt-4o-mini';
+
+  const SOURCE_VERBS = { video: 'watched', book: 'read', article: 'read', podcast: 'listened to', other: 'went through' };
+  const verb = SOURCE_VERBS[session?.sourceType] || 'went through';
+
+  const systemMessage = `You are a supportive and friendly English speaking coach. The user is describing a ${session?.sourceType || 'content'} titled "${session?.title || 'Practice Session'}" that they ${verb}.
+Respond naturally to what they share, validate their ideas, and ask 1 engaging follow-up question to keep the conversation flowing. Keep your reply concise (2-4 sentences). Formality: ${settings.formality || 'casual'}.`;
+
+  const formattedMessages = [
+    { role: 'system', content: systemMessage },
+    ...messages.map((m) => ({ role: m.role, content: m.content })),
+  ];
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: formattedMessages,
+      temperature: 0.7,
+      max_tokens: 1000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    let msg = `Chat completion failed (${response.status})`;
+    try {
+      const errJson = JSON.parse(errText);
+      msg = errJson.error?.message || msg;
+    } catch (_) {}
+    throw new Error(msg);
+  }
+
+  const data = await response.json();
+  const reply = data.choices?.[0]?.message?.content || '';
+  if (onChunk && reply) {
+    onChunk(reply);
+  }
+  return reply;
+}
+
+/**
+ * Evaluate a single user message turn and extract improvements
+ * @param {string} userText
+ * @param {Object} settings
+ * @returns {Promise<{ improvements: Array }>}
+ */
+export async function evaluateSingleMessage(userText, settings) {
+  if (!userText || !userText.trim()) {
+    return { improvements: [] };
+  }
+
+  const groqKey = settings.groqApiKey?.trim();
+  const openaiKey = settings.openaiApiKey?.trim();
+
+  if (!groqKey && !openaiKey) {
+    throw new Error('No API Key configured. Please add a Groq API Key or OpenAI API Key in Settings.');
+  }
+
+  const isGroq = Boolean(groqKey);
+  const apiKey = isGroq ? groqKey : openaiKey;
+  const endpoint = isGroq
+    ? 'https://api.groq.com/openai/v1/chat/completions'
+    : 'https://api.openai.com/v1/chat/completions';
+
+  const modelName = isGroq
+    ? (settings.groqModel || 'openai/gpt-oss-20b')
+    : 'gpt-4o-mini';
+
+  const maxImp = settings.maxImprovements || 5;
+
+  const systemMessage = `You are an English speaking coach analyzing a user message turn.
+Identify up to ${maxImp} spoken English improvements in their text and return them as JSON.
+Formality: ${settings.formality || 'casual'}. Level: ${settings.level || 'intermediate'}. Focus: ${settings.focusArea === 'all' ? 'any aspect' : (settings.focusArea || 'any aspect')}.
+
+Rules for fields:
+- "construction": MUST be the abstracted pattern or phrase structure (e.g. invite [someone] over to [place], want to [verb], test if [something] works). NEVER put error descriptions or titles here.
+- "original": the exact phrase the speaker used.
+- "improved": the more natural spoken sentence version.
+- "explanation": concise explanation of why this phrasing sounds more natural in spoken English.
+- "category": must be one of: grammar, vocabulary, collocation, idiom, pronunciation, structure
+- "spoken_frequency": must be one of: very_high, high, medium
+
+You MUST respond with ONLY a valid JSON object in this exact format:
+{
+  "improvements": [
+    {
+      "construction": "abstracted pattern (e.g. want to [verb])",
+      "original": "exact phrase user used",
+      "improved": "natural spoken English version",
+      "explanation": "why this is more natural",
+      "category": "one of: grammar, vocabulary, collocation, idiom, pronunciation, structure",
+      "spoken_frequency": "one of: very_high, high, medium"
+    }
+  ]
+}`;
+
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: modelName,
+      messages: [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: `Analyze this text and return improvements JSON:\n\n"${userText}"` },
+      ],
+      temperature: 0.3,
+      max_tokens: 4000,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    let msg = `Evaluation failed (${response.status})`;
+    try {
+      const errJson = JSON.parse(errText);
+      msg = errJson.error?.message || msg;
+    } catch (_) {}
+    throw new Error(msg);
+  }
+
+  const data = await response.json();
+  const rawContent = data.choices?.[0]?.message?.content || data.choices?.[0]?.message?.reasoning || '';
+
+  const parsed = parseImportJSON(rawContent);
+  if (!parsed.success) {
+    throw new Error(parsed.error || 'Failed to parse evaluation response.');
+  }
+
+  const improvementsWithContext = parsed.improvements.map((imp) => ({
+    ...imp,
+    context: imp.context || userText.trim(),
+  }));
+
+  return { improvements: improvementsWithContext };
 }
 
 /**

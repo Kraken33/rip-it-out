@@ -82,6 +82,24 @@ Hope this helps!`;
       expect(res.improvements[0].construction).toBe('new'); // Fallback to improved
     });
 
+    it('sanitizes meta explanation titles in construction field to improved phrase', () => {
+      const json = JSON.stringify({
+        improvements: [
+          {
+            construction: "Duplicate 'just' usage",
+            original: 'I just updated my app so I want just to test',
+            improved: 'I just updated my app, so I want to test',
+            explanation: 'Removing the second just makes it smoother',
+            category: 'grammar',
+            spoken_frequency: 'high',
+          },
+        ],
+      });
+      const res = parseImportJSON(json);
+      expect(res.success).toBe(true);
+      expect(res.improvements[0].construction).toBe('I just updated my app, so I want to test');
+    });
+
     it('handles missing required fields by skipping invalid items', () => {
       const json = JSON.stringify({
         improvements: [

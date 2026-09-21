@@ -193,10 +193,14 @@ export function parseImportJSON(text) {
       return;
     }
     
-    // Ensure construction field exists (fallback to improved or original if missing)
+    // Ensure construction field exists and is an abstracted pattern, not a meta error title
+    const rawConst = (item.construction || '').trim();
+    const isMetaExplanation = !rawConst || /usage|duplicate|error|mistake|repetition|redundancy|missing|incorrect|wrong/i.test(rawConst);
+    const finalConstruction = isMetaExplanation ? (item.improved || item.original) : rawConst;
+
     const processedItem = {
       ...item,
-      construction: item.construction || item.improved || item.original
+      construction: finalConstruction,
     };
     
     validated.push(processedItem);

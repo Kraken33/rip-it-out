@@ -43,9 +43,9 @@ describe('Session Wizard Component', () => {
 
     // createSession is now async, so wait for step 2 content
     await waitFor(() =>
-      expect(screen.getByText(/(Seamless Voice Session|Step 1: Describe Content)/i)).toBeInTheDocument()
+      expect(screen.getByText(/(Seamless AI Coach|Seamless Voice Session|Step 1: Describe Content)/i)).toBeInTheDocument()
     );
-    expect(screen.getByText(/My Video Session/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/My Video Session/i)[0]).toBeInTheDocument();
   });
 
   it('autofills previous session details when selecting a title from dropdown', async () => {

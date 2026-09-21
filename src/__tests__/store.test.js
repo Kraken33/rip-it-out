@@ -37,26 +37,30 @@ describe('Store Layer', () => {
     await clearAllData();
   });
 
-  it('creates and reads sessions', async () => {
-    const session = await createSession({ title: 'Podcast 1', sourceType: 'podcast', tags: ['audio'], notes: 'test note' });
+  it('creates and reads sessions with messages array', async () => {
+    const messages = [
+      { id: 'm1', role: 'user', content: 'hello' },
+      { id: 'm2', role: 'assistant', content: 'hi' }
+    ];
+    const session = await createSession({ title: 'Podcast 1', sourceType: 'podcast', tags: ['audio'], notes: 'test note', messages });
     expect(session.id).toBeDefined();
     expect(session.title).toBe('Podcast 1');
+    expect(session.messages).toEqual(messages);
     const all = await getSessions();
     expect(all).toHaveLength(1);
-    expect(all[0].id).toBe(session.id);
+    expect(all[0].messages).toEqual(messages);
   });
 
-  it('adds improvements and creates corresponding SRS cards', async () => {
+  it('adds improvements with sentence context', async () => {
     const session = await createSession({ title: 'Book 1', sourceType: 'book' });
     const items = [
-      { construction: 'invite [someone] over', original: 'invited him home', improved: 'invited him over', explanation: 'natural', category: 'grammar', spoken_frequency: 'high' }
+      { construction: 'invite [someone] over', original: 'invited him home', improved: 'invited him over', explanation: 'natural', category: 'grammar', spoken_frequency: 'high', context: 'I invited him home yesterday.' }
     ];
     const added = await addImprovements(session.id, items);
     expect(added).toHaveLength(1);
-    expect(await getImprovements()).toHaveLength(1);
-    const cards = await getSrsCards();
-    expect(cards).toHaveLength(1);
-    expect(cards[0].improvementId).toBe(added[0].id);
+    expect(added[0].context).toBe('I invited him home yesterday.');
+    const imps = await getImprovements();
+    expect(imps[0].context).toBe('I invited him home yesterday.');
   });
 
   it('finds duplicate phrases case-insensitively', async () => {

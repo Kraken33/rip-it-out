@@ -17,6 +17,7 @@ import { generateSeamlessSessionFeedback } from '../services/aiService';
 import ModeToggle from '../components/ModeToggle';
 import AudioRecorder from '../components/AudioRecorder';
 import AudioPlayerButton from '../components/AudioPlayerButton';
+import SeamlessChatSession from './SeamlessChatSession';
 
 const SOURCE_TYPES = [
   { id: 'video', label: 'Video', icon: '▶️' },
@@ -369,65 +370,7 @@ export default function Session() {
       )}
 
       {step === 2 && mode === 'seamless' && (
-        <div className="space-y-4">
-          <div className="glass-panel p-6 space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                <span>✨ Seamless Voice Session — "{session?.title}"</span>
-              </h2>
-              <p className="text-xs text-gray-300 mt-1">
-                Speak or type what you {SOURCE_TYPES.find((t) => t.id === session?.sourceType)?.label?.toLowerCase() || 'consumed'}. AI will analyze your spoken English directly.
-              </p>
-            </div>
-
-            <AudioRecorder
-              settings={settings}
-              onTranscribed={(text) => {
-                setDescriptionText((prev) => (prev ? `${prev} ${text}` : text));
-              }}
-              onError={(err) => setSeamlessError(err)}
-            />
-
-            <div className="space-y-2">
-              <label htmlFor="seamless-text" className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
-                Transcribed / Spoken Description
-              </label>
-              <textarea
-                id="seamless-text"
-                value={descriptionText}
-                onChange={(e) => setDescriptionText(e.target.value)}
-                placeholder="Speak using the button above or type your description here in English..."
-                rows={4}
-                className="w-full bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-all resize-y font-medium"
-              />
-            </div>
-
-            {seamlessError && (
-              <div className="p-3 rounded-lg bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs">
-                <p className="font-bold mb-0.5">Error</p>
-                <p>{seamlessError}</p>
-              </div>
-            )}
-
-            <button
-              onClick={() => handleSeamlessSubmit(descriptionText)}
-              disabled={!descriptionText.trim() || loading}
-              className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold text-base py-3.5 px-6 rounded-xl transition-all shadow flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {loading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-                  </svg>
-                  <span>AI Analyzing Spoken English...</span>
-                </span>
-              ) : (
-                'Get Instant AI Improvements ✨'
-              )}
-            </button>
-          </div>
-        </div>
+        <SeamlessChatSession session={session} settings={settings} />
       )}
 
       {step === 2 && mode === 'prompt' && (

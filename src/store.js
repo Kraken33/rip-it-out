@@ -67,6 +67,7 @@ function mapSessionFromDb(r) {
     notes: r.notes || '',
     durationSeconds: r.duration_seconds || 0,
     rawText: r.raw_text || null,
+    messages: r.messages || [],
     createdAt: r.created_at,
     status: r.status || 'created',
   };
@@ -81,6 +82,7 @@ function mapSessionToDb(s) {
     notes: s.notes || '',
     duration_seconds: s.durationSeconds || 0,
     raw_text: s.rawText || null,
+    messages: s.messages || [],
     created_at: s.createdAt,
     status: s.status || 'created',
   };
@@ -97,6 +99,7 @@ function mapImprovementFromDb(r) {
     explanation: r.explanation,
     category: r.category,
     spokenFrequency: r.spoken_frequency,
+    context: r.context || '',
     createdAt: r.created_at,
   };
 }
@@ -110,6 +113,7 @@ function mapImprovementToDb(i) {
     explanation: i.explanation,
     category: i.category,
     spoken_frequency: i.spokenFrequency,
+    context: i.context || '',
     created_at: i.createdAt,
   };
 }
@@ -263,7 +267,7 @@ export async function getSession(id) {
   return sessions.find((s) => s.id === id) || null;
 }
 
-export async function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0, rawText = null }) {
+export async function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0, rawText = null, messages = [] }) {
   const topic = await getOrCreateTopic(title);
   const session = {
     id: generateId(),
@@ -274,6 +278,7 @@ export async function createSession({ title, sourceType, tags = [], notes = '', 
     notes,
     durationSeconds,
     rawText: rawText || null,
+    messages: messages || [],
     createdAt: new Date().toISOString(),
     status: 'created',
   };
@@ -283,6 +288,9 @@ export async function createSession({ title, sourceType, tags = [], notes = '', 
     if (!error && data) {
       await addSessionToTopic(topic.id, session.id);
       return mapSessionFromDb(data);
+    }
+    if (error) {
+      console.warn('Supabase createSession error:', error);
     }
   }
 
@@ -303,10 +311,14 @@ export async function updateSession(id, updates) {
     if ('notes' in updates) dbUpdates.notes = updates.notes;
     if ('durationSeconds' in updates) dbUpdates.duration_seconds = updates.durationSeconds;
     if ('rawText' in updates) dbUpdates.raw_text = updates.rawText;
+    if ('messages' in updates) dbUpdates.messages = updates.messages;
     if ('status' in updates) dbUpdates.status = updates.status;
 
     const { data, error } = await supabase.from('sessions').update(dbUpdates).eq('id', id).select().single();
     if (!error && data) return mapSessionFromDb(data);
+    if (error) {
+      console.warn('Supabase updateSession error:', error);
+    }
   }
 
   const sessions = readLocalStore(STORAGE_KEYS.sessions) || [];
@@ -374,6 +386,7 @@ export async function addImprovements(sessionId, items) {
     explanation: item.explanation,
     category: normalizeCategory(item.category),
     spokenFrequency: normalizeFrequency(item.spoken_frequency || item.spokenFrequency),
+    context: item.context || '',
     createdAt: new Date().toISOString(),
   }));
 
