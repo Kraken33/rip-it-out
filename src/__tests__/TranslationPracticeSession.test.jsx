@@ -104,14 +104,86 @@ describe('TranslationPracticeSession Component', () => {
     );
 
     expect(screen.getByText(/Russian Translation Practice/i)).toBeInTheDocument();
-    expect(screen.getByText(/Round 1 of 2/i)).toBeInTheDocument();
+    expect(screen.getByText(/Round 1/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Round 1 of/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Next Round/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Finish Practice/i })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
     });
   });
 
-  it('calls onFinish when Finish & Rate Recall button is clicked', async () => {
+  it('advances 5 fallback cards as two 2-construction rounds via Next Round', async () => {
+    render(
+      <MemoryRouter>
+        <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} />
+      </MemoryRouter>
+    );
+
+    await waitForPassage();
+    // Round 1 uses the first 2 queued constructions.
+    expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(1);
+    expect(mocks.generateTranslationRoundPassage.mock.calls[0][0].map((c) => c.construction)).toEqual([
+      'invite over',
+      'plan on',
+    ]);
+
+    submitTranslation('Yesterday I invited a friend over and we plan on meeting.');
+    await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /Next Round/i }));
+    await waitFor(() => expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(2));
+    expect(mocks.generateTranslationRoundPassage.mock.calls[1][0].map((c) => c.construction)).toEqual([
+      'turn down',
+      'catch up',
+    ]);
+    expect(screen.getByText(/Round 2/i)).toBeInTheDocument();
+    expect(screen.queryByText(/of \d/i)).not.toBeInTheDocument();
+  });
+
+  it('passes ordered per-round payload and distinct practiced cards to onFinish', async () => {
+    const onFinishMock = vi.fn();
+    render(
+      <MemoryRouter>
+        <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} onFinish={onFinishMock} />
+      </MemoryRouter>
+    );
+
+    await waitForPassage();
+    submitTranslation('First translation here.');
+    await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole('button', { name: /Next Round/i }));
+    await waitFor(() => expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(2));
+    submitTranslation('Second translation here.');
+    await waitFor(() => expect(screen.getAllByTestId('translation-verdict')).toHaveLength(2));
+
+    fireEvent.click(screen.getByRole('button', { name: /Finish Practice/i }));
+
+    expect(onFinishMock).toHaveBeenCalledTimes(1);
+    const [orderedRounds, practiced] = onFinishMock.mock.calls[0];
+    expect(orderedRounds).toHaveLength(2);
+    expect(orderedRounds[0]).toMatchObject({
+      roundIndex: 0,
+      translationText: 'First translation here.',
+    });
+    expect(orderedRounds[0].passageText).toContain('пригласил друга в гости');
+    expect(orderedRounds[0].cards.map((c) => c.construction)).toEqual(['invite over', 'plan on']);
+    expect(orderedRounds[1]).toMatchObject({
+      roundIndex: 1,
+      translationText: 'Second translation here.',
+    });
+    expect(orderedRounds[1].cards.map((c) => c.construction)).toEqual(['turn down', 'catch up']);
+    expect(practiced.map((c) => c.construction)).toEqual([
+      'invite over',
+      'plan on',
+      'turn down',
+      'catch up',
+    ]);
+  });
+
+  it('calls onFinish with empty payload when Finish Practice is clicked with no rounds', async () => {
     const onFinishMock = vi.fn();
     render(
       <MemoryRouter>
@@ -123,10 +195,10 @@ describe('TranslationPracticeSession Component', () => {
       expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
     });
 
-    const finishBtn = screen.getByRole('button', { name: /Finish & Rate Recall →/i });
+    const finishBtn = screen.getByRole('button', { name: /Finish Practice/i });
     fireEvent.click(finishBtn);
 
-    expect(onFinishMock).toHaveBeenCalled();
+    expect(onFinishMock).toHaveBeenCalledWith([], []);
   });
 
   it('offers a multi-line text area for the translation instead of a one-row input', async () => {

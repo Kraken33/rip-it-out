@@ -6,6 +6,7 @@ import {
   updateSrsCard, 
   getSettings,
   getSession,
+  createSession,
   logActivity
 } from '../store';
 import { processReview, RATINGS } from '../srs';
@@ -85,8 +86,88 @@ export default function Practice() {
     });
   }, [startTime]);
 
-  const startRating = useCallback(async (customCards) => {
-    if (startTime) {
+  const startRating = useCallback(async (customCards, roundPayload = []) => {
+    const hasRounds = Array.isArray(roundPayload) && roundPayload.length > 0;
+    const submittedTranslations = hasRounds
+      ? roundPayload
+          .map((r) => (typeof r?.translationText === 'string' ? r.translationText.trim() : ''))
+          .filter(Boolean)
+      : [];
+
+    if (hasRounds && submittedTranslations.length > 0) {
+      const durationSeconds = startTime ? Math.max(0, Math.round((Date.now() - startTime) / 1000)) : 0;
+      const orderedRounds = [...roundPayload].sort((a, b) => (a.roundIndex ?? 0) - (b.roundIndex ?? 0));
+      const distinctConstructions = [];
+      const seenConstructions = new Set();
+      orderedRounds.forEach((r) =>
+        (r.cards || []).forEach((c) => {
+          const key = c.id ?? c.improvementId ?? c.construction;
+          if (key && !seenConstructions.has(key)) {
+            seenConstructions.add(key);
+            distinctConstructions.push(c.construction || c.improved || String(key));
+          }
+        })
+      );
+      const dateLabel = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      const sessionMessages = [];
+      const verdictSummaries = [];
+      orderedRounds.forEach((r) => {
+        if (r.passageText) {
+          sessionMessages.push({ role: 'assistant', content: r.passageText });
+        }
+        if (r.translationText) {
+          sessionMessages.push({ role: 'user', content: r.translationText });
+        }
+        const perTarget = Array.isArray(r.verdict?.constructions)
+          ? r.verdict.constructions
+              .map((c) => `${c.used ? (c.quality === 'awkward' ? '~' : '✓') : '✗'} ${c.target}`)
+              .join('; ')
+          : '';
+        const feedback = r.verdict?.summary || r.rawFeedback || '';
+        if (feedback || perTarget) {
+          sessionMessages.push({
+            role: 'assistant',
+            content: [feedback, perTarget].filter(Boolean).join('\n'),
+          });
+        }
+        if (feedback) verdictSummaries.push(feedback);
+      });
+
+      try {
+        const firstImp = improvements[0];
+        const originSession = firstImp ? await getSession(firstImp.sessionId) : null;
+        const saved = await createSession({
+          title: `Translation Practice — ${dateLabel} — ${orderedRounds.length} rounds · ${distinctConstructions.length} constructions`,
+          sourceType: 'translation-practice',
+          tags: ['translation', 'russian-practice'],
+          notes: [
+            `Practiced: ${distinctConstructions.join(' | ') || '—'}`,
+            verdictSummaries.length > 0 ? `Feedback: ${verdictSummaries.join(' / ')}` : '',
+          ]
+            .filter(Boolean)
+            .join('\n'),
+          durationSeconds,
+          // Statistics count ONLY the learner's translations; passages and
+          // verdicts stay in messages/notes for review.
+          rawText: submittedTranslations.join('\n\n'),
+          messages: sessionMessages,
+        });
+        if (durationSeconds > 0) {
+          await logActivity({
+            type: 'session',
+            durationSeconds,
+            sessionId: saved?.id || null,
+            topicId: saved?.topicId ?? originSession?.topicId ?? null,
+          });
+        }
+      } catch (err) {
+        console.error('Error saving translation practice session:', err);
+      }
+      if (startTime) {
+        // Practice time already logged against the saved translation session above.
+        setStartTime(null);
+      }
+    } else if (startTime) {
       const durationSeconds = Math.round((Date.now() - startTime) / 1000);
       if (durationSeconds > 0) {
         const firstImp = improvements[0];
@@ -103,6 +184,8 @@ export default function Practice() {
     // Callers hand us improvement records, but the rating step must operate on
     // the SRS cards loaded at mount — processReview/updateSrsCard need real
     // card fields (status, easeFactor, intervalDays) keyed by improvementId.
+    // Unlimited-round sessions may repeat constructions: dedupe so each
+    // distinct card is rated exactly once.
     if (customCards && Array.isArray(customCards) && customCards.length > 0) {
       const practicedIds = new Set(customCards.map((c) => c.id ?? c.improvementId));
       const cardsToRate = selectedCards.filter((c) => practicedIds.has(c.improvementId));
@@ -331,7 +414,7 @@ export default function Practice() {
         <TranslationPracticeSession
           allCards={improvements}
           settings={settings}
-          onFinish={(practicedCards) => startRating(practicedCards)}
+          onFinish={(roundPayload, practicedCards) => startRating(practicedCards, roundPayload)}
         />
       </div>
     );
@@ -397,7 +480,7 @@ export default function Practice() {
               Russian Translation Practice (Prompt #5)
             </h1>
             <p className="text-xs text-gray-400 leading-relaxed">
-              Copy Prompt #5 to your LLM (ChatGPT, Claude, Gemini). The LLM will generate Russian passages with highlighted target constructions across 4-5 rounds. Translate them to English!
+              Copy Prompt #5 to your LLM (ChatGPT, Claude, Gemini). The LLM will generate Russian passages with 2 highlighted target constructions per round, for as many rounds as you want. Translate them to English!
             </p>
           </header>
 

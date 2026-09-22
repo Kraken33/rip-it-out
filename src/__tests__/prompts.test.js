@@ -57,12 +57,17 @@ describe('Prompt Orchestrator & Parser', () => {
     expect(prompt).toContain('Construction: "invite [someone] over"');
   });
 
-  it('generateTranslationPracticePrompt formats prompt for multi-round Russian translation practice', () => {
+  it('generateTranslationPracticePrompt formats prompt for unlimited two-per-round Russian translation practice', () => {
     const imps = [{ construction: 'invite over', improved: 'I invited him over' }];
     const prompt = generateTranslationPracticePrompt(imps, dummySettings);
     expect(prompt).toContain('ROUND 1');
     expect(prompt).toContain('[[Russian phrase|Target English Construction]]');
     expect(prompt).toContain('invite over');
+    expect(prompt).toMatch(/exactly 2 target constructions per round/i);
+    expect(prompt).toMatch(/NEXT ROUND/i);
+    expect(prompt).toMatch(/FINISH/i);
+    expect(prompt).not.toMatch(/4 to 5/i);
+    expect(prompt).not.toMatch(/3 to 5 constructions per round/i);
   });
 
   describe('parseImportJSON', () => {

@@ -14,10 +14,10 @@ The system SHALL generate prompt structures for Russian language practice using 
 
 #### Scenario: Prompt Generation for Multi-Round Translation
 - **WHEN** user selects prompt-based translation practice mode with 20 upcoming cards
-- **THEN** Prompt #5 is generated instructing the LLM to run a 4-5 round exercise in Russian, embedding 3-5 target constructions per round with visual bracket tags `[[Russian phrase|target construction]]`, awaiting English translation after each round.
+- **THEN** Prompt #5 is generated instructing the LLM to run an unlimited-round exercise in Russian, embedding exactly 2 target constructions per round with visual bracket tags `[[Russian phrase|target construction]]`, awaiting English translation after each round, then offering Next Round or Finish on learner request.
 
 ### Requirement: Multi-Round Russian Translation Practice
-The system SHALL batch top upcoming or due SRS cards into rounds for practice. When zero cards are due today, the system SHALL select the top 5 upcoming ("coming soon") cards sorted by scheduled review date so practice mode is always available.
+The system SHALL practice top upcoming or due SRS cards in unlimited on-demand rounds of exactly 2 constructions each. When zero cards are due today, the system SHALL select the top 5 upcoming ("coming soon") cards sorted by scheduled review date so practice mode is always available.
 
 #### Scenario: Batching SRS cards for translation rounds
 - **WHEN** user launches Translation Practice Mode
@@ -26,6 +26,14 @@ The system SHALL batch top upcoming or due SRS cards into rounds for practice. W
 #### Scenario: Fallback Practice When Zero Cards Are Due
 - **WHEN** user launches Practice Mode (Scenario Q&A or Translation Practice) when zero cards are due today but cards exist in the vault
 - **THEN** the system fetches the top 5 upcoming ("coming soon") cards sorted by scheduled review date and generates prompts/sessions for practice.
+
+#### Scenario: Unlimited two-construction rounds
+- **WHEN** the user practices in seamless translation mode
+- **THEN** each round embeds exactly 2 target constructions, the round count is not pre-computed, and after each evaluated translation the user may request Next Round (a fresh 2-construction passage) or Finish Practice at any time.
+
+#### Scenario: Construction queue beyond available cards
+- **WHEN** the user requests more rounds than there are distinct queued constructions
+- **THEN** the system reuses constructions starting from the least-recently-practiced in the session, never repeating a construction until every queued construction has been practiced once.
 
 ### Requirement: Construction Highlighting and Parsing
 The system SHALL parse and render target construction annotations in generated Russian passages into visual UI badges with English target tooltips.
@@ -39,7 +47,7 @@ The system SHALL support both in-app Seamless AI sessions and copy/paste Prompt-
 
 #### Scenario: In-app Seamless AI translation session
 - **WHEN** user runs Translation Practice in Seamless AI mode
-- **THEN** the app presents Russian passages with highlighted constructions, accepts a multi-line typed or dictated English translation of the passage, returns a per-round evaluation verdict for that translation, and auto-advances through rounds.
+- **THEN** the app presents Russian passages with highlighted constructions, accepts a multi-line typed or dictated English translation of the passage, returns a per-round evaluation verdict for that translation, and offers Next Round (2 fresh constructions) or Finish Practice controls after each round.
 
 #### Scenario: External LLM Prompt-based translation session
 - **WHEN** user runs Translation Practice in Prompt-based mode
@@ -61,6 +69,10 @@ The system SHALL present the SRS recall rating for the same cards that were prac
 #### Scenario: No matching SRS cards after practice
 - **WHEN** practice finishes but none of the practiced items has a matching SRS card record
 - **THEN** the system does not present the rating interface for those items and instead presents the practice completion state.
+
+#### Scenario: Rating covers distinct practiced constructions
+- **WHEN** the user ends an unlimited-round session in which some constructions were practiced more than once
+- **THEN** the system presents the manual SRS rating interface allowing the user to score recall for every distinct construction practiced in the session, and the saved translation session artefact remains available independent of the rating outcome.
 
 ### Requirement: Multi-Line Translation Input
 The system SHALL provide a multi-line translation input in which a passage-length English answer can be written and reviewed in full before submission, and SHALL submit only on an explicit action rather than on a plain newline.

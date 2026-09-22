@@ -30,7 +30,7 @@ vi.mock('../services/aiService', () => ({
 
 // Lets a single test drive onFinish with an arbitrary payload while every
 // other test exercises the real session component.
-const mocks = vi.hoisted(() => ({ finishPayload: null }));
+const mocks = vi.hoisted(() => ({ finishPayload: null, finishRounds: [[], []] }));
 
 vi.mock('../screens/TranslationPracticeSession', async (importOriginal) => {
   const mod = await importOriginal();
@@ -38,7 +38,7 @@ vi.mock('../screens/TranslationPracticeSession', async (importOriginal) => {
   return {
     default: (props) =>
       mocks.finishPayload ? (
-        <button onClick={() => props.onFinish(mocks.finishPayload)}>Stub Finish</button>
+        <button onClick={() => props.onFinish(mocks.finishRounds[0], mocks.finishPayload)}>Stub Finish</button>
       ) : (
         <Original {...props} />
       ),
@@ -48,6 +48,7 @@ vi.mock('../screens/TranslationPracticeSession', async (importOriginal) => {
 describe('Practice Component', () => {
   beforeEach(async () => {
     mocks.finishPayload = null;
+    mocks.finishRounds = [[], []];
     await clearAllData();
   });
 
@@ -98,7 +99,7 @@ describe('Practice Component', () => {
     await waitFor(() =>
       expect(screen.getByText(/Russian Translation Practice/i)).toBeInTheDocument()
     );
-    expect(screen.getByRole('button', { name: /Finish & Rate Recall →/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Finish Practice/i })).toBeInTheDocument();
   });
 
   it('switches between translation practice and scenario practice mode', async () => {
@@ -146,8 +147,15 @@ describe('Practice Component', () => {
       </BrowserRouter>
     );
 
-    const finishBtn = await screen.findByRole('button', { name: /Finish & Rate Recall →/i });
+    const finishBtn = await screen.findByRole('button', { name: /Finish Practice/i });
     fireEvent.click(finishBtn);
+
+    // No rounds submitted → no session artefact saved, straight to rating.
+    const { getSessions, getActivityLogs } = await import('../store');
+    await waitFor(async () => {
+      expect(await getSessions()).toHaveLength(1);
+      expect(await getActivityLogs()).toHaveLength(0);
+    });
 
     // Rate Recall step appears
     await screen.findByRole('heading', { name: 'Rate Recall' });
@@ -205,6 +213,68 @@ describe('Practice Component', () => {
 
     // Single card rated -> completion screen
     expect(await screen.findByText('Session finished')).toBeInTheDocument();
+  });
+
+  it('saves a translation-practice session with translations-only stats on seamless finish', async () => {
+    const s = await createSession({ title: 'S1', sourceType: 'video' });
+    const [imp] = await addImprovements(s.id, [
+      { construction: 'catch up on', original: 'caught up', improved: 'catch up on work', explanation: 'exp' },
+    ]);
+
+    mocks.finishPayload = [{ id: imp.id, improvementId: imp.id, construction: 'catch up on', improved: 'catch up on work' }];
+    mocks.finishRounds = [[
+      {
+        roundIndex: 0,
+        cards: [{ id: imp.id, improvementId: imp.id, construction: 'catch up on', improved: 'catch up on work' }],
+        passageText: 'Вчера мы поболтали.',
+        translationText: 'Yesterday we caught up nicely',
+        evaluatedAt: new Date().toISOString(),
+        verdict: {
+          summary: 'Good use of the target.',
+          rewriteNeeded: false,
+          rewrite: '',
+          constructions: [{ target: 'catch up on', used: true, quality: 'natural', mine: 'caught up', better: null, note: null }],
+        },
+        rawFeedback: '',
+      },
+    ], mocks.finishPayload];
+
+    render(
+      <BrowserRouter>
+        <Practice />
+      </BrowserRouter>
+    );
+
+    const stubBtn = await screen.findByRole('button', { name: 'Stub Finish' });
+    fireEvent.click(stubBtn);
+
+    const { getSessions, getSessionWordMetrics, getActivityStats, countTextWords } = await import('../store');
+    let savedId;
+    await waitFor(async () => {
+      const sessions = await getSessions();
+      // Origin session + saved translation-practice artefact.
+      expect(sessions).toHaveLength(2);
+      const saved = sessions.find((x) => x.sourceType === 'translation-practice');
+      expect(saved).toBeDefined();
+      savedId = saved.id;
+      expect(saved.title).toMatch(/Translation Practice/);
+      expect(saved.title).toMatch(/1 rounds/);
+      // rawText holds ONLY the learner translation — passage/verdict text excluded.
+      expect(saved.rawText).toBe('Yesterday we caught up nicely');
+      expect(saved.messages.map((m) => m.content).join('\n')).toContain('Вчера мы поболтали.');
+      const expected = countTextWords('Yesterday we caught up nicely');
+      const metrics = await getSessionWordMetrics(savedId);
+      expect(metrics).toMatchObject({ totalWords: expected.totalWords, uniqueWords: expected.uniqueWords });
+      const stats = await getActivityStats();
+      // Duration may be 0s in the fast test env (no log), but a real session
+      // logs time against the saved artefact when duration > 0.
+      expect(stats.totalTimeSeconds).toBeGreaterThanOrEqual(0);
+    });
+
+    // Library visibility + rating handoff still work.
+    const sessions = await getSessions();
+    expect(sessions.some((x) => x.id === savedId && x.sourceType === 'translation-practice')).toBe(true);
+    await screen.findByRole('heading', { name: 'Rate Recall' });
   });
 
   it('skips to the completion state when no practiced card has a matching SRS card', async () => {
