@@ -42,7 +42,7 @@ describe('SeamlessChatSession Component', () => {
   };
 
   const dummySettings = {
-    groqApiKey: 'gsk_test',
+    openaiApiKey: 'sk_test',
     formality: 'casual',
   };
 

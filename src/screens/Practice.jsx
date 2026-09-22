@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { 
-  getDueCards, 
+  getPracticeCards, 
   getImprovement, 
   updateSrsCard, 
   getSettings,
@@ -32,19 +32,16 @@ export default function Practice() {
     let isMounted = true;
     async function loadData() {
       try {
-        const allDue = await getDueCards();
+        const practiceCards = await getPracticeCards(20, 5);
         if (!isMounted) return;
 
-        if (!allDue || allDue.length === 0) {
+        if (!practiceCards || practiceCards.length === 0) {
           setStep('empty');
           return;
         }
 
-        const sorted = [...allDue].sort((a, b) => (a.easeFactor || 2.5) - (b.easeFactor || 2.5));
-        const top20 = sorted.slice(0, 20);
-
         const imps = (
-          await Promise.all(top20.map((card) => getImprovement(card.improvementId)))
+          await Promise.all(practiceCards.map((card) => getImprovement(card.improvementId)))
         ).filter(Boolean);
 
         if (!isMounted) return;
@@ -54,7 +51,7 @@ export default function Practice() {
           return;
         }
 
-        setSelectedCards(top20);
+        setSelectedCards(practiceCards);
         setImprovements(imps);
 
         const st = await getSettings();
@@ -89,9 +86,6 @@ export default function Practice() {
   }, [startTime]);
 
   const startRating = useCallback(async (customCards) => {
-    if (customCards && Array.isArray(customCards) && customCards.length > 0) {
-      setSelectedCards(customCards);
-    }
     if (startTime) {
       const durationSeconds = Math.round((Date.now() - startTime) / 1000);
       if (durationSeconds > 0) {
@@ -105,9 +99,26 @@ export default function Practice() {
         });
       }
     }
+
+    // Callers hand us improvement records, but the rating step must operate on
+    // the SRS cards loaded at mount — processReview/updateSrsCard need real
+    // card fields (status, easeFactor, intervalDays) keyed by improvementId.
+    if (customCards && Array.isArray(customCards) && customCards.length > 0) {
+      const practicedIds = new Set(customCards.map((c) => c.id ?? c.improvementId));
+      const cardsToRate = selectedCards.filter((c) => practicedIds.has(c.improvementId));
+      const rateableIds = new Set(cardsToRate.map((c) => c.improvementId));
+      const impsToRate = improvements.filter((i) => rateableIds.has(i.id));
+      setSelectedCards(cardsToRate);
+      setImprovements(impsToRate);
+      if (cardsToRate.length === 0) {
+        setStep('complete');
+        return;
+      }
+    }
+
     setStep('rating');
     setCurrentIndex(0);
-  }, [startTime, improvements]);
+  }, [startTime, improvements, selectedCards]);
 
   const handleRate = useCallback(async (score) => {
     const card = selectedCards[currentIndex];

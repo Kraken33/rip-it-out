@@ -163,19 +163,17 @@ Constraints:
 Please start with ROUND 1 now (give the Russian passage with tagged constructions and ask me to translate it to English):`;
 }
 
-// ── JSON Import Parser ─────────────────────────────────────────────
+// ── JSON Extraction Helpers ────────────────────────────────────────
 
 /**
- * Parse and validate pasted LLM output into improvement objects.
- * Handles: raw JSON, markdown code fences, extra text around JSON.
+ * Extract the JSON object from an LLM response, tolerating markdown code
+ * fences and surrounding prose.
  *
- * @param {string} text - Raw pasted text from user
- * @returns {{ success: boolean, improvements?: Array, error?: string }}
+ * @param {string} text - Raw LLM response
+ * @returns {string|null} Candidate JSON string, or null when there is no input
  */
-export function parseImportJSON(text) {
-  if (!text || !text.trim()) {
-    return { success: false, error: 'Empty input. Please paste the JSON output from your LLM.' };
-  }
+export function extractJsonObject(text) {
+  if (!text || !text.trim()) return null;
 
   let jsonStr = text.trim();
 
@@ -191,6 +189,25 @@ export function parseImportJSON(text) {
       jsonStr = jsonStr.slice(firstBrace, lastBrace + 1);
     }
   }
+
+  return jsonStr;
+}
+
+// ── JSON Import Parser ─────────────────────────────────────────────
+
+/**
+ * Parse and validate pasted LLM output into improvement objects.
+ * Handles: raw JSON, markdown code fences, extra text around JSON.
+ *
+ * @param {string} text - Raw pasted text from user
+ * @returns {{ success: boolean, improvements?: Array, error?: string }}
+ */
+export function parseImportJSON(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty input. Please paste the JSON output from your LLM.' };
+  }
+
+  const jsonStr = extractJsonObject(text);
 
   let parsed;
   try {
@@ -252,6 +269,113 @@ export function parseImportJSON(text) {
     improvements: validated,
     warnings: warnings.length > 0 ? warnings : undefined,
     skipped: parsed.improvements.length - validated.length,
+  };
+}
+
+// ── Translation Verdict Parser ─────────────────────────────────────
+
+const NATURAL_QUALITY_ALIASES = ['natural', 'native', 'correct', 'good', 'ok', 'fine'];
+const AWKWARD_QUALITY_ALIASES = ['awkward', 'unnatural', 'wrong', 'incorrect', 'forced', 'stilted', 'off'];
+
+/**
+ * Normalize a quality label into the two states the UI renders.
+ * @param {unknown} value
+ * @returns {'natural'|'awkward'|null}
+ */
+function normalizeQuality(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (NATURAL_QUALITY_ALIASES.includes(normalized)) return 'natural';
+  if (AWKWARD_QUALITY_ALIASES.includes(normalized)) return 'awkward';
+  return null;
+}
+
+/**
+ * @param {unknown} value
+ * @returns {string|null} Trimmed string, or null when absent/blank
+ */
+function optionalText(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Parse a translation evaluation response into a renderable verdict.
+ *
+ * Unlike parseImportJSON, an evaluation with nothing to fix is a SUCCESS:
+ * the response echoes the round's target list, so "every construction was
+ * used naturally" is a complete verdict rather than an empty list.
+ *
+ * @param {string} text - Raw LLM evaluation response
+ * @returns {{ success: boolean, verdict?: Object, error?: string }}
+ */
+export function parseTranslationVerdict(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty evaluation response.' };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(extractJsonObject(text));
+  } catch {
+    return { success: false, error: 'Evaluation result was not valid JSON.' };
+  }
+
+  const verdict = parsed?.verdict;
+  if (!verdict || typeof verdict !== 'object') {
+    return { success: false, error: 'Evaluation result is missing the "verdict" object.' };
+  }
+
+  if (!Array.isArray(verdict.constructions) || verdict.constructions.length === 0) {
+    return {
+      success: false,
+      error: 'Evaluation result is missing the per-target "constructions" list.',
+    };
+  }
+
+  const constructions = [];
+  for (const item of verdict.constructions) {
+    const target = optionalText(item?.target);
+    if (!target) {
+      return { success: false, error: 'Every evaluated construction needs a "target" name.' };
+    }
+
+    if (typeof item.used !== 'boolean') {
+      return { success: false, error: `Construction "${target}" is missing the "used" flag.` };
+    }
+
+    const quality = item.used ? normalizeQuality(item.quality) : null;
+    if (item.used && !quality) {
+      return {
+        success: false,
+        error: `Construction "${target}" must be classified as "natural" or "awkward".`,
+      };
+    }
+
+    constructions.push({
+      target,
+      used: item.used,
+      quality,
+      mine: optionalText(item.mine),
+      better: optionalText(item.better),
+      note: optionalText(item.note),
+    });
+  }
+
+  const rewrite = optionalText(verdict.rewrite) || '';
+
+  // Honour an explicit flag when the model sends one; otherwise fall back to
+  // the presence of a rewrite so an omitted flag cannot hide the corrected text.
+  const flag = typeof verdict.rewrite_needed === 'boolean' ? verdict.rewrite_needed : Boolean(rewrite);
+  const rewriteNeeded = flag && Boolean(rewrite);
+
+  return {
+    success: true,
+    verdict: {
+      summary: optionalText(verdict.summary) || '',
+      rewriteNeeded,
+      rewrite: rewriteNeeded ? rewrite : '',
+      constructions,
+    },
   };
 }
 

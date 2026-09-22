@@ -16,7 +16,7 @@ const DEFAULT_SETTINGS = {
   maxImprovements: 5,
   practiceMode: 'flashcard',
   groqApiKey: '',
-  groqModel: 'openai/gpt-oss-20b',
+  openaiModel: 'gpt-4o-mini',
   openaiApiKey: '',
   ttsEngine: 'browser',
   ttsVoice: 'alloy',
@@ -155,7 +155,7 @@ function mapSettingsFromDb(r) {
     maxImprovements: r.max_improvements ?? DEFAULT_SETTINGS.maxImprovements,
     practiceMode: r.practice_mode || DEFAULT_SETTINGS.practiceMode,
     groqApiKey: r.groq_api_key ?? DEFAULT_SETTINGS.groqApiKey,
-    groqModel: r.groq_model || 'openai/gpt-oss-20b',
+    openaiModel: r.openai_model ?? 'gpt-4o-mini',
     openaiApiKey: r.openai_api_key ?? DEFAULT_SETTINGS.openaiApiKey,
     ttsEngine: r.tts_engine || DEFAULT_SETTINGS.ttsEngine,
     ttsVoice: r.tts_voice || DEFAULT_SETTINGS.ttsVoice,
@@ -555,6 +555,18 @@ export async function getDueCards() {
   });
 }
 
+export async function getPracticeCards(requestedLimit = 20, fallbackLimit = 5) {
+  const due = await getDueCards();
+  if (due.length > 0) {
+    return due.slice(0, requestedLimit);
+  }
+  const allCards = await getSrsCards();
+  if (allCards.length === 0) return [];
+  const sorted = [...allCards].sort((a, b) => new Date(a.nextReview) - new Date(b.nextReview));
+  return sorted.slice(0, fallbackLimit);
+}
+
+
 // ── Settings ───────────────────────────────────────────────────────
 
 export async function getSettings() {
@@ -596,7 +608,7 @@ export async function updateSettings(updates) {
           max_improvements: merged.maxImprovements,
           practice_mode: merged.practiceMode,
           groq_api_key: merged.groqApiKey,
-          groq_model: merged.groqModel,
+          openai_model: merged.openaiModel,
           openai_api_key: merged.openaiApiKey,
           tts_engine: merged.ttsEngine,
           tts_voice: merged.ttsVoice,

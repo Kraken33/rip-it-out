@@ -5,7 +5,8 @@ import {
   generatePracticePrompt, 
   generateExamplesPrompt, 
   generateTranslationPracticePrompt,
-  parseImportJSON 
+  parseImportJSON,
+  parseTranslationVerdict
 } from '../prompts';
 
 describe('Prompt Orchestrator & Parser', () => {
@@ -122,4 +123,132 @@ Hope this helps!`;
       expect(res.skipped).toBe(1);
     });
   });
+
+describe('parseTranslationVerdict', () => {
+  const allNatural = {
+    verdict: {
+      summary: 'Good — natural phrasing throughout.',
+      rewrite_needed: false,
+      rewrite: '',
+      constructions: [
+        { target: 'invite over', used: true, quality: 'natural', mine: 'invited him over', better: null, note: null },
+        { target: 'plan on', used: true, quality: 'natural', mine: 'plan on going', better: null, note: null },
+      ],
+    },
+  };
+
+  it('accepts a verdict where every construction is already natural', () => {
+    const res = parseTranslationVerdict(JSON.stringify(allNatural));
+
+    expect(res.success).toBe(true);
+    expect(res.verdict.rewriteNeeded).toBe(false);
+    expect(res.verdict.rewrite).toBe('');
+    expect(res.verdict.constructions).toHaveLength(2);
+    expect(res.verdict.constructions.every((c) => c.quality === 'natural')).toBe(true);
+  });
+
+  it('parses a verdict with awkward and unused constructions', () => {
+    const json = JSON.stringify({
+      verdict: {
+        summary: 'Close — two targets need work.',
+        rewrite_needed: true,
+        rewrite: 'Yesterday I invited a friend over so we could catch up.',
+        constructions: [
+          {
+            target: 'invite over',
+            used: true,
+            quality: 'awkward',
+            mine: 'invited a friend to my house',
+            better: 'invited a friend over',
+            note: '"over" carries the target',
+          },
+          {
+            target: 'catch up',
+            used: false,
+            quality: null,
+            mine: null,
+            better: 'We should catch up soon.',
+            note: 'target missing',
+          },
+        ],
+      },
+    });
+
+    const res = parseTranslationVerdict(json);
+
+    expect(res.success).toBe(true);
+    expect(res.verdict.rewriteNeeded).toBe(true);
+    expect(res.verdict.rewrite).toContain('invited a friend over');
+    expect(res.verdict.constructions[0]).toMatchObject({ target: 'invite over', used: true, quality: 'awkward' });
+    expect(res.verdict.constructions[1]).toMatchObject({ target: 'catch up', used: false, quality: null });
+  });
+
+  it('extracts a verdict from markdown code fences and surrounding prose', () => {
+    const wrapped = `Here is my evaluation:\n\`\`\`json\n${JSON.stringify(allNatural)}\n\`\`\`\nLet me know if you want detail.`;
+    const res = parseTranslationVerdict(wrapped);
+
+    expect(res.success).toBe(true);
+    expect(res.verdict.constructions).toHaveLength(2);
+  });
+
+  it('extracts a verdict from raw JSON with surrounding prose', () => {
+    const wrapped = `Sure! ${JSON.stringify(allNatural)} That is my verdict.`;
+    expect(parseTranslationVerdict(wrapped).success).toBe(true);
+  });
+
+  it('normalizes loose quality labels', () => {
+    const json = JSON.stringify({
+      verdict: {
+        summary: 'ok',
+        rewrite_needed: false,
+        constructions: [{ target: 'turn down', used: true, quality: 'Unnatural' }],
+      },
+    });
+
+    const res = parseTranslationVerdict(json);
+
+    expect(res.success).toBe(true);
+    expect(res.verdict.constructions[0].quality).toBe('awkward');
+  });
+
+  it('derives rewriteNeeded from a rewrite when the flag is omitted', () => {
+    const json = JSON.stringify({
+      verdict: {
+        summary: 'ok',
+        rewrite: 'Yesterday I invited a friend over.',
+        constructions: [{ target: 'invite over', used: true, quality: 'awkward' }],
+      },
+    });
+
+    const res = parseTranslationVerdict(json);
+
+    expect(res.success).toBe(true);
+    expect(res.verdict.rewriteNeeded).toBe(true);
+  });
+
+  it('rejects a payload without the constructions list', () => {
+    const res = parseTranslationVerdict(JSON.stringify({ verdict: { summary: 'nice' } }));
+
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/constructions/);
+  });
+
+  it('rejects a construction that is used but unclassified', () => {
+    const json = JSON.stringify({
+      verdict: { constructions: [{ target: 'invite over', used: true }] },
+    });
+
+    const res = parseTranslationVerdict(json);
+
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/natural.*awkward/);
+  });
+
+  it('rejects unparseable output and empty input', () => {
+    expect(parseTranslationVerdict('The model rambled without any JSON').success).toBe(false);
+    expect(parseTranslationVerdict('').success).toBe(false);
+    expect(parseTranslationVerdict(null).success).toBe(false);
+  });
+});
+
 });

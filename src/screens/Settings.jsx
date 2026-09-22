@@ -296,7 +296,7 @@ export default function Settings() {
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <label htmlFor="groq-key-input" className="block text-sm font-medium text-[var(--text-secondary)]">
-                Groq API Key <span className="text-xs text-[var(--accent)] font-normal">(Free tier available - Whisper STT & Llama 3)</span>
+                Groq API Key <span className="text-xs text-[var(--accent)] font-normal">(Speech-to-Text only — optional, powers Whisper voice input)</span>
               </label>
               <a
                 href="https://console.groq.com/keys"
@@ -345,23 +345,11 @@ export default function Settings() {
             )}
           </div>
 
-          {/* Groq Model Selector */}
-          <PillGroup
-            label="Groq Chat Model"
-            value={settings.groqModel || 'openai/gpt-oss-20b'}
-            onChange={(val) => handleSettingChange('groqModel', val)}
-            options={[
-              { label: 'GPT-OSS 20B (Fast)', value: 'openai/gpt-oss-20b' },
-              { label: 'GPT-OSS 120B (Powerful)', value: 'openai/gpt-oss-120b' },
-              { label: 'Qwen 3.8 27B', value: 'qwen/qwen3.8-27b' },
-            ]}
-          />
-
           {/* OpenAI API Key */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <label htmlFor="openai-key-input" className="block text-sm font-medium text-[var(--text-secondary)]">
-                OpenAI API Key <span className="text-xs text-[var(--text-muted)] font-normal">(Optional - Unlocks realistic Neural TTS)</span>
+                OpenAI API Key <span className="text-xs text-[var(--accent)] font-normal">(Required for Seamless AI text generation, evaluation & Neural TTS)</span>
               </label>
               <a
                 href="https://platform.openai.com/api-keys"
@@ -409,6 +397,17 @@ export default function Settings() {
               </p>
             )}
           </div>
+
+          {/* OpenAI Chat Model Selector */}
+          <PillGroup
+            label="OpenAI Chat Model"
+            value={settings.openaiModel || 'gpt-4o-mini'}
+            onChange={(val) => handleSettingChange('openaiModel', val)}
+            options={[
+              { label: 'gpt-4o-mini (Fast & Cheap)', value: 'gpt-4o-mini' },
+              { label: 'gpt-4o (Higher Quality)', value: 'gpt-4o' },
+            ]}
+          />
 
           {/* TTS Engine Selector */}
           <PillGroup

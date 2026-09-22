@@ -14,6 +14,8 @@ import {
   addImprovements,
   deleteImprovement,
   getSrsCards,
+  getDueCards,
+  getPracticeCards,
   findDuplicate,
   getSettings,
   updateSettings,
@@ -225,3 +227,53 @@ describe('Activity Logs & Time Tracking', () => {
     expect(stats.reviewTimeSeconds).toBe(100);
   });
 });
+
+describe('getPracticeCards — Fallback Behavior', () => {
+  beforeEach(async () => {
+    await clearAllData();
+  });
+
+  it('returns empty array when vault has no cards', async () => {
+    const cards = await getPracticeCards();
+    expect(cards).toEqual([]);
+  });
+
+  it('falls back to top 5 upcoming cards when 0 cards are due today', async () => {
+    const session = await createSession({ title: 'Practice Fallback', sourceType: 'video' });
+    const items = Array.from({ length: 8 }, (_, i) => ({
+      original: `orig ${i}`,
+      improved: `improved ${i}`,
+      explanation: `exp ${i}`,
+    }));
+    await addImprovements(session.id, items);
+
+    // Update all cards to have nextReview in the future (e.g. tomorrow)
+    const allCards = await getSrsCards();
+    const futureDate = new Date(Date.now() + 86400000).toISOString();
+    for (const card of allCards) {
+      const { updateSrsCard } = await import('../store');
+      await updateSrsCard(card.improvementId, { nextReview: futureDate });
+    }
+
+    expect(await getDueCards()).toHaveLength(0);
+    const practiceCards = await getPracticeCards();
+    expect(practiceCards).toHaveLength(5);
+  });
+});
+
+describe('Settings — OpenAI Chat Model', () => {
+  beforeEach(async () => {
+    await clearAllData();
+  });
+
+  it('defaults openaiModel to gpt-4o-mini and survives a settings round-trip', async () => {
+    const defaults = await getSettings();
+    expect(defaults.openaiModel).toBe('gpt-4o-mini');
+    expect(defaults.groqModel).toBeUndefined();
+
+    await updateSettings({ openaiModel: 'gpt-4o' });
+    const saved = await getSettings();
+    expect(saved.openaiModel).toBe('gpt-4o');
+  });
+});
+

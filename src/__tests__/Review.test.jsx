@@ -26,6 +26,28 @@ describe('Review Component', () => {
     );
   });
 
+  it('renders review card with upcoming cards when 0 cards are due today but cards exist in vault', async () => {
+    const s = await createSession({ title: 'Book 1', sourceType: 'book' });
+    await addImprovements(s.id, [{ construction: 'invite [someone] over', original: 'invited him home', improved: 'invited him over to my place', explanation: 'natural' }]);
+
+    // Push nextReview into the future
+    const { getSrsCards, updateSrsCard, getDueCards } = await import('../store');
+    const allCards = await getSrsCards();
+    await updateSrsCard(allCards[0].improvementId, { nextReview: new Date(Date.now() + 86400000).toISOString() });
+
+    expect(await getDueCards()).toHaveLength(0);
+
+    render(
+      <BrowserRouter>
+        <Review />
+      </BrowserRouter>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/\"invite \[someone\] over\"/i)).toBeInTheDocument()
+    );
+  });
+
   it('renders card front with target construction pattern and handles answer reveal', async () => {
     const s = await createSession({ title: 'Book 1', sourceType: 'book' });
     await addImprovements(s.id, [{ construction: 'invite [someone] over', original: 'invited him home', improved: 'invited him over to my place', explanation: 'natural' }]);

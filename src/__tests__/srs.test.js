@@ -64,4 +64,17 @@ describe('SRS SM-2 Engine', () => {
     expect(RATINGS[0].label).toBe('Again');
     expect(RATINGS[3].label).toBe('Easy');
   });
+
+  // Contract guard for the Practice rate-recall handoff regression: processReview
+  // expects a real SRS card (status/easeFactor/intervalDays/lapses). Handing it an
+  // improvement record made scores 2-4 compute NaN intervals and throw on
+  // Invalid Date in toISOString, leaving only "Again" clickable.
+  it('processReview contract: a complete new-status SRS card rates cleanly for all scores 1-4', () => {
+    for (const score of [1, 2, 3, 4]) {
+      const result = processReview({ ...initialCard }, score);
+      expect(Number.isFinite(result.intervalDays)).toBe(true);
+      expect(Number.isFinite(result.easeFactor)).toBe(true);
+      expect(Number.isNaN(new Date(result.nextReview).getTime())).toBe(false);
+    }
+  });
 });

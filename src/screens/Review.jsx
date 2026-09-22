@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { getDueCards, getImprovement, getSession, updateSrsCard, getSrsCards, logActivity, getSettings } from '../store';
+import { getPracticeCards, getImprovement, getSession, updateSrsCard, getSrsCards, logActivity, getSettings } from '../store';
 import { processReview } from '../srs';
 import { generateExamplesPrompt } from '../prompts';
 import AudioPlayerButton from '../components/AudioPlayerButton';
@@ -34,13 +34,13 @@ export default function Review() {
     async function loadCards() {
       try {
         setLoading(true);
-        const [st, due] = await Promise.all([getSettings(), getDueCards()]);
+        const [st, cardsToReview] = await Promise.all([getSettings(), getPracticeCards(20, 5)]);
         if (isMounted) setSettings(st);
 
-        if (due.length > 0) {
+        if (cardsToReview.length > 0) {
           const hydratedQueue = (
             await Promise.all(
-              due.map(async (card) => {
+              cardsToReview.map(async (card) => {
                 const improvement = await getImprovement(card.improvementId);
                 if (!improvement) return null;
                 const session = await getSession(improvement.sessionId);

@@ -82,35 +82,58 @@ export async function transcribeAudio(audioBlob, settings) {
   return data.text || '';
 }
 
+const OPENAI_CHAT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
+const DEFAULT_OPENAI_CHAT_MODEL = 'gpt-4o-mini';
+
 /**
- * Send user description directly to AI service (Groq or OpenAI) and return parsed improvements
+ * Shared OpenAI chat-completions request used by every text generation/evaluation feature.
+ * Requires an OpenAI API key — Groq keys are only used for speech-to-text.
+ * @param {Object} settings User settings (needs openaiApiKey; openaiModel optional)
+ * @param {Object} options { messages, temperature, maxTokens }
+ * @returns {Promise<string>} Raw assistant message content (may be an empty string)
+ */
+async function requestOpenAIChat(settings, { messages, temperature, maxTokens }) {
+  const apiKey = settings.openaiApiKey?.trim();
+  if (!apiKey) {
+    throw new Error('No API Key configured. Please add an OpenAI API Key in Settings.');
+  }
+
+  const response = await fetch(OPENAI_CHAT_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: settings.openaiModel || DEFAULT_OPENAI_CHAT_MODEL,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+    }),
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    let msg = `AI completion failed (${response.status})`;
+    try {
+      const errJson = JSON.parse(errText);
+      msg = errJson.error?.message || msg;
+    } catch (_) {}
+    throw new Error(msg);
+  }
+
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || '';
+}
+
+/**
+ * Send user description directly to the OpenAI Chat Completions API and return parsed improvements
  * @param {Object} session
  * @param {Object} settings
  * @param {string} userDescriptionText
  * @returns {Promise<{ improvements: Array, rawResponse: string }>}
  */
 export async function generateSeamlessSessionFeedback(session, settings, userDescriptionText) {
-  const groqKey = settings.groqApiKey?.trim();
-  const openaiKey = settings.openaiApiKey?.trim();
-
-  if (!groqKey && !openaiKey) {
-    throw new Error('No API Key configured. Please add a Groq API Key or OpenAI API Key in Settings.');
-  }
-
-  const isGroq = Boolean(groqKey);
-  const apiKey = isGroq ? groqKey : openaiKey;
-  const endpoint = isGroq
-    ? 'https://api.groq.com/openai/v1/chat/completions'
-    : 'https://api.openai.com/v1/chat/completions';
-
-  // Fallback candidate models for Groq (free-plan supported models only)
-  const groqCandidateModels = [
-    settings.groqModel || 'openai/gpt-oss-20b',
-    'openai/gpt-oss-20b',
-    'openai/gpt-oss-120b',
-    'qwen/qwen3.8-27b',
-  ];
-
   const SOURCE_VERBS = { video: 'watched', book: 'read', article: 'read', podcast: 'listened to', other: 'went through' };
   const verb = SOURCE_VERBS[session.sourceType] || 'went through';
   const maxImp = settings.maxImprovements || 5;
@@ -145,79 +168,24 @@ You MUST respond with ONLY a valid JSON object in this exact format — no expla
   ]
 }`;
 
-  const requestModel = async (modelName) => {
-    return await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: modelName,
-        messages: [
-          { role: 'system', content: systemMessage },
-          { role: 'user', content: `Please analyze this text and return improvements as JSON:\n\n"${userDescriptionText}"` },
-        ],
-        temperature: 0.3,
-        // Reasoning models (openai/gpt-oss-*, qwen3) need large budgets:
-        // they spend thousands of tokens thinking before outputting.
-        max_tokens: 8000,
-      }),
-    });
-  };
+  const messages = [
+    { role: 'system', content: systemMessage },
+    { role: 'user', content: `Please analyze this text and return improvements as JSON:\n\n"${userDescriptionText}"` },
+  ];
 
-  let response;
-  let usedModel = null;
-  if (isGroq) {
-    // Try primary chosen model, fallback on model errors or JSON validation errors
-    const triedModels = new Set();
-    for (const m of groqCandidateModels) {
-      if (triedModels.has(m)) continue;
-      triedModels.add(m);
-      response = await requestModel(m);
-      if (response.ok) { usedModel = m; break; }
-
-      const errText = await response.clone().text();
-      const isRetryableError = (
-        errText.includes('model_not_found') ||
-        errText.includes('does not exist') ||
-        errText.includes('model_decommissioned') ||
-        errText.includes('json_validate_failed')
-      );
-      if (!isRetryableError) break; // Auth or rate-limit errors — don't retry
-    }
-  } else {
-    response = await requestModel('gpt-4o-mini');
-  }
-
-  if (!response.ok) {
-    const errText = await response.text();
-    let msg = `AI completion failed (${response.status})`;
-    try {
-      const errJson = JSON.parse(errText);
-      msg = errJson.error?.message || msg;
-    } catch (_) {}
-    throw new Error(msg);
-  }
-
-  const data = await response.json();
-  const choice = data.choices?.[0]?.message;
-
-  // Reasoning models (openai/gpt-oss-*, qwen3) put output in content but
-  // sometimes run out of tokens mid-reasoning and leave content empty.
-  // Fallback: try to extract JSON from the reasoning trace.
-  let rawContent = choice?.content || '';
-  if (!rawContent.trim() && choice?.reasoning) {
-    rawContent = choice.reasoning;
-  }
+  const rawContent = await requestOpenAIChat(settings, {
+    messages,
+    temperature: 0.3,
+    maxTokens: 8000,
+  });
 
   const parsed = parseImportJSON(rawContent);
   if (!parsed.success) {
-    // If content was genuinely empty (reasoning model hit token limit),
+    // If content was genuinely empty (the model hit its token limit),
     // give a clearer message instead of the generic parse error.
-    if (!choice?.content?.trim()) {
+    if (!rawContent.trim()) {
       throw new Error(
-        'The AI model ran out of tokens before producing output. Try a shorter description, or switch to a different Groq model in Settings.'
+        'The AI model ran out of tokens before producing output. Try a shorter description, or switch to a different OpenAI model in Settings.'
       );
     }
     throw new Error(parsed.error || 'Failed to parse AI response into improvements.');
@@ -238,23 +206,6 @@ You MUST respond with ONLY a valid JSON object in this exact format — no expla
  * @returns {Promise<string>} Full assistant reply text
  */
 export async function streamSeamlessChatCompletion(session, messages, settings, onChunk) {
-  const groqKey = settings.groqApiKey?.trim();
-  const openaiKey = settings.openaiApiKey?.trim();
-
-  if (!groqKey && !openaiKey) {
-    throw new Error('No API Key configured. Please add a Groq API Key or OpenAI API Key in Settings.');
-  }
-
-  const isGroq = Boolean(groqKey);
-  const apiKey = isGroq ? groqKey : openaiKey;
-  const endpoint = isGroq
-    ? 'https://api.groq.com/openai/v1/chat/completions'
-    : 'https://api.openai.com/v1/chat/completions';
-
-  const modelName = isGroq
-    ? (settings.groqModel || 'openai/gpt-oss-20b')
-    : 'gpt-4o-mini';
-
   const SOURCE_VERBS = { video: 'watched', book: 'read', article: 'read', podcast: 'listened to', other: 'went through' };
   const verb = SOURCE_VERBS[session?.sourceType] || 'went through';
 
@@ -266,32 +217,11 @@ Respond naturally to what they share, validate their ideas, and ask 1 engaging f
     ...messages.map((m) => ({ role: m.role, content: m.content })),
   ];
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: formattedMessages,
-      temperature: 0.7,
-      max_tokens: 1000,
-    }),
+  const reply = await requestOpenAIChat(settings, {
+    messages: formattedMessages,
+    temperature: 0.7,
+    maxTokens: 1000,
   });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    let msg = `Chat completion failed (${response.status})`;
-    try {
-      const errJson = JSON.parse(errText);
-      msg = errJson.error?.message || msg;
-    } catch (_) {}
-    throw new Error(msg);
-  }
-
-  const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content || '';
   if (onChunk && reply) {
     onChunk(reply);
   }
@@ -299,85 +229,119 @@ Respond naturally to what they share, validate their ideas, and ask 1 engaging f
 }
 
 /**
- * Stream translation practice completion for a round of target constructions
- * @param {Array} roundCards Target construction items for current round
- * @param {Array} messages List of prior message objects { role, content }
+ * Generate the Russian practice passage for one translation round.
+ * Passage generation and evaluation are separate calls so each carries its own
+ * prompt, temperature and token budget.
+ *
+ * @param {Array} roundCards Target construction items for the current round
  * @param {Object} settings User configuration settings
- * @param {Function} [onChunk] Callback for streaming text updates
- * @returns {Promise<string>} Full assistant reply text
+ * @param {Array} [history] Prior passage/translation turns (no verdict payloads)
+ * @returns {Promise<string>} Russian passage with [[Russian phrase|target]] tags
  */
-export async function streamTranslationPracticeCompletion(roundCards = [], messages = [], settings = {}, onChunk) {
-  const groqKey = settings.groqApiKey?.trim();
-  const openaiKey = settings.openaiApiKey?.trim();
-
-  if (!groqKey && !openaiKey) {
-    throw new Error('No API Key configured. Please add a Groq API Key or OpenAI API Key in Settings.');
-  }
-
-  const isGroq = Boolean(groqKey);
-  const apiKey = isGroq ? groqKey : openaiKey;
-  const endpoint = isGroq
-    ? 'https://api.groq.com/openai/v1/chat/completions'
-    : 'https://api.openai.com/v1/chat/completions';
-
-  const modelName = isGroq
-    ? (settings.groqModel || 'openai/gpt-oss-20b')
-    : 'gpt-4o-mini';
-
+export async function generateTranslationRoundPassage(roundCards = [], settings = {}, history = []) {
   const phraseList = roundCards
     .map((c, i) => `${i + 1}. Construction: "${c.construction || c.improved}" (Target usage: "${c.improved}")`)
     .join('\n');
 
   const systemMessage = `You are an English speaking coach and translation trainer.
-Your task is to run a Russian-to-English translation practice round.
+Your task is to write the Russian source passage for a Russian-to-English translation round.
 
 The target constructions for this round are:
 ${phraseList}
 
 Rules:
-1. If generating a new passage (or starting a round):
-   Write a short, natural passage in RUSSIAN (на русском языке) containing natural Russian equivalents of these target constructions.
-   CRITICAL TAG FORMAT: Wrap each targeted Russian phrase in double brackets like: [[Russian phrase|Target English Construction]] (e.g. [[пригласил друга в гости|invite over]]).
-2. If evaluating user's translation:
-   Briefly evaluate how accurately and naturally they translated the Russian text into English and used the target constructions. Point out any errors and give friendly feedback.
+1. Write ONE short, natural passage in RUSSIAN (на русском языке) containing natural Russian equivalents of these target constructions.
+2. CRITICAL TAG FORMAT: Wrap each targeted Russian phrase in double brackets like: [[Russian phrase|Target English Construction]] (e.g. [[пригласил друга в гости|invite over]]).
+3. Output ONLY the Russian passage with the tagged phrases — no heading, no English translation, no commentary, and never translate the passage yourself.
+4. Do not reuse a passage topic that already appeared earlier in this conversation.
 
-Constraints: Level: ${settings.level || 'intermediate'}. Formality: ${settings.formality || 'casual'}. Keep response concise and helpful.`;
+Constraints: Level: ${settings.level || 'intermediate'}. Formality: ${settings.formality || 'casual'}. Keep the passage to 3-5 sentences.`;
 
   const formattedMessages = [
     { role: 'system', content: systemMessage },
-    ...messages.map((m) => ({ role: m.role, content: m.content })),
+    ...history
+      .filter((m) => m && typeof m.content === 'string' && m.content.trim())
+      .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
+    { role: 'user', content: 'Write the Russian passage for this round now.' },
   ];
 
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: modelName,
-      messages: formattedMessages,
-      temperature: 0.7,
-      max_tokens: 1000,
-    }),
+  const reply = await requestOpenAIChat(settings, {
+    messages: formattedMessages,
+    temperature: 0.7,
+    maxTokens: 1000,
   });
-
-  if (!response.ok) {
-    const errText = await response.text();
-    let msg = `Translation practice completion failed (${response.status})`;
-    try {
-      const errJson = JSON.parse(errText);
-      msg = errJson.error?.message || msg;
-    } catch (_) {}
-    throw new Error(msg);
-  }
-
-  const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content || '';
-  if (onChunk && reply) {
-    onChunk(reply);
+  if (!reply.trim()) {
+    throw new Error(
+      'The AI model ran out of tokens before producing output. Try a shorter round, or switch to a different OpenAI model in Settings.'
+    );
   }
   return reply;
+}
+
+/**
+ * Evaluate the learner's English translation for the current round.
+ * Returns the raw model reply; interpret it with parseTranslationVerdict.
+ *
+ * @param {Array} roundCards Target construction items for the current round
+ * @param {string} passageText The Russian passage the learner translated
+ * @param {string} userTranslation The learner's English translation
+ * @param {Object} settings User configuration settings
+ * @returns {Promise<string>} Raw verdict JSON text
+ */
+export async function evaluateTranslationRound(roundCards = [], passageText = '', userTranslation = '', settings = {}) {
+  const phraseList = roundCards
+    .map((c, i) => `${i + 1}. Construction: "${c.construction || c.improved}"`)
+    .join('\n');
+
+  const systemMessage = `You are an English speaking coach grading a Russian-to-English translation exercise.
+
+The learner was given this Russian passage:
+"${passageText}"
+
+The target constructions for this round are:
+${phraseList}
+
+Rules:
+1. Compare the learner's English translation against the Russian passage above.
+2. Report EVERY target construction exactly once in "constructions":
+   - "used": true when the learner attempted that construction, false when it is absent from their translation.
+   - "quality": "natural" or "awkward" when "used" is true; null when "used" is false.
+   - "mine": the learner's own phrase for that construction, or null when they did not use it.
+   - "better": a natural way to use that construction (required when "quality" is "awkward" or "used" is false).
+   - "note": one short sentence explaining the problem; null when the construction is natural.
+3. If the translation is already natural and every construction is correct, set "rewrite_needed" to false, leave "rewrite" empty and say so in "summary". NEVER invent changes, corrections or "more natural" alternatives for a correct sentence.
+4. Otherwise set "rewrite_needed" to true and put a natural English version of the LEARNER'S OWN sentence in "rewrite", keeping their meaning and wording.
+
+Respond with ONLY this JSON object — no markdown, no explanation, no extra text:
+{
+  "verdict": {
+    "summary": "one short sentence",
+    "rewrite_needed": false,
+    "rewrite": "",
+    "constructions": [
+      { "target": "invite over", "used": true, "quality": "natural", "mine": "...", "better": "...", "note": null }
+    ]
+  }
+}
+
+Constraints: Level: ${settings.level || 'intermediate'}. Write the summary, the notes and the rewrite in English.`;
+
+  const formattedMessages = [
+    { role: 'system', content: systemMessage },
+    { role: 'user', content: `Here is my English translation of the passage:\n\n"${userTranslation}"` },
+  ];
+
+  const rawContent = await requestOpenAIChat(settings, {
+    messages: formattedMessages,
+    temperature: 0.3,
+    maxTokens: 8000,
+  });
+  if (!rawContent.trim()) {
+    throw new Error(
+      'The AI model ran out of tokens before producing output. Try a shorter translation, or switch to a different OpenAI model in Settings.'
+    );
+  }
+  return rawContent;
 }
 
 

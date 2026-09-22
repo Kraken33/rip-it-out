@@ -1,5 +1,5 @@
 export default function ModeToggle({ mode, onChange, settings, showWarningBanner = true, className = '' }) {
-  const hasKey = Boolean(settings?.groqApiKey?.trim() || settings?.openaiApiKey?.trim());
+  const hasKey = Boolean(settings?.openaiApiKey?.trim());
 
   const handleSelect = (selectedMode) => {
     onChange(selectedMode);
@@ -41,7 +41,7 @@ export default function ModeToggle({ mode, onChange, settings, showWarningBanner
         {showBanner && (
           <div className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-xl flex items-center gap-1.5 max-w-xs text-left animate-fade-in">
             <span className="shrink-0">⚠️</span>
-            <span>Add a Groq or OpenAI key in Settings to unlock.</span>
+            <span>Add an OpenAI API key in Settings to unlock.</span>
           </div>
         )}
       </div>
