@@ -74,7 +74,7 @@ export async function transcribeAudio(audioBlob, settings) {
     try {
       const errJson = JSON.parse(errorText);
       msg = errJson.error?.message || msg;
-    } catch (_) {}
+    } catch (_) { }
     throw new Error(msg);
   }
 
@@ -161,7 +161,7 @@ async function requestOpenAIChat(settings, { messages, temperature, maxTokens })
     try {
       const errJson = JSON.parse(errText);
       msg = errJson.error?.message || msg;
-    } catch (_) {}
+    } catch (_) { }
     throw new Error(msg);
   }
 
@@ -263,7 +263,7 @@ Respond naturally to what they share, validate their ideas, and ask 1 engaging f
   const reply = await requestOpenAIChat(settings, {
     messages: formattedMessages,
     temperature: 0.7,
-    maxTokens: 1000,
+    maxTokens: 2000,
   });
   if (onChunk && reply) {
     onChunk(reply);
@@ -311,7 +311,7 @@ Constraints: Level: ${settings.level || 'intermediate'}. Formality: ${settings.f
   const reply = await requestOpenAIChat(settings, {
     messages: formattedMessages,
     temperature: 0.7,
-    maxTokens: 1000,
+    maxTokens: 2000,
   });
   if (!reply.trim()) {
     throw new Error(
@@ -345,15 +345,16 @@ The target constructions for this round are:
 ${phraseList}
 
 Rules:
-1. Compare the learner's English translation against the Russian passage above.
+1. Compare the learner's English translation against the Russian passage above, and grade ONLY the learner's usage of the target constructions — not whether a different construction would sound more idiomatic.
 2. Report EVERY target construction exactly once in "constructions":
    - "used": true when the learner attempted that construction, false when it is absent from their translation.
-   - "quality": "natural" or "awkward" when "used" is true; null when "used" is false.
+   - "quality": "natural" when the learner used that target construction grammatically and appropriately for the passage's meaning — even if a different construction would be more idiomatic; "awkward" only when their usage of THAT construction is actually wrong or misused; null when "used" is false.
+   - When a target lists alternatives separated by "/", using any ONE of the alternatives correctly counts as using the construction.
    - "mine": the learner's own phrase for that construction, or null when they did not use it.
-   - "better": a natural way to use that construction (required when "quality" is "awkward" or "used" is false).
-   - "note": one short sentence explaining the problem; null when the construction is natural.
+   - "better": the SAME target construction used correctly (required when "quality" is "awkward" or "used" is false). NEVER propose replacing the target construction with a different construction or phrasing.
+   - "note": one short sentence explaining the problem with the learner's usage of that target construction; null when the construction is natural.
 3. If the translation is already natural and every construction is correct, set "rewrite_needed" to false, leave "rewrite" empty and say so in "summary". NEVER invent changes, corrections or "more natural" alternatives for a correct sentence.
-4. Otherwise set "rewrite_needed" to true and put a natural English version of the LEARNER'S OWN sentence in "rewrite", keeping their meaning and wording.
+4. Otherwise set "rewrite_needed" to true and put a corrected version of the LEARNER'S OWN sentence in "rewrite", keeping their meaning and wording, preserving every correctly used target construction as-is, and fixing only the actual errors.
 
 Respond with ONLY this JSON object — no markdown, no explanation, no extra text:
 {
@@ -420,7 +421,7 @@ export async function fetchOpenAITTS(text, voice = 'alloy', apiKey) {
     try {
       const errJson = JSON.parse(errText);
       msg = errJson.error?.message || msg;
-    } catch (_) {}
+    } catch (_) { }
     throw new Error(msg);
   }
 

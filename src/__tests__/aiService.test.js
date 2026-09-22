@@ -372,6 +372,15 @@ describe('AI Service Layer', () => {
       expect(systemPrompt).toContain('Вчера я пригласил друга в гости.');
       expect(systemPrompt).toContain('NEVER invent changes');
       expect(systemPrompt).toContain('invite over');
+      // Grading targets the learner's usage of the target constructions only
+      expect(systemPrompt).toContain(
+        "grade ONLY the learner's usage of the target constructions"
+      );
+      expect(systemPrompt).toContain('alternatives separated by "/"');
+      expect(systemPrompt).toContain('the SAME target construction used correctly');
+      expect(systemPrompt).toContain(
+        'preserving every correctly used target construction as-is'
+      );
       expect(body.temperature).toBe(0.3);
       expect(body.max_tokens).toBe(8000);
       expect(body.messages[1].content).toContain('Yesterday I invited a friend to my house.');
