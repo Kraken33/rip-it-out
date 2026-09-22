@@ -26,6 +26,7 @@ Please follow these steps:
 STEP 1: REVIEW MY DESCRIPTION
 - Identify spoken English improvements from my text (up to ${maxImp} total across our entire conversation).
 - For each improvement, highlight the reusable **construction/pattern** first (e.g., if I said "invited him to my home", the construction is "invite [someone] over to [place]").
+- Keep each construction SHORT: a single clause of roughly 2-7 words with bracket slots (e.g. "start taking [class] to [purpose]"). NEVER copy a whole sentence or chain multiple clauses — a pattern like "If I wake up at [time], I feel [adjective] and like I haven't had enough sleep" is TOO LONG; extract the single core structure instead.
 - Ignore missing or incorrect articles (a, an, the) entirely. Focus on natural phrasing, collocations, idioms, and constructions.
 
 STEP 2: ASK ME 3 FOLLOW-UP QUESTIONS
@@ -54,7 +55,7 @@ export function generateExportPrompt() {
 {
   "improvements": [
     {
-      "construction": "reusable pattern (e.g. invite [someone] over to [place])",
+      "construction": "short reusable pattern, single clause of 2-7 words (e.g. invite [someone] over)",
       "original": "the exact phrase I used",
       "improved": "the more natural spoken sentence version",
       "explanation": "why this construction/phrasing sounds more natural in spoken English",
@@ -67,7 +68,7 @@ export function generateExportPrompt() {
 Rules:
 - Output ONLY the JSON block, nothing else.
 - Use exactly the field names shown above.
-- "construction" MUST be the abstracted pattern or phrase structure.
+- "construction" MUST be the abstracted pattern or phrase structure, kept SHORT: a single clause of roughly 2-7 words with bracket slots (e.g. "start taking [class] to [purpose]"), never a whole sentence or a multi-clause pattern like "If I wake up at [time], I feel [adjective] and like I haven't had enough sleep".
 - "category" must be one of: grammar, vocabulary, collocation, idiom, pronunciation, structure
 - "spoken_frequency" must be one of: very_high, high, medium`;
 }

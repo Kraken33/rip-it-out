@@ -141,6 +141,115 @@ describe('AI Service Layer', () => {
       expect(options.headers.Authorization).toBe('Bearer sk_123');
       expect(JSON.parse(options.body).model).toBe('gpt-4o');
     });
+
+    it('sends max_completion_tokens and omits temperature/max_tokens for gpt-5+ models', async () => {
+      const session = { title: 'Tech Talk', sourceType: 'video' };
+      const settings = { openaiApiKey: 'sk_123', openaiModel: 'gpt-5' };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  improvements: [
+                    {
+                      construction: 'watch [something]',
+                      original: 'watched a video',
+                      improved: 'went through a video presentation',
+                      explanation: 'Sounds more formal',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+      });
+
+      await generateSeamlessSessionFeedback(session, settings, 'I watched a video.');
+
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      expect(body.model).toBe('gpt-5');
+      expect(body.max_completion_tokens).toBe(8000);
+      expect(body.max_tokens).toBeUndefined();
+      expect(body.temperature).toBeUndefined();
+    });
+
+    it('applies the completion-tokens format to every gpt-5+ catalog model', async () => {
+      const session = { title: 'Tech Talk', sourceType: 'video' };
+      const newGenModels = OPENAI_MODEL_OPTIONS.map((o) => o.value).filter((v) => /^(gpt-[5-9]|o\d)/.test(v));
+      expect(newGenModels.length).toBeGreaterThan(0);
+
+      for (const model of newGenModels) {
+        fetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            choices: [
+              {
+                message: {
+                  content: JSON.stringify({
+                    improvements: [
+                      {
+                        construction: 'watch [something]',
+                        original: 'watched a video',
+                        improved: 'went through a video presentation',
+                        explanation: 'Sounds more formal',
+                      },
+                    ],
+                  }),
+                },
+              },
+            ],
+          }),
+        });
+
+        await generateSeamlessSessionFeedback(session, { openaiApiKey: 'sk_123', openaiModel: model }, 'text');
+
+        const body = JSON.parse(fetch.mock.calls.at(-1)[1].body);
+        expect(body.max_completion_tokens).toBe(8000);
+        expect(body.max_tokens).toBeUndefined();
+        expect(body.temperature).toBeUndefined();
+      }
+    });
+
+    it('instructs the model to keep construction patterns short and single-clause', async () => {
+      const session = { title: 'Tech Talk', sourceType: 'video' };
+      const settings = { openaiApiKey: 'sk_123' };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  improvements: [
+                    {
+                      construction: 'watch [something]',
+                      original: 'watched a video',
+                      improved: 'went through a video presentation',
+                      explanation: 'Sounds more formal',
+                    },
+                  ],
+                }),
+              },
+            },
+          ],
+        }),
+      });
+
+      await generateSeamlessSessionFeedback(session, settings, 'I watched a video.');
+
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      const systemPrompt = body.messages[0].content;
+      expect(systemPrompt).toMatch(/2-7 words/i);
+      expect(systemPrompt).toMatch(/single clause/i);
+      expect(systemPrompt).toContain('start taking [class] to [purpose]');
+      expect(systemPrompt).toContain("If I wake up at [time], I feel [adjective] and like I haven't had enough sleep");
+      expect(systemPrompt).toMatch(/NOT acceptable/i);
+    });
   });
 
   describe('streamSeamlessChatCompletion', () => {

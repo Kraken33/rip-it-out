@@ -1,9 +1,6 @@
-# Prompt Orchestrator Specification
+# Prompt Orchestrator Delta
 
-## Purpose
-Assemble structured prompts for external LLMs and parse pasted JSON outputs.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Prompt Generation
 The app must generate Prompts #1-#4 with specific instructions and constraints. Construction-extraction prompts (Prompt #1 and Prompt #2) SHALL instruct the LLM to keep each `construction` pattern short and reusable: a single compact phrase structure of roughly 2–7 words in one clause, using bracket slots (e.g. `"start taking [class] to [purpose]"`), and SHALL give a counter-example of an overly long, multi-clause pattern to avoid (e.g. `"If I wake up at [time], I feel [adjective] and like I haven't had enough sleep"`).

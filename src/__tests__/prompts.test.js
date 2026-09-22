@@ -27,6 +27,23 @@ describe('Prompt Orchestrator & Parser', () => {
     expect(prompt).toContain('WHOLE conversation');
   });
 
+  it('generateDescriptionPrompt requires short single-clause construction patterns', () => {
+    const prompt = generateDescriptionPrompt(dummySession, dummySettings);
+    expect(prompt).toMatch(/2-7 words/i);
+    expect(prompt).toMatch(/single clause/i);
+    expect(prompt).toContain('start taking [class] to [purpose]');
+    expect(prompt).toContain("If I wake up at [time], I feel [adjective] and like I haven't had enough sleep");
+    expect(prompt).toMatch(/TOO LONG/i);
+  });
+
+  it('generateExportPrompt requires short single-clause construction patterns', () => {
+    const prompt = generateExportPrompt();
+    expect(prompt).toMatch(/2-7 words/i);
+    expect(prompt).toMatch(/single clause/i);
+    expect(prompt).toContain('start taking [class] to [purpose]');
+    expect(prompt).toContain("If I wake up at [time], I feel [adjective] and like I haven't had enough sleep");
+  });
+
   it('generatePracticePrompt generates 5 Russian scenario questions for English target constructions', () => {
     const imps = [{ construction: 'invite [someone] over', original: 'invited him home', improved: 'invited him over to my place' }];
     const prompt = generatePracticePrompt(imps, dummySettings);

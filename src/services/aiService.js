@@ -114,6 +114,17 @@ export const OPENAI_MODEL_OPTIONS = [
 ].map(({ value, limits }) => ({ value, limits, label: `${value} — ${limits}` }));
 
 /**
+ * New-generation models (gpt-5+, o-series reasoning models) reject the legacy
+ * `max_tokens` parameter and require `max_completion_tokens` instead. They also
+ * only accept the default temperature, so `temperature` must be omitted for them.
+ */
+const COMPLETION_TOKENS_MODEL_PATTERN = /^(gpt-[5-9]|o\d)/i;
+
+function requiresCompletionTokensParam(model) {
+  return COMPLETION_TOKENS_MODEL_PATTERN.test(model);
+}
+
+/**
  * Shared OpenAI chat-completions request used by every text generation/evaluation feature.
  * Requires an OpenAI API key — Groq keys are only used for speech-to-text.
  * @param {Object} settings User settings (needs openaiApiKey; openaiModel optional)
@@ -126,18 +137,22 @@ async function requestOpenAIChat(settings, { messages, temperature, maxTokens })
     throw new Error('No API Key configured. Please add an OpenAI API Key in Settings.');
   }
 
+  const model = settings.openaiModel || DEFAULT_OPENAI_CHAT_MODEL;
+  const body = { model, messages };
+  if (requiresCompletionTokensParam(model)) {
+    body.max_completion_tokens = maxTokens;
+  } else {
+    body.temperature = temperature;
+    body.max_tokens = maxTokens;
+  }
+
   const response = await fetch(OPENAI_CHAT_ENDPOINT, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      model: settings.openaiModel || DEFAULT_OPENAI_CHAT_MODEL,
-      messages,
-      temperature,
-      max_tokens: maxTokens,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -175,7 +190,7 @@ Focus on: natural phrasing, collocations, idioms, reusable constructions. Ignore
 Formality: ${settings.formality}. Level: ${settings.level}. Focus: ${settings.focusArea === 'all' ? 'any aspect of spoken English' : settings.focusArea}.
 
 Rules for fields:
-- "construction": MUST be the abstracted pattern or phrase structure (e.g. invite [someone] over to [place], want to [verb], test if [something] works). NEVER put error descriptions or titles here.
+- "construction": MUST be the abstracted pattern or phrase structure, and it MUST be SHORT: a single clause of roughly 2-7 words with bracket slots (e.g. invite [someone] over, start taking [class] to [purpose]). NEVER copy a whole sentence or chain multiple clauses — a long pattern like "If I wake up at [time], I feel [adjective] and like I haven't had enough sleep" is NOT acceptable; extract the single core structure instead. NEVER put error descriptions or titles here.
 - "original": the exact phrase the speaker used.
 - "improved": the more natural spoken sentence version.
 - "explanation": concise explanation of why this phrasing sounds more natural in spoken English.
@@ -186,7 +201,7 @@ You MUST respond with ONLY a valid JSON object in this exact format — no expla
 {
   "improvements": [
     {
-      "construction": "abstracted pattern (e.g. invite [someone] over)",
+      "construction": "short single-clause pattern, 2-7 words (e.g. invite [someone] over)",
       "original": "the exact phrase the speaker used",
       "improved": "a natural spoken English version",
       "explanation": "why this sounds more natural in spoken English",
