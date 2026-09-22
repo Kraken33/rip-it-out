@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Settings from '../screens/Settings';
-import { clearAllData, getSettings } from '../store';
+import { clearAllData, getSettings, updateSettings } from '../store';
 
 vi.mock('../supabaseClient', () => ({
   supabase: null,
@@ -43,7 +43,7 @@ describe('Settings Component', () => {
     expect(screen.getByText(/Speech-to-Text only/i)).toBeInTheDocument();
   });
 
-  it('renders the OpenAI Chat Model picker and persists the selection', async () => {
+  it('renders the OpenAI Chat Model selector and persists the selection', async () => {
     render(
       <BrowserRouter>
         <Settings />
@@ -54,13 +54,33 @@ describe('Settings Component', () => {
       expect(screen.getByText('OpenAI Chat Model')).toBeInTheDocument()
     );
 
-    expect(screen.getByText('gpt-4o-mini (Fast & Cheap)')).toBeInTheDocument();
+    const select = screen.getByLabelText('OpenAI Chat Model');
+    expect(select.tagName).toBe('SELECT');
+    expect(select.value).toBe('gpt-4o-mini');
 
-    fireEvent.click(screen.getByText('gpt-4o (Higher Quality)'));
+    fireEvent.change(select, { target: { value: 'gpt-5.5' } });
 
     await waitFor(async () => {
       const saved = await getSettings();
-      expect(saved.openaiModel).toBe('gpt-4o');
+      expect(saved.openaiModel).toBe('gpt-5.5');
     });
+  });
+
+  it('keeps a legacy openaiModel value visible and selected in the selector', async () => {
+    await updateSettings({ openaiModel: 'gpt-4o' });
+
+    render(
+      <BrowserRouter>
+        <Settings />
+      </BrowserRouter>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText('OpenAI Chat Model')).toBeInTheDocument()
+    );
+
+    const select = screen.getByLabelText('OpenAI Chat Model');
+    expect(screen.getByRole('option', { name: /gpt-4o \(current — not in catalog\)/ })).toBeInTheDocument();
+    expect(select.value).toBe('gpt-4o');
   });
 });

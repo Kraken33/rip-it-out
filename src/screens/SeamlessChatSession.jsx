@@ -11,10 +11,20 @@ export default function SeamlessChatSession({ session: initialSession, settings,
   const [errorMsg, setErrorMsg] = useState('');
   const [startTime] = useState(Date.now());
   const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Auto-grow the message textarea up to its max height (max-h-40)
+  useEffect(() => {
+    const el = inputRef.current;
+    if (el) {
+      el.style.height = 'auto';
+      el.style.height = `${el.scrollHeight}px`;
+    }
+  }, [inputText]);
 
   // Initial welcome prompt if message list is empty
   useEffect(() => {
@@ -196,23 +206,35 @@ export default function SeamlessChatSession({ session: initialSession, settings,
             e.preventDefault();
             handleSendMessage();
           }}
-          className="flex items-center gap-2"
+          className="space-y-2"
         >
-          <input
-            type="text"
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            placeholder="Speak above or type your answer in English..."
-            disabled={loading}
-            className="flex-1 bg-[#0e0f17] border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium"
-          />
-          <button
-            type="submit"
-            disabled={!inputText.trim() || loading}
-            className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0"
-          >
-            Send ▶
-          </button>
+          <div className="flex items-end gap-2">
+            <textarea
+              ref={inputRef}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder="Speak above or type your answer in English..."
+              rows={1}
+              disabled={loading}
+              className="flex-1 max-h-40 bg-[#0e0f17] border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-none"
+            />
+            <button
+              type="submit"
+              disabled={!inputText.trim() || loading}
+              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0"
+            >
+              Send ▶
+            </button>
+          </div>
+          <p className="text-[10px] text-gray-500 font-medium">
+            Enter for new line · Ctrl/Cmd+Enter to send
+          </p>
         </form>
       </div>
     </div>

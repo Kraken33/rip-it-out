@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, evaluateTranslationRound } from '../services/aiService';
+import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, evaluateTranslationRound, OPENAI_MODEL_OPTIONS } from '../services/aiService';
 
 describe('AI Service Layer', () => {
   beforeEach(() => {
@@ -318,6 +318,23 @@ describe('AI Service Layer', () => {
           }),
         })
       );
+    });
+  });
+
+  describe('OPENAI_MODEL_OPTIONS catalog', () => {
+    it('contains exactly 21 models, no "(long context)" variants, and includes gpt-4o-mini', () => {
+      expect(OPENAI_MODEL_OPTIONS).toHaveLength(21);
+      expect(
+        OPENAI_MODEL_OPTIONS.every(
+          (o) => !o.label.includes('(long context)') && !o.value.includes('long-context')
+        )
+      ).toBe(true);
+      expect(OPENAI_MODEL_OPTIONS.some((o) => o.value === 'gpt-4o-mini')).toBe(true);
+      expect(
+        OPENAI_MODEL_OPTIONS.every(
+          (o) => o.label === `${o.value} — ${o.limits}` && /TPM · .* RPM · .* TPD/.test(o.limits)
+        )
+      ).toBe(true);
     });
   });
 });

@@ -3,7 +3,7 @@ import {
   getSettings, updateSettings, getStats,
   exportAllData, importData, clearAllData
 } from '../store';
-import { validateGroqKey, validateOpenAIKey } from '../services/aiService';
+import { validateGroqKey, validateOpenAIKey, OPENAI_MODEL_OPTIONS } from '../services/aiService';
 
 function PillGroup({ label, options, value, onChange }) {
   return (
@@ -399,15 +399,35 @@ export default function Settings() {
           </div>
 
           {/* OpenAI Chat Model Selector */}
-          <PillGroup
-            label="OpenAI Chat Model"
-            value={settings.openaiModel || 'gpt-4o-mini'}
-            onChange={(val) => handleSettingChange('openaiModel', val)}
-            options={[
-              { label: 'gpt-4o-mini (Fast & Cheap)', value: 'gpt-4o-mini' },
-              { label: 'gpt-4o (Higher Quality)', value: 'gpt-4o' },
-            ]}
-          />
+          <div className="space-y-2">
+            <label
+              htmlFor="openai-model-select"
+              className="block text-sm font-medium text-[var(--text-secondary)]"
+            >
+              OpenAI Chat Model
+            </label>
+            {(() => {
+              const currentModel = settings.openaiModel || 'gpt-4o-mini';
+              const isLegacyValue = !OPENAI_MODEL_OPTIONS.some((o) => o.value === currentModel);
+              return (
+                <select
+                  id="openai-model-select"
+                  value={currentModel}
+                  onChange={(e) => handleSettingChange('openaiModel', e.target.value)}
+                  className="w-full bg-[var(--bg-elevated)] border border-[var(--border-subtle)] text-[var(--text-primary)] px-4 py-3 rounded-[var(--radius-md)] text-sm font-medium focus:outline-none focus:border-[var(--accent)] cursor-pointer"
+                >
+                  {isLegacyValue && (
+                    <option value={currentModel}>{currentModel} (current — not in catalog)</option>
+                  )}
+                  {OPENAI_MODEL_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              );
+            })()}
+          </div>
 
           {/* TTS Engine Selector */}
           <PillGroup

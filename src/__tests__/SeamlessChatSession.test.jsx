@@ -5,6 +5,7 @@ import { MemoryRouter } from 'react-router-dom';
 import SeamlessChatSession from '../screens/SeamlessChatSession';
 import SeamlessChatViewerModal from '../screens/SeamlessChatViewerModal';
 import ConversationViewerModal from '../screens/ConversationViewerModal';
+import { streamSeamlessChatCompletion } from '../services/aiService';
 
 // Mock dependencies
 vi.mock('../store', () => ({
@@ -21,6 +22,14 @@ vi.mock('../services/aiService', () => ({
     return 'Hello! That sounds fascinating.';
   }),
   transcribeAudio: vi.fn().mockResolvedValue('Transcribed audio text'),
+}));
+
+vi.mock('../components/AudioRecorder', () => ({
+  default: ({ onTranscribed }) => (
+    <button type="button" onClick={() => onTranscribed('Transcribed audio text')}>
+      Simulate dictation
+    </button>
+  ),
 }));
 
 vi.mock('../components/AudioPlayerButton', () => ({
@@ -77,6 +86,73 @@ describe('SeamlessChatSession Component', () => {
     await waitFor(() => {
       expect(screen.getByText('I learned that small habits compound over time.')).toBeInTheDocument();
       expect(screen.getByText('Hello! That sounds fascinating.')).toBeInTheDocument();
+    });
+  });
+
+  it('renders a multi-line textarea that preserves line breaks', () => {
+    render(
+      <MemoryRouter>
+        <SeamlessChatSession session={dummySession} settings={dummySettings} />
+      </MemoryRouter>
+    );
+
+    const textarea = screen.getByPlaceholderText(/Speak above or type your answer/i);
+    expect(textarea.tagName).toBe('TEXTAREA');
+
+    fireEvent.change(textarea, { target: { value: 'First line\nSecond line' } });
+    expect(textarea.value).toBe('First line\nSecond line');
+  });
+
+  it('does not send on plain Enter but sends on Ctrl+Enter', async () => {
+    streamSeamlessChatCompletion.mockClear();
+
+    render(
+      <MemoryRouter>
+        <SeamlessChatSession session={dummySession} settings={dummySettings} />
+      </MemoryRouter>
+    );
+
+    const textarea = screen.getByPlaceholderText(/Speak above or type your answer/i);
+    fireEvent.change(textarea, { target: { value: 'Line one' } });
+
+    fireEvent.keyDown(textarea, { key: 'Enter' });
+    expect(streamSeamlessChatCompletion).not.toHaveBeenCalled();
+    expect(textarea.value).toBe('Line one');
+
+    fireEvent.keyDown(textarea, { key: 'Enter', ctrlKey: true });
+    await waitFor(() => {
+      expect(streamSeamlessChatCompletion).toHaveBeenCalledTimes(1);
+      expect(screen.getByText('Line one')).toBeInTheDocument();
+    });
+    expect(textarea.value).toBe('');
+  });
+
+  it('shows the keyboard shortcut hint near the textarea', () => {
+    render(
+      <MemoryRouter>
+        <SeamlessChatSession session={dummySession} settings={dummySettings} />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByText(/Enter for new line · Ctrl\/Cmd\+Enter to send/)).toBeInTheDocument();
+  });
+
+  it('appends transcription to existing textarea content and sends both', async () => {
+    render(
+      <MemoryRouter>
+        <SeamlessChatSession session={dummySession} settings={dummySettings} />
+      </MemoryRouter>
+    );
+
+    const textarea = screen.getByPlaceholderText(/Speak above or type your answer/i);
+    fireEvent.change(textarea, { target: { value: 'Typed first.' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /Simulate dictation/i }));
+    expect(textarea.value).toBe('Typed first. Transcribed audio text');
+
+    fireEvent.click(screen.getByRole('button', { name: /Send ▶/i }));
+    await waitFor(() => {
+      expect(screen.getByText('Typed first. Transcribed audio text')).toBeInTheDocument();
     });
   });
 

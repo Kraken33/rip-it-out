@@ -86,6 +86,34 @@ const OPENAI_CHAT_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const DEFAULT_OPENAI_CHAT_MODEL = 'gpt-4o-mini';
 
 /**
+ * Supported OpenAI chat model catalog for the Settings selector.
+ * Limits (TPM/RPM/TPD) are informational display metadata only.
+ */
+export const OPENAI_MODEL_OPTIONS = [
+  { value: 'gpt-6-astra', limits: '500K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-5.6-sol', limits: '500K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-5.6-terra', limits: '500K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-5.6-luna', limits: '500K TPM · 500 RPM · 5M TPD' },
+  { value: 'gpt-5.5', limits: '500K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-5.5-pro', limits: '50K TPM · 50 RPM · 500K TPD' },
+  { value: 'gpt-5.4', limits: '500K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-5.4-pro', limits: '50K TPM · 50 RPM · 900K TPD' },
+  { value: 'gpt-5.4-mini', limits: '200K TPM · 500 RPM · 2M TPD' },
+  { value: 'gpt-5.4-nano', limits: '200K TPM · 500 RPM · 2M TPD' },
+  { value: 'gpt-5.3-codex', limits: '500K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-5.2', limits: '500K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-5.2-pro', limits: '50K TPM · 50 RPM · 900K TPD' },
+  { value: 'gpt-5.1', limits: '500K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-5', limits: '500K TPM · 500 RPM · 1.5M TPD' },
+  { value: 'gpt-5-pro', limits: '50K TPM · 50 RPM · 90K TPD' },
+  { value: 'gpt-5-mini', limits: '500K TPM · 500 RPM · 5M TPD' },
+  { value: 'gpt-5-nano', limits: '200K TPM · 500 RPM · 2M TPD' },
+  { value: 'gpt-4.1', limits: '30K TPM · 500 RPM · 900K TPD' },
+  { value: 'gpt-4.1-mini', limits: '200K TPM · 500 RPM · 2M TPD' },
+  { value: 'gpt-4o-mini', limits: '200K TPM · 500 RPM · 2M TPD' },
+].map(({ value, limits }) => ({ value, limits, label: `${value} — ${limits}` }));
+
+/**
  * Shared OpenAI chat-completions request used by every text generation/evaluation feature.
  * Requires an OpenAI API key — Groq keys are only used for speech-to-text.
  * @param {Object} settings User settings (needs openaiApiKey; openaiModel optional)

@@ -6,7 +6,7 @@ The `ai-seamless-integration` capability enables direct API integration with Gro
 ## Requirements
 
 ### Requirement 1: API Keys & Integrations Configuration
-The system SHALL provide configuration settings for AI services and audio playback preferences. The OpenAI API key SHALL be the primary key required for all AI text generation and evaluation features; the Groq API key SHALL be used exclusively for speech-to-text.
+The system SHALL provide configuration settings for AI services and audio playback preferences. The OpenAI API key SHALL be the primary key required for all AI text generation and evaluation features; the Groq API key SHALL be used exclusively for speech-to-text. The OpenAI chat model SHALL be selected from a dropdown selector listing the supported model catalog: `gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.5-pro`, `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.3-codex`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.1`, `gpt-5`, `gpt-5-pro`, `gpt-5-mini`, `gpt-5-nano`, `gpt-4.1`, `gpt-4.1-mini`, `gpt-4o-mini`.
 
 #### Scenario: User saves an OpenAI API key
 - **GIVEN** the user is on the Settings screen
@@ -16,9 +16,15 @@ The system SHALL provide configuration settings for AI services and audio playba
 
 #### Scenario: User selects an OpenAI chat model
 - **GIVEN** the user has saved an OpenAI API Key
-- **WHEN** the user selects a chat model in Settings (default `gpt-4o-mini`)
+- **WHEN** the user selects a chat model from the dropdown selector in Settings (default `gpt-4o-mini`)
 - **THEN** the selection MUST be stored in application settings
 - **AND** subsequent text generation and evaluation requests MUST use the selected OpenAI model
+
+#### Scenario: Stored model is not in the catalog
+- **GIVEN** settings contain an `openaiModel` value that is not part of the current catalog (e.g. legacy `gpt-4o`)
+- **WHEN** the user opens the Settings screen
+- **THEN** the selector MUST display the stored value as the current selection (as an additional option)
+- **AND** the stored value MUST continue to be sent to the OpenAI API unchanged until the user picks a catalog model
 
 #### Scenario: User saves an OpenAI API key and selects neural TTS voice
 - **GIVEN** the user has entered an OpenAI API Key in Settings
@@ -76,6 +82,27 @@ The system SHALL allow users to listen to spoken pronunciation of constructions 
 - **WHEN** the user clicks `🔊 Play Audio` on an improvement card
 - **THEN** the system MUST fetch speech audio from `https://api.openai.com/v1/audio/speech`
 - **AND** stream or play the audio directly in the browser
+
+### Requirement: Multi-line Message Input for Seamless Sessions
+The system SHALL provide a multi-line text area for typing chat messages in a Seamless AI session, so that long or multi-sentence answers can be comfortably read and edited before sending.
+
+#### Scenario: User types a multi-line answer
+- **GIVEN** the user is in an active Seamless AI session
+- **WHEN** the user types text and presses Enter
+- **THEN** a newline MUST be inserted into the text area
+- **AND** the message MUST NOT be sent
+
+#### Scenario: User submits a typed message
+- **GIVEN** the user has typed a non-empty message into the text area
+- **WHEN** the user clicks the Send button or presses Ctrl/Cmd+Enter
+- **THEN** the message MUST be sent to the AI coach
+- **AND** the text area MUST be cleared
+
+#### Scenario: Transcribed speech lands in the text area
+- **GIVEN** the user is in an active Seamless AI session with text already present in the text area
+- **WHEN** a voice recording is transcribed
+- **THEN** the transcription MUST be inserted into the text area content
+- **AND** previously typed text MUST be preserved
 
 ### Requirement: Sentence Context Tracking for Improvements
 The system SHALL capture and store the full sentence or message context (`context`) alongside each improvement registered to the study list.
