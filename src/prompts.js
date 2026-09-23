@@ -414,9 +414,14 @@ export function generateStoryPassagePrompt(session, settings, historyTopics = []
         .join('\n')}\nYou MUST pick a FRESH topic that is not in the list above.`
     : '';
 
+  const demands = (session?.storyDemands || '').trim();
+  const demandsBlock = demands
+    ? `\n\nThe learner specifically asked to practice: "${demands}". The story MUST match this request.`
+    : '';
+
   return `You are a Russian language tutor creating story-translation practice material for an English learner.
 
-Write ONE short natural Russian story (3-6 sentences) grounded in the session topic: "${session.title || 'everyday life'}". The story should feel like something a real person would tell about their day — concrete, spoken-style, and connected to the session topic.${usedTopicsBlock}
+Write ONE short natural Russian story (3-6 sentences) grounded in the session topic: "${session.title || 'everyday life'}". The story should feel like something a real person would tell about their day — concrete, spoken-style, and connected to the session topic.${demandsBlock}${usedTopicsBlock}
 
 Rules:
 - Write ONLY the Russian story text. No title, no English translation, no commentary, no formatting marks.

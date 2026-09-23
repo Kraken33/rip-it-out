@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import Session from '../screens/Session';
-import { clearAllData, createSession, updateSettings, getImprovements, getSessions } from '../store';
+import { clearAllData, createSession, updateSettings, getImprovements, getSessions, getActivityLogs } from '../store';
 
 vi.mock('../supabaseClient', () => ({
   supabase: null,
@@ -265,7 +265,6 @@ describe('Session Wizard Component', () => {
       );
 
       fireEvent.click(screen.getByText(/Story Translation/i));
-      fillStep1();
       await submitStep1();
 
       // Passage prompt path does not render; the story round UI does.
@@ -294,6 +293,195 @@ describe('Session Wizard Component', () => {
       expect(updated.activity).toBe('translation');
       expect(updated.rawText).toContain('invited a friend to my house');
       expect(updated.rawText).not.toContain(STORY_PASSAGE);
+    });
+
+    it('shows the activity selector first and hides dialogue-only fields for translation', async () => {
+      render(
+        <BrowserRouter>
+          <Session />
+        </BrowserRouter>
+      );
+
+      // Dialogue is the default: detail fields visible.
+      expect(screen.getByPlaceholderText(/Atomic Habits/i)).toBeInTheDocument();
+      expect(screen.getByText('Video')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/productivity/i)).toBeInTheDocument();
+      expect(screen.getByPlaceholderText(/Any context about this session/i)).toBeInTheDocument();
+
+      // The activity selector is the first control, above every other input.
+      const activityBtn = document.querySelector('#activity-dialogue');
+      const titleInput = screen.getByPlaceholderText(/Atomic Habits/i);
+      expect(
+        activityBtn.compareDocumentPosition(titleInput) & Node.DOCUMENT_POSITION_FOLLOWING
+      ).toBeTruthy();
+
+      fireEvent.click(screen.getByText(/Story Translation/i));
+
+      // Dialogue-only fields disappear; the optional demands field appears.
+      expect(screen.queryByPlaceholderText(/Atomic Habits/i)).not.toBeInTheDocument();
+      expect(screen.queryByText('Video')).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/productivity/i)).not.toBeInTheDocument();
+      expect(screen.queryByPlaceholderText(/Any context about this session/i)).not.toBeInTheDocument();
+      expect(screen.getByLabelText(/Story Topics \/ Demands/i)).toBeInTheDocument();
+    });
+
+    it('threads story demands into the translation session and title', async () => {
+      await updateSettings({ defaultMode: 'prompt' });
+      render(
+        <BrowserRouter>
+          <Session />
+        </BrowserRouter>
+      );
+
+      fireEvent.click(screen.getByText(/Story Translation/i));
+      fireEvent.change(screen.getByLabelText(/Story Topics \/ Demands/i), {
+        target: { value: 'ordering coffee and small talk' },
+      });
+      await submitStep1();
+
+      await screen.findByText(/Вчера я пригласил друга в гости/);
+
+      // The story generator receives the demands on the session object.
+      const [sessionArg] = mocks.generateTranslationStoryPassage.mock.calls[0];
+      expect(sessionArg.storyDemands).toBe('ordering coffee and small talk');
+
+      const sessions = await getSessions();
+      expect(sessions[0].title).toBe('ordering coffee and small talk');
+      expect(sessions[0].messages[0].content).toBe('__story_demands:ordering coffee and small talk');
+    });
+
+    it('falls back to a date-based title when story demands are empty', async () => {
+      await updateSettings({ defaultMode: 'prompt' });
+      render(
+        <BrowserRouter>
+          <Session />
+        </BrowserRouter>
+      );
+
+      fireEvent.click(screen.getByText(/Story Translation/i));
+      await submitStep1();
+
+      await screen.findByText(/Вчера я пригласил друга в гости/);
+
+      const sessions = await getSessions();
+      expect(sessions[0].title).toMatch(/^Story — /);
+      expect(sessions[0].messages[0].content).toBe('__story_demands:');
+    });
+
+    it('records real duration and logs session activity on story finish', async () => {
+      await updateSettings({ defaultMode: 'prompt' });
+      const realNow = Date.now;
+      let offsetMs = 0;
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + offsetMs);
+
+      try {
+        render(
+          <BrowserRouter>
+            <Session />
+          </BrowserRouter>
+        );
+
+        fireEvent.click(screen.getByText(/Story Translation/i));
+        await submitStep1();
+        await screen.findByText(/Вчера я пригласил друга в гости/);
+
+        fireEvent.change(
+          screen.getByPlaceholderText(/Type or speak your English translation/i),
+          { target: { value: 'Yesterday I invited a friend over.' } }
+        );
+        fireEvent.click(screen.getByRole('button', { name: /Translate ▶/i }));
+        await screen.findByText(/Constructions from this round/i);
+
+        // Simulate 65 elapsed seconds between start and finish.
+        offsetMs = 65000;
+        fireEvent.click(screen.getByRole('button', { name: /Finish Story ✓/i }));
+        await screen.findByText(/Review & Confirm/i);
+
+        const logs = await getActivityLogs();
+        expect(logs).toHaveLength(1);
+        expect(logs[0].type).toBe('session');
+        // 65 simulated seconds plus a small real-time allowance for test run time.
+        expect(logs[0].durationSeconds).toBeGreaterThanOrEqual(65);
+        expect(logs[0].durationSeconds).toBeLessThan(70);
+
+        // The measured duration is also stamped onto the session record.
+        const updated = (await getSessions())[0];
+        expect(updated.durationSeconds).toBe(logs[0].durationSeconds);
+      } finally {
+        nowSpy.mockRestore();
+      }
+    });
+
+    it("shows every round's candidates in the import picker (no session-wide cap)", async () => {
+      // Even a tiny maxImprovements budget must not hide later rounds.
+      await updateSettings({ defaultMode: 'prompt', maxImprovements: 1 });
+      const round2Passage = 'Сегодня утром я опоздал на автобус.';
+      const round2Feedback = JSON.stringify({
+        feedback: {
+          summary: 'Good recovery.',
+          improved_version: 'This morning I missed the bus.',
+          constructions: [
+            {
+              construction: 'catch up on',
+              original: 'caught up',
+              improved: 'catch up on work',
+              explanation: 'phrasal verb',
+              category: 'vocabulary',
+              spoken_frequency: 'medium',
+            },
+            {
+              construction: 'run into [someone]',
+              original: 'met him',
+              improved: 'ran into him',
+              explanation: 'everyday phrasal verb',
+              category: 'vocabulary',
+              spoken_frequency: 'high',
+            },
+          ],
+        },
+      });
+      mocks.generateTranslationStoryPassage
+        .mockResolvedValueOnce(STORY_PASSAGE)
+        .mockResolvedValueOnce(round2Passage);
+      mocks.evaluateTranslationStory
+        .mockResolvedValueOnce(STORY_FEEDBACK)
+        .mockResolvedValueOnce(round2Feedback);
+
+      render(
+        <BrowserRouter>
+          <Session />
+        </BrowserRouter>
+      );
+
+      fireEvent.click(screen.getByText(/Story Translation/i));
+      await submitStep1();
+      await screen.findByText(/Вчера я пригласил друга в гости/);
+
+      // Round 1.
+      fireEvent.change(
+        screen.getByPlaceholderText(/Type or speak your English translation/i),
+        { target: { value: 'Yesterday I invited a friend to my house.' } }
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Translate ▶/i }));
+      await screen.findByText(/Constructions from this round/i);
+
+      // Round 2.
+      fireEvent.click(screen.getByRole('button', { name: /Next Round →/i }));
+      await screen.findByText(/Сегодня утром я опоздал на автобус/);
+      fireEvent.change(
+        screen.getByPlaceholderText(/Type or speak your English translation/i),
+        { target: { value: 'This morning I was late for the bus.' } }
+      );
+      fireEvent.click(screen.getByRole('button', { name: /Translate ▶/i }));
+      await screen.findByText(/ran into him/);
+
+      fireEvent.click(screen.getByRole('button', { name: /Finish Story ✓/i }));
+      await screen.findByText(/Review & Confirm/i);
+
+      // All candidates from BOTH rounds are listed despite maxImprovements = 1.
+      expect(screen.getByText(/invite \[someone\] over/)).toBeInTheDocument();
+      expect(screen.getAllByText(/catch up on/).length).toBeGreaterThan(0);
+      expect(screen.getByText(/run into \[someone\]/)).toBeInTheDocument();
     });
   });
 });

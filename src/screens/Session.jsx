@@ -82,6 +82,8 @@ export default function Session() {
   const [notes, setNotes] = useState('');
   // Activity picked at Step 1; branches Step 2 (dialogue chat vs story translation).
   const [activity, setActivity] = useState('dialogue');
+  // Optional learner-authored topic/demands for the story-translation activity.
+  const [storyDemands, setStoryDemands] = useState('');
 
   // Map of unique previous titles with their most recent session data
   const previousTitlesMap = useMemo(() => {
@@ -160,7 +162,9 @@ export default function Session() {
 
   const handleCreateSession = useCallback(async (e) => {
     e.preventDefault();
-    if (!title || !sourceType) return;
+    // Title and source type are dialogue-only requirements; story-translation
+    // sessions derive their title from the optional demands or the date.
+    if (activity === 'dialogue' && (!title || !sourceType)) return;
 
     const tagArray = tags
       .split(',')
@@ -169,13 +173,36 @@ export default function Session() {
 
     try {
       setLoading(true);
-      const newSession = await createSession({
-        title,
-        sourceType,
-        tags: tagArray,
-        notes,
-        activity,
-      });
+      let newSession;
+      if (activity === 'dialogue') {
+        newSession = await createSession({
+          title,
+          sourceType,
+          tags: tagArray,
+          notes,
+          activity,
+        });
+      } else {
+        // Story-translation sessions carry no source metadata; the optional
+        // demands seed both the session title and the story prompts.
+        const demands = storyDemands.trim();
+        const dateTitle = new Date().toLocaleDateString('en-US', {
+          day: 'numeric',
+          month: 'short',
+          year: 'numeric',
+        });
+        newSession = await createSession({
+          title: demands || `Story — ${dateTitle}`,
+          sourceType: 'other',
+          tags: [],
+          notes: '',
+          activity: 'translation',
+          messages: [{ role: 'user', content: `__story_demands:${demands}` }],
+        });
+        // storyDemands is transient prompt seed data (no DB column); keep it
+        // on the in-memory session object handed to the story component.
+        newSession = { ...newSession, storyDemands: demands };
+      }
       setSession(newSession);
       setStartTime(Date.now());
       setStep(2);
@@ -184,7 +211,7 @@ export default function Session() {
     } finally {
       setLoading(false);
     }
-  }, [title, sourceType, tags, notes, activity]);
+  }, [title, sourceType, tags, notes, activity, storyDemands]);
 
   const copyToClipboard = useCallback(async (text, setter) => {
     if (!startTime) {
@@ -245,8 +272,17 @@ export default function Session() {
           activity: 'translation',
           rawText: rawText || null,
           messages,
-          durationSeconds,
         });
+        // Mirror the dialogue path: the measured session time is logged as
+        // activity (logActivity also stamps the duration onto the session).
+        if (durationSeconds > 0) {
+          await logActivity({
+            type: 'session',
+            durationSeconds,
+            sessionId: session.id,
+            topicId: session.topicId,
+          });
+        }
       } catch (err) {
         console.error('Error saving translation story session:', err);
       }
@@ -257,8 +293,9 @@ export default function Session() {
       return;
     }
 
-    const cap = settings?.maxImprovements > 0 ? settings.maxImprovements : Infinity;
-    const aggregated = aggregateStoryConstructions(completedRounds, cap).map((c) => ({
+    // No session-wide cap: every round's deduplicated candidates reach the
+    // import picker; the user filters via checkboxes.
+    const aggregated = aggregateStoryConstructions(completedRounds).map((c) => ({
       construction: c.construction || '',
       original: c.original || '',
       improved: c.improved || '',
@@ -374,6 +411,51 @@ export default function Session() {
 
       {step === 1 && (
         <form onSubmit={handleCreateSession} className="glass-panel p-6 space-y-5">
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
+              Activity <span className="text-rose-400">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              {ACTIVITIES.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  id={`activity-${a.id}`}
+                  onClick={() => setActivity(a.id)}
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all cursor-pointer ${
+                    activity === a.id
+                      ? 'border-purple-500 bg-purple-500/20 text-purple-300 font-bold'
+                      : 'border-gray-800 bg-[#1b1c2b] text-gray-400 hover:border-gray-700'
+                  }`}
+                >
+                  <span className="text-2xl mb-1">{a.icon}</span>
+                  <span className="text-xs">{a.label}</span>
+                  <span className="text-[10px] mt-0.5 font-normal opacity-70 text-center leading-tight">
+                    {a.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {activity === 'translation' && (
+            <div className="space-y-1.5">
+              <label htmlFor="story-demands" className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
+                Story Topics / Demands <span className="text-gray-500 font-normal lowercase">(optional)</span>
+              </label>
+              <textarea
+                id="story-demands"
+                value={storyDemands}
+                onChange={(e) => setStoryDemands(e.target.value)}
+                placeholder="e.g. ordering at a restaurant, small talk with coworkers, travel stories..."
+                rows={2}
+                className="w-full bg-[#1b1c2b] border border-[#27283d] rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-all resize-none font-medium"
+              />
+            </div>
+          )}
+
+          {activity === 'dialogue' && (
+            <>
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
               <label htmlFor="title" className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
@@ -412,33 +494,6 @@ export default function Session() {
                 ))}
               </datalist>
             )}
-          </div>
-
-          <div className="space-y-2">
-            <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
-              Activity <span className="text-rose-400">*</span>
-            </label>
-            <div className="grid grid-cols-2 gap-2.5">
-              {ACTIVITIES.map((a) => (
-                <button
-                  key={a.id}
-                  type="button"
-                  id={`activity-${a.id}`}
-                  onClick={() => setActivity(a.id)}
-                  className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all cursor-pointer ${
-                    activity === a.id
-                      ? 'border-purple-500 bg-purple-500/20 text-purple-300 font-bold'
-                      : 'border-gray-800 bg-[#1b1c2b] text-gray-400 hover:border-gray-700'
-                  }`}
-                >
-                  <span className="text-2xl mb-1">{a.icon}</span>
-                  <span className="text-xs">{a.label}</span>
-                  <span className="text-[10px] mt-0.5 font-normal opacity-70 text-center leading-tight">
-                    {a.description}
-                  </span>
-                </button>
-              ))}
-            </div>
           </div>
 
           <div className="space-y-2">
@@ -491,12 +546,14 @@ export default function Session() {
               className="w-full bg-[#1b1c2b] border border-[#27283d] rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-all resize-none font-medium"
             />
           </div>
+            </>
+          )}
 
           <div className="pt-2">
             <button
               id="btn-generate-prompt"
               type="submit"
-              disabled={!title || !sourceType || loading}
+              disabled={(activity === 'dialogue' && (!title || !sourceType)) || loading}
               className="w-full bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-base py-3.5 px-6 rounded-xl transition-all shadow flex items-center justify-center gap-2 cursor-pointer"
             >
               {loading ? 'Creating Session...' : mode === 'seamless' ? 'Start Seamless Voice Session →' : 'Generate Prompt #1 (Description) →'}

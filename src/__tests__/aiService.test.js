@@ -449,6 +449,22 @@ describe('AI Service Layer', () => {
       expect(systemPrompt).toMatch(/ONLY the Russian story text/i);
     });
 
+    it('threads learner demands into the request messages', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Рассказ про кафе.' } }] }),
+      });
+
+      await generateTranslationStoryPassage(
+        { ...session, storyDemands: 'restaurant dialogue' },
+        settings,
+        []
+      );
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      const allContent = body.messages.map((m) => m.content).join('\n');
+      expect(allContent).toContain('restaurant dialogue');
+    });
+
     it('includes used topics in the system prompt for follow-up rounds', async () => {
       fetch.mockResolvedValueOnce({
         ok: true,

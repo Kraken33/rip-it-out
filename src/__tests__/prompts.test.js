@@ -307,6 +307,21 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       const prompt = generateStoryPassagePrompt(storySession, storySettings, []);
       expect(prompt).not.toMatch(/already used in this session/i);
     });
+
+    it('includes learner demands and requires the story to match them', () => {
+      const prompt = generateStoryPassagePrompt(
+        { ...storySession, storyDemands: 'ordering coffee and small talk' },
+        storySettings
+      );
+      expect(prompt).toContain('ordering coffee and small talk');
+      expect(prompt).toMatch(/MUST match this request/i);
+    });
+
+    it('omits the demands block and keeps the everyday-topic fallback when none are given', () => {
+      const prompt = generateStoryPassagePrompt({ title: '', storyDemands: '' }, storySettings);
+      expect(prompt).not.toMatch(/specifically asked to practice/i);
+      expect(prompt).toContain('everyday life');
+    });
   });
 
   describe('generateStoryFeedbackPrompt', () => {

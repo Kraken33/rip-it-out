@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS public.sessions (
   raw_text TEXT DEFAULT NULL,
   messages JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  status TEXT NOT NULL DEFAULT 'created'
+  status TEXT NOT NULL DEFAULT 'created',
+  activity TEXT NOT NULL DEFAULT 'dialogue'
 );
 CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON public.sessions(user_id);
 ALTER TABLE public.sessions ENABLE ROW LEVEL SECURITY;

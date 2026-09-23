@@ -139,11 +139,19 @@ The end-of-session evaluation prompt (`generateSeamlessSessionFeedback`) SHALL i
 
 ### Requirement: Story passage generation prompt
 
-The system SHALL generate each translation-story round passage via OpenAI chat as ONE short natural Russian story grounded in the session title/topic and learner level, on a topic not already used in the session, outputting only the Russian passage text.
+The system SHALL generate each translation-story round passage via OpenAI chat as ONE short natural Russian story grounded in the session's story topic/demands (when provided) and learner level, on a topic not already used in the session, outputting only the Russian passage text.
 
 #### Scenario: First story passage request
-- **WHEN** a translation round starts with session title, level, and formality available
+- **WHEN** a translation round starts with session topic/demands, level, and formality available
 - **THEN** the passage request instructs the model to write one short Russian story tied to the session topic, at the learner level, with no English translation or commentary.
+
+#### Scenario: Story passage honours learner demands
+- **WHEN** the learner provided story topic/demands at session setup
+- **THEN** the passage request includes those demands and requires the story to match them.
+
+#### Scenario: Story passage without learner demands
+- **WHEN** no story topic/demands were provided
+- **THEN** the passage request lets the model pick any everyday topic at the learner level.
 
 #### Scenario: Follow-up story avoids repeats
 - **WHEN** a subsequent round starts with prior round topics in history
@@ -159,11 +167,11 @@ The system SHALL evaluate each learner translation via OpenAI chat and return a 
 
 #### Scenario: Feedback caps constructions per round
 - **WHEN** a round is evaluated
-- **THEN** the feedback holds at most a small per-round number of constructions so end aggregation stays within the session cap.
+- **THEN** the feedback holds at most a small per-round number of constructions so each round's feedback stays focused.
 
 ### Requirement: Aggregation uses existing feedback shape
 
-The system SHALL aggregate per-round constructions client-side by deduping on normalized construction text and capping at `settings.maxImprovements`, reusing the existing improvement object shape with no new AI call when the cap allows it.
+The system SHALL aggregate per-round constructions client-side by deduping on normalized construction text, keeping the earliest occurrence, and presenting ALL deduplicated candidates with no session-wide cap, reusing the existing improvement object shape with no new AI call.
 
 #### Scenario: Dedupe keeps earliest occurrence
 - **WHEN** two rounds yield the same normalized construction

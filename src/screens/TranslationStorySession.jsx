@@ -8,11 +8,11 @@ const MAX_INPUT_HEIGHT = 200;
 
 /**
  * Flatten per-round candidate constructions into the session-wide import list:
- * dedupe by normalized construction text (earliest round wins) and cap the
- * total at the session budget.
+ * dedupe by normalized construction text (earliest round wins). When `max` is
+ * provided the total is capped; when omitted every candidate is returned.
  *
  * @param {Array} rounds - Completed story rounds ({ feedback: { constructions } })
- * @param {number} maxImprovements - Session-wide cap (settings.maxImprovements)
+ * @param {number} [maxImprovements] - Optional session-wide cap
  * @returns {Array} Construction entries in the vault improvement shape
  */
 export function aggregateStoryConstructions(rounds, maxImprovements = Infinity) {
