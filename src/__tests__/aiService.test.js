@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, evaluateTranslationRound, OPENAI_MODEL_OPTIONS } from '../services/aiService';
+import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, evaluateTranslationRound, generateTranslationStoryPassage, evaluateTranslationStory, OPENAI_MODEL_OPTIONS } from '../services/aiService';
 
 describe('AI Service Layer', () => {
   beforeEach(() => {
@@ -407,6 +407,138 @@ describe('AI Service Layer', () => {
       await expect(
         evaluateTranslationRound(roundCards, 'passage', 'translation', settings)
       ).rejects.toThrow('Rate limit reached');
+    });
+  });
+
+  describe('generateTranslationStoryPassage', () => {
+    const session = { title: 'Weekend in the Countryside', sourceType: 'other' };
+    const settings = { openaiApiKey: 'sk_123', openaiModel: 'gpt-4o-mini', level: 'intermediate', formality: 'casual' };
+
+    it('throws error when no API key is configured', async () => {
+      await expect(generateTranslationStoryPassage(session, {}, [])).rejects.toThrow(
+        'No API Key configured'
+      );
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('rejects when only a Groq API key is configured', async () => {
+      await expect(
+        generateTranslationStoryPassage(session, { groqApiKey: 'gsk_123' }, [])
+      ).rejects.toThrow('OpenAI API Key');
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('posts to the OpenAI chat endpoint with the session topic and configured model', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Вчера мы поехали за город.' } }] }),
+      });
+
+      const passage = await generateTranslationStoryPassage(session, settings, []);
+      expect(passage).toBe('Вчера мы поехали за город.');
+
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/chat/completions',
+        expect.objectContaining({ method: 'POST' })
+      );
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      expect(body.model).toBe('gpt-4o-mini');
+      expect(body.temperature).toBe(0.7);
+      const systemPrompt = body.messages[0].content;
+      expect(systemPrompt).toContain('Weekend in the Countryside');
+      expect(systemPrompt).toMatch(/ONLY the Russian story text/i);
+    });
+
+    it('includes used topics in the system prompt for follow-up rounds', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Новая история.' } }] }),
+      });
+
+      await generateTranslationStoryPassage(session, settings, ['A trip to the market']);
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      const systemPrompt = body.messages[0].content;
+      expect(systemPrompt).toContain('A trip to the market');
+      expect(systemPrompt).toMatch(/FRESH topic/i);
+    });
+
+    it('surfaces the empty-content error when the model returns nothing', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '' } }] }),
+      });
+
+      await expect(
+        generateTranslationStoryPassage(session, settings, [])
+      ).rejects.toThrow('ran out of tokens');
+    });
+
+    it('surfaces the API error message on a failed response', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        text: async () => JSON.stringify({ error: { message: 'Rate limit reached' } }),
+      });
+
+      await expect(
+        generateTranslationStoryPassage(session, settings, [])
+      ).rejects.toThrow('Rate limit reached');
+    });
+  });
+
+  describe('evaluateTranslationStory', () => {
+    const settings = { openaiApiKey: 'sk_123', openaiModel: 'gpt-4o-mini', level: 'intermediate' };
+    const passage = 'Вчера я пригласил друга в гости.';
+    const translation = 'Yesterday I invited a friend to my house.';
+
+    it('throws error when no API key is configured', async () => {
+      await expect(evaluateTranslationStory(passage, translation, {})).rejects.toThrow(
+        'No API Key configured'
+      );
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('sends the passage and translation with per-round feedback instructions', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"feedback":{}}' } }] }),
+      });
+
+      const raw = await evaluateTranslationStory(passage, translation, settings);
+      expect(raw).toBe('{"feedback":{}}');
+
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      const systemPrompt = body.messages[0].content;
+      expect(systemPrompt).toContain(passage);
+      expect(systemPrompt).toMatch(/optimized for daily speaking/i);
+      expect(systemPrompt).toContain('NEVER invent a rewrite');
+      expect(systemPrompt).toContain('"constructions"');
+      expect(body.temperature).toBe(0.3);
+      expect(body.max_tokens).toBe(8000);
+      expect(body.messages[1].content).toContain(translation);
+    });
+
+    it('surfaces the empty-content error when the model returns nothing', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '' } }] }),
+      });
+
+      await expect(
+        evaluateTranslationStory(passage, translation, settings)
+      ).rejects.toThrow('ran out of tokens');
+    });
+
+    it('surfaces the API error message on a failed response', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        text: async () => JSON.stringify({ error: { message: 'Server exploded' } }),
+      });
+
+      await expect(
+        evaluateTranslationStory(passage, translation, settings)
+      ).rejects.toThrow('Server exploded');
     });
   });
 

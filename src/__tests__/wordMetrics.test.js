@@ -59,5 +59,33 @@ describe('Word Metrics Utilities', () => {
       expect(allTime.totalWords).toBe(13);
       expect(allTime.sessionCountWithText).toBe(2);
     });
+
+    it('counts learner-only translation words and ignores passages/feedback', async () => {
+      // Story-translation sessions persist rawText built ONLY from learner
+      // translations; the passages and AI feedback live in messages and must
+      // not leak into word metrics.
+      await createSession({
+        title: 'Story Session',
+        sourceType: 'video',
+        activity: 'translation',
+        rawText: 'I invited a friend over and we talked.',
+        messages: [
+          {
+            role: 'story-round',
+            round: 1,
+            passage: 'Вчера я пригласил друга в гости.',
+            translation: 'I invited a friend over and we talked.',
+            improvedVersion: 'I had a friend over and we had a good chat.',
+          },
+        ],
+      });
+
+      const todayWords = await getTodayWordMetrics();
+      expect(todayWords).toBe(8);
+
+      const allTime = await getAllTimeWordMetrics();
+      expect(allTime.totalWords).toBe(8);
+      expect(allTime.sessionCountWithText).toBe(1);
+    });
   });
 });

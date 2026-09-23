@@ -1,4 +1,10 @@
-import { generateDescriptionPrompt, generateExportPrompt, parseImportJSON } from '../prompts';
+import {
+  generateDescriptionPrompt,
+  generateExportPrompt,
+  parseImportJSON,
+  generateStoryPassagePrompt,
+  generateStoryFeedbackPrompt,
+} from '../prompts';
 
 /**
  * Validate a Groq API Key by testing models endpoint
@@ -385,6 +391,69 @@ Constraints: Level: ${settings.level || 'intermediate'}. Write the summary, the 
       'The AI model ran out of tokens before producing output. Try a shorter translation, or switch to a different OpenAI model in Settings.'
     );
   }
+  return rawContent;
+}
+
+/**
+ * Generate one translation-story round passage via OpenAI: ONE short natural
+ * Russian story grounded in the session topic, on a fresh topic (history-aware).
+ *
+ * @param {Object} session - Session record (title/topic, sourceType)
+ * @param {Object} settings - Learner settings (level, formality, openaiApiKey, openaiModel)
+ * @param {string[]} historyTopics - Topics/passages already used this session
+ * @returns {Promise<string>} Raw Russian passage text
+ */
+export async function generateTranslationStoryPassage(session = {}, settings = {}, historyTopics = []) {
+  const systemMessage = generateStoryPassagePrompt(session, settings, historyTopics);
+  const formattedMessages = [
+    { role: 'system', content: systemMessage },
+    { role: 'user', content: 'Write the story passage now.' },
+  ];
+
+  const passage = await requestOpenAIChat(settings, {
+    messages: formattedMessages,
+    temperature: 0.7,
+    maxTokens: 4000,
+  });
+
+  if (!passage.trim()) {
+    throw new Error(
+      'The AI model ran out of tokens before producing output. Try a different OpenAI model in Settings.'
+    );
+  }
+
+  return passage;
+}
+
+/**
+ * Evaluate one story-round translation via OpenAI, returning raw per-round
+ * feedback text (structured JSON per generateStoryFeedbackPrompt) that the UI
+ * parses with parseStoryFeedback.
+ *
+ * @param {string} passage - The Russian story passage being translated
+ * @param {string} translation - The learner's English translation
+ * @param {Object} settings - Learner settings (level, openaiApiKey, openaiModel)
+ * @returns {Promise<string>} Raw feedback text
+ */
+export async function evaluateTranslationStory(passage = '', translation = '', settings = {}) {
+  const systemMessage = generateStoryFeedbackPrompt(passage, settings);
+  const formattedMessages = [
+    { role: 'system', content: systemMessage },
+    { role: 'user', content: `Here is my English translation of the story:\n\n"${translation}"` },
+  ];
+
+  const rawContent = await requestOpenAIChat(settings, {
+    messages: formattedMessages,
+    temperature: 0.3,
+    maxTokens: 8000,
+  });
+
+  if (!rawContent.trim()) {
+    throw new Error(
+      'The AI model ran out of tokens before producing output. Try a shorter translation, or switch to a different OpenAI model in Settings.'
+    );
+  }
+
   return rawContent;
 }
 

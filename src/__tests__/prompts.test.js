@@ -5,8 +5,12 @@ import {
   generatePracticePrompt, 
   generateExamplesPrompt, 
   generateTranslationPracticePrompt,
+  generateStoryPassagePrompt,
+  generateStoryFeedbackPrompt,
   parseImportJSON,
-  parseTranslationVerdict
+  parseTranslationVerdict,
+  parseStoryFeedback,
+  STORY_ROUND_CONSTRUCTION_CAP
 } from '../prompts';
 
 describe('Prompt Orchestrator & Parser', () => {
@@ -274,3 +278,169 @@ describe('parseTranslationVerdict', () => {
 });
 
 });
+
+describe('Translation Story prompts & parseStoryFeedback', () => {
+  const storySession = { title: 'Weekend in the Countryside', sourceType: 'other' };
+  const storySettings = { formality: 'casual', level: 'intermediate', maxImprovements: 5 };
+
+  describe('generateStoryPassagePrompt', () => {
+    it('grounds the story in the session topic and learner level, requesting only Russian text', () => {
+      const prompt = generateStoryPassagePrompt(storySession, storySettings);
+      expect(prompt).toContain('Weekend in the Countryside');
+      expect(prompt).toContain('intermediate');
+      expect(prompt).toMatch(/ONE short natural Russian story/i);
+      expect(prompt).toMatch(/ONLY the Russian story text/i);
+      expect(prompt).toMatch(/No title, no English translation, no commentary/i);
+    });
+
+    it('lists used topics and requires a fresh topic when history is provided', () => {
+      const prompt = generateStoryPassagePrompt(storySession, storySettings, [
+        'A trip to the market',
+        'Meeting a neighbour',
+      ]);
+      expect(prompt).toContain('A trip to the market');
+      expect(prompt).toContain('Meeting a neighbour');
+      expect(prompt).toMatch(/FRESH topic/i);
+    });
+
+    it('omits the used-topics block for the first round', () => {
+      const prompt = generateStoryPassagePrompt(storySession, storySettings, []);
+      expect(prompt).not.toMatch(/already used in this session/i);
+    });
+  });
+
+  describe('generateStoryFeedbackPrompt', () => {
+    it('requests a fluent daily-speaking improved version in the vault improvement shape', () => {
+      const prompt = generateStoryFeedbackPrompt('Вчера я ходил в магазин.', storySettings);
+      expect(prompt).toContain('Вчера я ходил в магазин.');
+      expect(prompt).toMatch(/optimized for daily speaking/i);
+      expect(prompt).toContain('"construction"');
+      expect(prompt).toContain('"original"');
+      expect(prompt).toContain('"improved"');
+      expect(prompt).toContain('"explanation"');
+      expect(prompt).toContain('"category"');
+      expect(prompt).toContain('"spoken_frequency"');
+    });
+
+    it('caps constructions per round and forbids invented rewrites for correct translations', () => {
+      const prompt = generateStoryFeedbackPrompt('passage', storySettings);
+      expect(prompt).toContain(`up to ${STORY_ROUND_CONSTRUCTION_CAP}`);
+      expect(prompt).toContain('NEVER invent a rewrite');
+      expect(prompt).toContain('"already_natural"');
+    });
+  });
+
+  describe('parseStoryFeedback', () => {
+    const feedbackJson = (overrides = {}) =>
+      JSON.stringify({
+        feedback: {
+          summary: 'Nice work.',
+          already_natural: false,
+          improved_version: 'Yesterday I invited a friend over to my place.',
+          constructions: [
+            {
+              construction: 'invite [someone] over',
+              original: 'invited a friend to my house',
+              improved: 'invited a friend over',
+              explanation: '"over" is the natural spoken choice.',
+              category: 'collocation',
+              spoken_frequency: 'very_high',
+            },
+          ],
+          ...overrides,
+        },
+      });
+
+    it('parses improved version and constructions in the vault shape', () => {
+      const res = parseStoryFeedback(feedbackJson());
+      expect(res.success).toBe(true);
+      expect(res.feedback.alreadyNatural).toBe(false);
+      expect(res.feedback.improvedVersion).toContain('invited a friend over');
+      expect(res.feedback.constructions).toHaveLength(1);
+      expect(res.feedback.constructions[0]).toMatchObject({
+        construction: 'invite [someone] over',
+        original: 'invited a friend to my house',
+        improved: 'invited a friend over',
+        category: 'collocation',
+        spoken_frequency: 'very_high',
+      });
+    });
+
+    it('extracts feedback from markdown code fences with surrounding prose', () => {
+      const wrapped = `Here you go:\n\`\`\`json\n${feedbackJson()}\n\`\`\`\nHope that helps.`;
+      const res = parseStoryFeedback(wrapped);
+      expect(res.success).toBe(true);
+      expect(res.feedback.constructions).toHaveLength(1);
+    });
+
+    it('affirms an already-natural translation with no invented rewrite but keeps candidate constructions', () => {
+      const res = parseStoryFeedback(
+        feedbackJson({ already_natural: true, improved_version: '' })
+      );
+      expect(res.success).toBe(true);
+      expect(res.feedback.alreadyNatural).toBe(true);
+      expect(res.feedback.improvedVersion).toBe('');
+      expect(res.feedback.constructions).toHaveLength(1);
+    });
+
+    it('derives alreadyNatural from an empty improved version when the flag is omitted', () => {
+      const json = JSON.stringify({
+        feedback: { summary: 'ok', improved_version: '', constructions: [] },
+      });
+      const res = parseStoryFeedback(json);
+      expect(res.success).toBe(true);
+      expect(res.feedback.alreadyNatural).toBe(true);
+    });
+
+    it('caps constructions at the per-round limit', () => {
+      const constructions = Array.from({ length: 5 }, (_, i) => ({
+        construction: `pattern ${i}`,
+        original: `orig ${i}`,
+        improved: `imp ${i}`,
+        explanation: 'why',
+        category: 'vocabulary',
+        spoken_frequency: 'medium',
+      }));
+      const res = parseStoryFeedback(feedbackJson({ constructions }));
+      expect(res.success).toBe(true);
+      expect(res.feedback.constructions).toHaveLength(STORY_ROUND_CONSTRUCTION_CAP);
+      expect(res.warnings.some((w) => /Capped constructions/.test(w))).toBe(true);
+    });
+
+    it('normalizes invalid category and frequency with warnings', () => {
+      const res = parseStoryFeedback(
+        feedbackJson({
+          constructions: [
+            {
+              construction: 'invite over',
+              original: 'x',
+              improved: 'y',
+              explanation: 'z',
+              category: 'syntax',
+              spoken_frequency: 'rare',
+            },
+          ],
+        })
+      );
+      expect(res.success).toBe(true);
+      expect(res.feedback.constructions[0].category).toBe('vocabulary');
+      expect(res.feedback.constructions[0].spoken_frequency).toBe('medium');
+      expect(res.warnings.length).toBeGreaterThan(0);
+    });
+
+    it('rejects empty, non-JSON, and missing-feedback responses', () => {
+      expect(parseStoryFeedback('').success).toBe(false);
+      expect(parseStoryFeedback(null).success).toBe(false);
+      expect(parseStoryFeedback('plain prose with no JSON').success).toBe(false);
+      expect(parseStoryFeedback(JSON.stringify({ note: 'no feedback key' })).success).toBe(false);
+    });
+
+    it('rejects a non-list constructions value', () => {
+      const res = parseStoryFeedback(feedbackJson({ constructions: 'nope' }));
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/constructions/);
+    });
+  });
+});
+
+

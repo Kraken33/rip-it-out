@@ -6,7 +6,8 @@ import {
   addSessionText,
   getSettings,
   getSessions,
-  logActivity
+  logActivity,
+  updateSession
 } from '../store';
 import { 
   generateDescriptionPrompt, 
@@ -18,6 +19,7 @@ import ModeToggle from '../components/ModeToggle';
 import AudioRecorder from '../components/AudioRecorder';
 import AudioPlayerButton from '../components/AudioPlayerButton';
 import SeamlessChatSession from './SeamlessChatSession';
+import TranslationStorySession, { aggregateStoryConstructions } from './TranslationStorySession';
 
 const SOURCE_TYPES = [
   { id: 'video', label: 'Video', icon: '▶️' },
@@ -25,6 +27,22 @@ const SOURCE_TYPES = [
   { id: 'article', label: 'Article', icon: '📄' },
   { id: 'book', label: 'Book', icon: '📚' },
   { id: 'other', label: 'Other', icon: '✨' },
+];
+
+// Step-2 activity branches: free dialogue (chat/prompt flow) vs story translation rounds.
+const ACTIVITIES = [
+  {
+    id: 'dialogue',
+    label: 'Free Dialogue',
+    icon: '💬',
+    description: 'Speak about the source, then import corrections',
+  },
+  {
+    id: 'translation',
+    label: 'Story Translation',
+    icon: '📖',
+    description: 'Translate AI-written Russian stories, harvest constructions',
+  },
 ];
 
 export default function Session() {
@@ -62,6 +80,8 @@ export default function Session() {
   const [sourceType, setSourceType] = useState('');
   const [tags, setTags] = useState('');
   const [notes, setNotes] = useState('');
+  // Activity picked at Step 1; branches Step 2 (dialogue chat vs story translation).
+  const [activity, setActivity] = useState('dialogue');
 
   // Map of unique previous titles with their most recent session data
   const previousTitlesMap = useMemo(() => {
@@ -104,6 +124,35 @@ export default function Session() {
   const [parseError, setParseError] = useState('');
   const [parseWarnings, setParseWarnings] = useState([]);
   const [parsedImprovements, setParsedImprovements] = useState([]);
+  // Step-4 selective import: indexes of parsedImprovements checked for import.
+  const [selectedIds, setSelectedIds] = useState(new Set());
+
+  // Re-check every freshly parsed item whenever a new list lands on Step 4.
+  useEffect(() => {
+    setSelectedIds(new Set(parsedImprovements.map((_, idx) => idx)));
+  }, [parsedImprovements]);
+
+  const selectedImprovements = useMemo(
+    () => parsedImprovements.filter((_, idx) => selectedIds.has(idx)),
+    [parsedImprovements, selectedIds]
+  );
+
+  const toggleImprovement = useCallback((idx) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(idx)) next.delete(idx);
+      else next.add(idx);
+      return next;
+    });
+  }, []);
+
+  const toggleAllImprovements = useCallback(() => {
+    setSelectedIds((prev) =>
+      prev.size === parsedImprovements.length
+        ? new Set()
+        : new Set(parsedImprovements.map((_, idx) => idx))
+    );
+  }, [parsedImprovements]);
 
   // Copy Feedback
   const [copied1, setCopied1] = useState(false);
@@ -125,6 +174,7 @@ export default function Session() {
         sourceType,
         tags: tagArray,
         notes,
+        activity,
       });
       setSession(newSession);
       setStartTime(Date.now());
@@ -134,7 +184,7 @@ export default function Session() {
     } finally {
       setLoading(false);
     }
-  }, [title, sourceType, tags, notes]);
+  }, [title, sourceType, tags, notes, activity]);
 
   const copyToClipboard = useCallback(async (text, setter) => {
     if (!startTime) {
@@ -171,6 +221,61 @@ export default function Session() {
     }
   };
 
+  // Story-translation finish: persist rounds + learner-only rawText, then aggregate
+  // constructions into the shared Step-4 picker (same shape as parseImportJSON output).
+  const handleTranslationFinish = useCallback(async (roundsPayload) => {
+    const allRounds = Array.isArray(roundsPayload) ? roundsPayload : roundsPayload?.rounds;
+    const completedRounds = (allRounds || []).filter((r) => r?.translation?.trim());
+    const durationSeconds = startTime ? Math.round((Date.now() - startTime) / 1000) : 0;
+
+    if (session?.id && completedRounds.length > 0) {
+      // Messages hold one entry per round; rawText is built ONLY from learner
+      // translations so passages/feedback stay out of word metrics.
+      const messages = completedRounds.map((r, i) => ({
+        role: 'story-round',
+        round: i + 1,
+        passage: r.passage || '',
+        translation: r.translation || '',
+        improvedVersion: r.feedback?.improvedVersion || '',
+        constructions: r.feedback?.constructions || [],
+      }));
+      const rawText = completedRounds.map((r) => r.translation.trim()).join('\n\n');
+      try {
+        await updateSession(session.id, {
+          activity: 'translation',
+          rawText: rawText || null,
+          messages,
+          durationSeconds,
+        });
+      } catch (err) {
+        console.error('Error saving translation story session:', err);
+      }
+    }
+
+    if (completedRounds.length === 0) {
+      navigate('/');
+      return;
+    }
+
+    const cap = settings?.maxImprovements > 0 ? settings.maxImprovements : Infinity;
+    const aggregated = aggregateStoryConstructions(completedRounds, cap).map((c) => ({
+      construction: c.construction || '',
+      original: c.original || '',
+      improved: c.improved || '',
+      explanation: c.explanation || '',
+      category: c.category || 'other',
+      spoken_frequency: c.spoken_frequency || c.spokenFrequency || 'medium',
+    }));
+
+    if (aggregated.length === 0) {
+      navigate('/');
+      return;
+    }
+
+    setParsedImprovements(aggregated);
+    setStep(4);
+  }, [session, settings, startTime, navigate]);
+
   const handleImport = useCallback(() => {
     setParseError('');
     setParseWarnings([]);
@@ -190,13 +295,13 @@ export default function Session() {
   }, [jsonInput]);
 
   const handleConfirmImport = useCallback(async () => {
-    if (session && parsedImprovements.length > 0) {
+    if (session && selectedImprovements.length > 0) {
       try {
         setLoading(true);
         if (rawTextInput.trim()) {
           await addSessionText(session.id, rawTextInput.trim());
         }
-        await addImprovements(session.id, parsedImprovements);
+        await addImprovements(session.id, selectedImprovements);
         if (startTime) {
           const durationSeconds = Math.round((Date.now() - startTime) / 1000);
           if (durationSeconds > 0) {
@@ -215,7 +320,7 @@ export default function Session() {
         setLoading(false);
       }
     }
-  }, [session, parsedImprovements, rawTextInput, startTime, navigate]);
+  }, [session, selectedImprovements, rawTextInput, startTime, navigate]);
 
   // Derived Prompts
   const descriptionPrompt = useMemo(() => {
@@ -311,6 +416,33 @@ export default function Session() {
 
           <div className="space-y-2">
             <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
+              Activity <span className="text-rose-400">*</span>
+            </label>
+            <div className="grid grid-cols-2 gap-2.5">
+              {ACTIVITIES.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  id={`activity-${a.id}`}
+                  onClick={() => setActivity(a.id)}
+                  className={`flex flex-col items-center justify-center p-3 rounded-xl border transition-all cursor-pointer ${
+                    activity === a.id
+                      ? 'border-purple-500 bg-purple-500/20 text-purple-300 font-bold'
+                      : 'border-gray-800 bg-[#1b1c2b] text-gray-400 hover:border-gray-700'
+                  }`}
+                >
+                  <span className="text-2xl mb-1">{a.icon}</span>
+                  <span className="text-xs">{a.label}</span>
+                  <span className="text-[10px] mt-0.5 font-normal opacity-70 text-center leading-tight">
+                    {a.description}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
               Source Type <span className="text-rose-400">*</span>
             </label>
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
@@ -373,11 +505,19 @@ export default function Session() {
         </form>
       )}
 
-      {step === 2 && mode === 'seamless' && (
+      {step === 2 && activity === 'translation' && (
+        <TranslationStorySession
+          session={session}
+          settings={settings}
+          onFinish={handleTranslationFinish}
+        />
+      )}
+
+      {step === 2 && activity === 'dialogue' && mode === 'seamless' && (
         <SeamlessChatSession session={session} settings={settings} onFinish={handleSeamlessFinish} />
       )}
 
-      {step === 2 && mode === 'prompt' && (
+      {step === 2 && activity === 'dialogue' && mode === 'prompt' && (
         <div className="space-y-4">
           <div className="glass-panel p-5 space-y-4">
             <div className="flex items-center justify-between">
@@ -521,12 +661,25 @@ export default function Session() {
             <button
               id="btn-confirm-import"
               onClick={handleConfirmImport}
-              disabled={loading}
+              disabled={loading || selectedImprovements.length === 0}
               className="bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs py-2.5 px-5 rounded-lg transition-all shadow cursor-pointer disabled:opacity-50"
             >
-              {loading ? 'Saving...' : 'Confirm Import'}
+              {loading ? 'Saving...' : `Confirm Import (${selectedImprovements.length} selected)`}
             </button>
           </div>
+
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-300 cursor-pointer select-none w-fit">
+            <input
+              type="checkbox"
+              aria-label="Select all improvements"
+              checked={
+                parsedImprovements.length > 0 && selectedIds.size === parsedImprovements.length
+              }
+              onChange={toggleAllImprovements}
+              className="w-4 h-4 accent-purple-500 cursor-pointer"
+            />
+            Select all ({selectedIds.size} of {parsedImprovements.length} selected)
+          </label>
 
           {parseWarnings.length > 0 && (
             <div className="p-3 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs space-y-1">
@@ -540,6 +693,13 @@ export default function Session() {
               <div key={idx} className="glass-panel p-4 space-y-2 relative">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select improvement ${idx + 1}`}
+                      checked={selectedIds.has(idx)}
+                      onChange={() => toggleImprovement(idx)}
+                      className="w-4 h-4 accent-purple-500 cursor-pointer shrink-0"
+                    />
                     <span className="text-[10px] font-bold uppercase tracking-wider bg-gray-800 text-gray-300 px-2 py-0.5 rounded border border-gray-700">
                       {imp.category}
                     </span>
@@ -573,10 +733,10 @@ export default function Session() {
           <button
             id="btn-confirm-import-bottom"
             onClick={handleConfirmImport}
-            disabled={loading}
+            disabled={loading || selectedImprovements.length === 0}
             className="w-full bg-purple-600 hover:bg-purple-500 text-white font-bold text-base py-3.5 px-6 rounded-xl transition-all cursor-pointer shadow disabled:opacity-50"
           >
-            {loading ? 'Saving...' : 'Confirm Import'}
+            {loading ? 'Saving...' : `Confirm Import (${selectedImprovements.length} selected)`}
           </button>
         </div>
       )}

@@ -68,6 +68,7 @@ function mapSessionFromDb(r) {
     durationSeconds: r.duration_seconds || 0,
     rawText: r.raw_text || null,
     messages: r.messages || [],
+    activity: r.activity || 'dialogue',
     createdAt: r.created_at,
     status: r.status || 'created',
   };
@@ -83,6 +84,7 @@ function mapSessionToDb(s) {
     duration_seconds: s.durationSeconds || 0,
     raw_text: s.rawText || null,
     messages: s.messages || [],
+    activity: s.activity || 'dialogue',
     created_at: s.createdAt,
     status: s.status || 'created',
   };
@@ -267,7 +269,7 @@ export async function getSession(id) {
   return sessions.find((s) => s.id === id) || null;
 }
 
-export async function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0, rawText = null, messages = [] }) {
+export async function createSession({ title, sourceType, tags = [], notes = '', durationSeconds = 0, rawText = null, messages = [], activity = 'dialogue' }) {
   const topic = await getOrCreateTopic(title);
   const session = {
     id: generateId(),
@@ -279,6 +281,7 @@ export async function createSession({ title, sourceType, tags = [], notes = '', 
     durationSeconds,
     rawText: rawText || null,
     messages: messages || [],
+    activity: activity || 'dialogue',
     createdAt: new Date().toISOString(),
     status: 'created',
   };
@@ -312,6 +315,7 @@ export async function updateSession(id, updates) {
     if ('durationSeconds' in updates) dbUpdates.duration_seconds = updates.durationSeconds;
     if ('rawText' in updates) dbUpdates.raw_text = updates.rawText;
     if ('messages' in updates) dbUpdates.messages = updates.messages;
+    if ('activity' in updates) dbUpdates.activity = updates.activity;
     if ('status' in updates) dbUpdates.status = updates.status;
 
     const { data, error } = await supabase.from('sessions').update(dbUpdates).eq('id', id).select().single();
