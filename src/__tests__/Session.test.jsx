@@ -366,6 +366,12 @@ describe('Session Wizard Component', () => {
       const sessions = await getSessions();
       expect(sessions[0].title).toMatch(/^Story — /);
       expect(sessions[0].messages[0].content).toBe('__story_demands:');
+
+      // The date title is a display-only label: the story generator still
+      // receives no topic at all, so no date can reach the prompt.
+      const [sessionArg] = mocks.generateTranslationStoryPassage.mock.calls[0];
+      expect(sessionArg.title).toMatch(/^Story — /);
+      expect(sessionArg.storyDemands).toBe('');
     });
 
     it('records real duration and logs session activity on story finish', async () => {

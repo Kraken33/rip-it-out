@@ -395,10 +395,12 @@ Constraints: Level: ${settings.level || 'intermediate'}. Write the summary, the 
 }
 
 /**
- * Generate one translation-story round passage via OpenAI: ONE short natural
- * Russian story grounded in the session topic, on a fresh topic (history-aware).
+ * Generate one translation-story round passage via OpenAI: ONE short Russian
+ * story in natural spoken register, on a fresh topic (history-aware). The
+ * learner's `storyDemands` are the only topic source — an auto-generated
+ * session display title is never used as a topic.
  *
- * @param {Object} session - Session record (title/topic, sourceType, optional storyDemands)
+ * @param {Object} session - Session record (storyDemands is the topic source, sourceType)
  * @param {Object} settings - Learner settings (level, formality, openaiApiKey, openaiModel)
  * @param {string[]} historyTopics - Topics/passages already used this session
  * @returns {Promise<string>} Raw Russian passage text

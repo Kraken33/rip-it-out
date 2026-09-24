@@ -428,13 +428,17 @@ describe('AI Service Layer', () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
-    it('posts to the OpenAI chat endpoint with the session topic and configured model', async () => {
+    it('posts to the OpenAI chat endpoint with the learner story topic and configured model', async () => {
       fetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({ choices: [{ message: { content: 'Вчера мы поехали за город.' } }] }),
       });
 
-      const passage = await generateTranslationStoryPassage(session, settings, []);
+      const passage = await generateTranslationStoryPassage(
+        { ...session, storyDemands: 'Weekend in the Countryside' },
+        settings,
+        []
+      );
       expect(passage).toBe('Вчера мы поехали за город.');
 
       expect(fetch).toHaveBeenCalledWith(
@@ -447,6 +451,28 @@ describe('AI Service Layer', () => {
       const systemPrompt = body.messages[0].content;
       expect(systemPrompt).toContain('Weekend in the Countryside');
       expect(systemPrompt).toMatch(/ONLY the Russian story text/i);
+    });
+
+    it('never sends an auto-generated date title to the model', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'Вчера мы поболтали с соседом.' } }] }),
+      });
+
+      await generateTranslationStoryPassage(
+        { title: 'Story — Sep 23, 2026', sourceType: 'other', storyDemands: '' },
+        settings,
+        []
+      );
+
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      const allContent = body.messages.map((m) => m.content).join('\n');
+      expect(allContent).not.toContain('Story —');
+      expect(allContent).not.toContain('Sep 23, 2026');
+      expect(allContent).not.toContain('2026');
+      expect(allContent).toMatch(/The learner gave no topic/i);
+      expect(allContent).toMatch(/fresh, concrete everyday topic/i);
+      expect(allContent).toMatch(/natural spoken Russian/i);
     });
 
     it('threads learner demands into the request messages', async () => {

@@ -7,6 +7,7 @@ import {
   generateTranslationPracticePrompt,
   generateStoryPassagePrompt,
   generateStoryFeedbackPrompt,
+  resolveStoryTopic,
   parseImportJSON,
   parseTranslationVerdict,
   parseStoryFeedback,
@@ -280,17 +281,51 @@ describe('parseTranslationVerdict', () => {
 });
 
 describe('Translation Story prompts & parseStoryFeedback', () => {
-  const storySession = { title: 'Weekend in the Countryside', sourceType: 'other' };
+  const storySession = { storyDemands: 'Weekend in the Countryside', sourceType: 'other' };
   const storySettings = { formality: 'casual', level: 'intermediate', maxImprovements: 5 };
 
+  describe('resolveStoryTopic', () => {
+    it('returns the trimmed learner story topic/demands', () => {
+      expect(resolveStoryTopic({ storyDemands: '  ordering coffee  ' })).toBe('ordering coffee');
+    });
+
+    it('returns an empty string when the learner gave no demands', () => {
+      expect(resolveStoryTopic({ storyDemands: '' })).toBe('');
+      expect(resolveStoryTopic({ storyDemands: '   ' })).toBe('');
+      expect(resolveStoryTopic({})).toBe('');
+      expect(resolveStoryTopic(null)).toBe('');
+    });
+
+    it('never derives a topic from the session title', () => {
+      expect(resolveStoryTopic({ title: 'Weekend in the Countryside' })).toBe('');
+      expect(resolveStoryTopic({ title: 'Story — Sep 23, 2026' })).toBe('');
+    });
+  });
+
   describe('generateStoryPassagePrompt', () => {
-    it('grounds the story in the session topic and learner level, requesting only Russian text', () => {
+    it('grounds the story in the learner demands and learner level, requesting only Russian text', () => {
       const prompt = generateStoryPassagePrompt(storySession, storySettings);
       expect(prompt).toContain('Weekend in the Countryside');
       expect(prompt).toContain('intermediate');
       expect(prompt).toMatch(/ONE short natural Russian story/i);
       expect(prompt).toMatch(/ONLY the Russian story text/i);
       expect(prompt).toMatch(/No title, no English translation, no commentary/i);
+    });
+
+    it('requires natural spoken Russian instead of literary narration', () => {
+      const prompt = generateStoryPassagePrompt(storySession, storySettings);
+      expect(prompt).toMatch(/natural spoken Russian/i);
+      expect(prompt).toMatch(/out loud/i);
+      expect(prompt).toMatch(/conversational, everyday register/i);
+      expect(prompt).toMatch(/never literary, bookish, or formal narration/i);
+    });
+
+    it('forbids calendar-date references while allowing relative time words', () => {
+      const prompt = generateStoryPassagePrompt(storySession, storySettings);
+      expect(prompt).toMatch(
+        /Do NOT mention today's date, the current year, a month name, or a literal calendar date/i
+      );
+      expect(prompt).toContain('"yesterday"');
     });
 
     it('lists used topics and requires a fresh topic when history is provided', () => {
@@ -315,12 +350,25 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       );
       expect(prompt).toContain('ordering coffee and small talk');
       expect(prompt).toMatch(/MUST match this request/i);
+      // The free-topic fallback must not appear once the learner steered the topic.
+      expect(prompt).not.toMatch(/The learner gave no topic/i);
     });
 
-    it('omits the demands block and keeps the everyday-topic fallback when none are given', () => {
+    it('picks a free everyday topic when no demands were given', () => {
       const prompt = generateStoryPassagePrompt({ title: '', storyDemands: '' }, storySettings);
       expect(prompt).not.toMatch(/specifically asked to practice/i);
-      expect(prompt).toContain('everyday life');
+      expect(prompt).toMatch(/The learner gave no topic/i);
+      expect(prompt).toMatch(/fresh, concrete everyday topic/i);
+    });
+
+    it('never sends an auto-generated session title to the model', () => {
+      const prompt = generateStoryPassagePrompt(
+        { title: 'Story — Sep 23, 2026', storyDemands: '' },
+        storySettings
+      );
+      expect(prompt).not.toContain('Story —');
+      expect(prompt).not.toContain('Sep 23, 2026');
+      expect(prompt).not.toContain('2026');
     });
   });
 

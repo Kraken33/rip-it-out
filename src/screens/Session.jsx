@@ -183,8 +183,11 @@ export default function Session() {
           activity,
         });
       } else {
-        // Story-translation sessions carry no source metadata; the optional
-        // demands seed both the session title and the story prompts.
+        // Story-translation sessions carry no source metadata. The optional
+        // demands are the ONLY topic source the story generator receives, and
+        // they double as the session title. Without demands the session gets an
+        // auto-generated date title, which is a display-only label for Library
+        // and replay — it is deliberately never sent to the story prompts.
         const demands = storyDemands.trim();
         const dateTitle = new Date().toLocaleDateString('en-US', {
           day: 'numeric',

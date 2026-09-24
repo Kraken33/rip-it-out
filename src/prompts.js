@@ -394,11 +394,27 @@ export function parseTranslationVerdict(text) {
 export const STORY_ROUND_CONSTRUCTION_CAP = 3;
 
 /**
- * System prompt for one translation-story round passage: ONE short natural
- * Russian story grounded in the session topic and learner level, on a topic
- * not already used this session. Output is ONLY the Russian passage text.
+ * Resolve the ONLY topic input for a story passage: the learner-provided story
+ * topic/demands captured at session setup. A story session started without
+ * demands is saved with an auto-generated display title (`Story — <date>`);
+ * that title is a Library/replay label and MUST NOT steer generated stories,
+ * so it is deliberately never read here.
  *
- * @param {Object} session - Session record (title/topic, sourceType)
+ * @param {Object} session - Session record (storyDemands)
+ * @returns {string} Trimmed learner demands, or '' when the learner gave none
+ */
+export function resolveStoryTopic(session) {
+  return (session?.storyDemands || '').trim();
+}
+
+/**
+ * System prompt for one translation-story round passage: ONE short Russian
+ * story in natural spoken register, grounded in the learner's story
+ * topic/demands when given (free everyday topic otherwise), at the learner
+ * level, on a topic not already used this session. Output is ONLY the Russian
+ * passage text.
+ *
+ * @param {Object} session - Session record (storyDemands is the topic source)
  * @param {Object} settings - Learner settings (level, formality)
  * @param {string[]} historyTopics - Topics/passages already used this session
  * @returns {string}
@@ -414,19 +430,23 @@ export function generateStoryPassagePrompt(session, settings, historyTopics = []
         .join('\n')}\nYou MUST pick a FRESH topic that is not in the list above.`
     : '';
 
-  const demands = (session?.storyDemands || '').trim();
-  const demandsBlock = demands
-    ? `\n\nThe learner specifically asked to practice: "${demands}". The story MUST match this request.`
+  const topic = resolveStoryTopic(session);
+  const demandsBlock = topic
+    ? `\n\nThe learner specifically asked to practice: "${topic}". The story MUST match this request.`
     : '';
+  const topicBlock = topic
+    ? ''
+    : `\n\nThe learner gave no topic, so the subject is yours to pick: choose ONE fresh, concrete everyday topic (for example running into a neighbour, a small problem at home, or getting ready for the day) and make the whole story about it.`;
 
   return `You are a Russian language tutor creating story-translation practice material for an English learner.
 
-Write ONE short natural Russian story (3-6 sentences) grounded in the session topic: "${session.title || 'everyday life'}". The story should feel like something a real person would tell about their day — concrete, spoken-style, and connected to the session topic.${demandsBlock}${usedTopicsBlock}
+Write ONE short natural Russian story (3-6 sentences) in natural spoken Russian — the way a native speaker would actually say it out loud to a friend. Use conversational, everyday register: short spoken sentences, common everyday vocabulary, and natural spoken constructions, never literary, bookish, or formal narration.${topicBlock}${demandsBlock}${usedTopicsBlock}
 
 Rules:
 - Write ONLY the Russian story text. No title, no English translation, no commentary, no formatting marks.
 - The story must be understandable for a learner at the ${settings.level || 'intermediate'} level.
-- Keep it grounded in everyday situations the learner could talk about.
+- Keep it about concrete everyday situations the learner could talk about.
+- Do NOT mention today's date, the current year, a month name, or a literal calendar date. Ordinary relative time words like "yesterday", "this morning", or "last week" are fine.
 - Formality level: ${settings.formality || 'casual'}.`;
 }
 
