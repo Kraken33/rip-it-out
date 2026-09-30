@@ -4,6 +4,7 @@ import {
   parseImportJSON,
   generateStoryPassagePrompt,
   generateStoryFeedbackPrompt,
+  generateConstructionExtractionPrompt,
 } from '../prompts';
 
 /**
@@ -425,6 +426,40 @@ export async function generateTranslationStoryPassage(session = {}, settings = {
   }
 
   return passage;
+}
+
+/**
+ * Extract ONE reusable construction from a phrase the learner selected in
+ * AI-written session text (an improved version or an AI coach reply).
+ * Returns the raw model reply; interpret it with parseExtractedConstruction.
+ *
+ * @param {Object} params
+ * @param {string} params.selectedText - The phrase the learner selected
+ * @param {string} params.sourceText - The complete block the phrase was selected from
+ * @param {string} [params.passage] - The round's Russian passage, when applicable
+ * @param {Object} [params.settings] - Learner settings (level, openaiApiKey, openaiModel)
+ * @returns {Promise<string>} Raw extraction JSON text
+ */
+export async function extractConstruction({ selectedText = '', sourceText = '', passage = '', settings = {} } = {}) {
+  const systemMessage = generateConstructionExtractionPrompt(selectedText, sourceText, passage, settings);
+  const formattedMessages = [
+    { role: 'system', content: systemMessage },
+    { role: 'user', content: 'Extract the construction now.' },
+  ];
+
+  const rawContent = await requestOpenAIChat(settings, {
+    messages: formattedMessages,
+    temperature: 0.2,
+    maxTokens: 1000,
+  });
+
+  if (!rawContent.trim()) {
+    throw new Error(
+      'The AI model ran out of tokens before producing output. Try selecting a shorter phrase, or switch to a different OpenAI model in Settings.'
+    );
+  }
+
+  return rawContent;
 }
 
 /**

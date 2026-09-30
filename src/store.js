@@ -199,8 +199,9 @@ export async function getTopics() {
 
 export async function getTopic(id) {
   if (isSupabaseConfigured) {
-    const { data, error } = await supabase.from('topics').select('*').eq('id', id).single();
+    const { data, error } = await supabase.from('topics').select('*').eq('id', id).maybeSingle();
     if (!error && data) return mapTopicFromDb(data);
+    if (!error && data === null) return null;
   }
   const topics = (readLocalStore(STORAGE_KEYS.topics) || []);
   return topics.find((t) => t.id === id) || null;
@@ -262,8 +263,9 @@ export async function getSessions() {
 
 export async function getSession(id) {
   if (isSupabaseConfigured) {
-    const { data, error } = await supabase.from('sessions').select('*').eq('id', id).single();
+    const { data, error } = await supabase.from('sessions').select('*').eq('id', id).maybeSingle();
     if (!error && data) return mapSessionFromDb(data);
+    if (!error && data === null) return null;
   }
   const sessions = readLocalStore(STORAGE_KEYS.sessions) || [];
   return sessions.find((s) => s.id === id) || null;
@@ -364,8 +366,9 @@ export async function getImprovements() {
 
 export async function getImprovement(id) {
   if (isSupabaseConfigured) {
-    const { data, error } = await supabase.from('improvements').select('*').eq('id', id).single();
+    const { data, error } = await supabase.from('improvements').select('*').eq('id', id).maybeSingle();
     if (!error && data) return mapImprovementFromDb(data);
+    if (!error && data === null) return null;
   }
   const improvements = await getImprovements();
   return improvements.find((i) => i.id === id) || null;
@@ -468,8 +471,9 @@ export async function getSrsCards() {
 
 export async function getSrsCard(improvementId) {
   if (isSupabaseConfigured) {
-    const { data, error } = await supabase.from('srs_cards').select('*').eq('improvement_id', improvementId).single();
+    const { data, error } = await supabase.from('srs_cards').select('*').eq('improvement_id', improvementId).maybeSingle();
     if (!error && data) return mapSrsCardFromDb(data);
+    if (!error && data === null) return null;
   }
   const cards = await getSrsCards();
   return cards.find((c) => c.improvementId === improvementId) || null;
@@ -581,7 +585,7 @@ export async function getSettings() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data, error } = await supabase.from('settings').select('*').eq('user_id', user.id).single();
+        const { data, error } = await supabase.from('settings').select('*').eq('user_id', user.id).maybeSingle();
         if (!error && data) {
           dbSettings = mapSettingsFromDb(data);
         }

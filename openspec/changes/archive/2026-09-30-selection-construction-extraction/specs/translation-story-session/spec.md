@@ -1,10 +1,6 @@
-# Translation Story Session
+# Spec Delta
 
-## Purpose
-
-The translation-story-session capability lets learners run story-translation sessions that generate Russian stories, collect English translations, show fluent daily-speaking improved versions, and aggregate candidate constructions for vault import.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Unlimited story-translation rounds
 
@@ -61,3 +57,11 @@ The system SHALL persist a finished translation-story session to the configured 
 #### Scenario: Translation session appears in Library and stats
 - **WHEN** a translation-story session record exists
 - **THEN** it appears in Library under its title, constructions harvested from it are listed as vault items scoped to that session, its learner translations contribute to word metrics, and passages/improved versions are excluded from word counts.
+
+## REMOVED Requirements
+
+### Requirement: End-of-session aggregation shows all constructions
+
+**Reason**: Candidate constructions are no longer generated automatically, so there is nothing to aggregate. Learners now harvest the specific phrases they choose from each round's improved version.
+
+**Migration**: No data migration is required. Historical sessions keep whatever constructions were already stored in their `messages`; new sessions save rounds without a constructions list, and a finished story session presents no import picker.

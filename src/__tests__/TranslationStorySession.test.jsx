@@ -28,7 +28,7 @@ vi.mock('../components/AudioRecorder', () => ({
 const PASSAGE_1 = 'Вчера я пригласил друга в гости, и мы долго болтали.';
 const PASSAGE_2 = 'Сегодня утром я опоздал на автобус.';
 
-const buildFeedback = (constructions, { summary = 'Nice work.', improvedVersion = '' , alreadyNatural } = {}) =>
+const buildFeedback = (constructions, { summary = 'Nice work.', improvedVersion = '', alreadyNatural } = {}) =>
   JSON.stringify({
     feedback: {
       summary,

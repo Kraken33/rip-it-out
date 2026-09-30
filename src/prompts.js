@@ -388,12 +388,6 @@ export function parseTranslationVerdict(text) {
 // ── Translation Story Session ─────────────────────────────────────
 
 /**
- * Small per-round cap so end-of-session aggregation stays within the
- * session-wide `maxImprovements` budget after a few rounds.
- */
-export const STORY_ROUND_CONSTRUCTION_CAP = 3;
-
-/**
  * Resolve the ONLY topic input for a story passage: the learner-provided story
  * topic/demands captured at session setup. A story session started without
  * demands is saved with an auto-generated display title (`Story — <date>`);
@@ -453,8 +447,7 @@ Rules:
 
 /**
  * System prompt for per-round translation feedback: a fluent daily-speaking
- * improved version of the learner's translation plus candidate constructions
- * in the vault improvement shape (capped per round).
+ * improved version of the learner's translation.
  *
  * @param {string} passageText - The Russian story passage being translated
  * @param {Object} settings - Learner settings (level)
@@ -471,85 +464,28 @@ Evaluate the learner's English translation and respond with structured feedback:
 1. "summary": one short sentence of overall feedback for the learner.
 2. "already_natural": true when the translation is already natural, fluent spoken English; false otherwise.
 3. "improved_version": a comprehensive, fluent version of the LEARNER'S OWN translation optimized for daily speaking — keep their meaning and wording where natural, fix errors, and prefer fluent spoken phrasing over formal written style. When "already_natural" is true, leave this EMPTY: affirm the success in "summary" and NEVER invent a rewrite, corrections, or "more natural" alternatives for a correct translation.
-4. "constructions": up to ${STORY_ROUND_CONSTRUCTION_CAP} reusable spoken English constructions demonstrated by (or missing from) the translation. Even for a correct translation, list the constructions the learner demonstrated as candidates. For each:
-   - "construction": the abstracted pattern, kept SHORT: a single clause of roughly 2-7 words with bracket slots (e.g. "start taking [class] to [purpose]"), never a whole sentence or a multi-clause pattern like "If I wake up at [time], I feel [adjective] and like I haven't had enough sleep".
-   - "original": the exact phrase the learner used (or attempted).
-   - "improved": the natural spoken version of that phrase.
-   - "explanation": why this construction/phrasing sounds more natural in spoken English.
-   - "category": one of: grammar, vocabulary, collocation, idiom, pronunciation, structure.
-   - "spoken_frequency": one of: very_high, high, medium.
 
 Respond with ONLY this JSON object — no markdown, no explanation, no extra text:
 {
   "feedback": {
     "summary": "one short sentence",
     "already_natural": false,
-    "improved_version": "",
-    "constructions": [
-      {
-        "construction": "invite [someone] over",
-        "original": "invited him to my home",
-        "improved": "invited him over",
-        "explanation": "...",
-        "category": "collocation",
-        "spoken_frequency": "very_high"
-      }
-    ]
+    "improved_version": ""
   }
 }
 
-Constraints: Level: ${settings.level || 'intermediate'}. Write the summary, explanations and improved version in English.`;
+Constraints: Level: ${settings.level || 'intermediate'}. Write the summary and improved version in English.`;
 }
 
-
-/**
- * Normalize one candidate construction entry into the vault improvement shape,
- * mirroring parseImportJSON's per-item rules.
- *
- * @param {unknown} item
- * @param {string[]} warnings - Mutable warnings sink
- * @returns {Object|null} Normalized entry, or null when the item is unusable
- */
-function normalizeStoryConstruction(item, warnings) {
-  const original = item?.original?.trim?.();
-  const improved = item?.improved?.trim?.();
-  const construction = item?.construction?.trim?.();
-
-  if (!construction && (!original || !improved)) {
-    warnings.push('Skipped one malformed construction entry.');
-    return null;
-  }
-
-  let category = item?.category;
-  if (!allowedCategories.includes(category)) {
-    if (category) warnings.push(`Removed invalid category '${category}'.`);
-    category = 'vocabulary';
-  }
-
-  let freq = item?.spoken_frequency;
-  if (!allowedFrequencies.includes(freq)) {
-    if (freq) warnings.push(`Removed invalid spoken frequency '${freq}'.`);
-    freq = 'medium';
-  }
-
-  return {
-    construction: construction || improved,
-    original: original || '',
-    improved: improved || '',
-    explanation: item?.explanation?.trim?.() || '',
-    category,
-    spoken_frequency: freq,
-  };
-}
 
 /**
  * Parse a per-round story feedback response into a renderable result.
  *
  * An "already natural" translation is a SUCCESS: the improved version stays
- * empty and the demonstrated constructions are still listed as candidates.
+ * empty and only the affirming summary is shown.
  *
  * @param {string} text - Raw LLM feedback response
- * @returns {{ success: boolean, feedback?: Object, warnings?: string[], error?: string }}
+ * @returns {{ success: boolean, feedback?: Object, error?: string }}
  */
 export function parseStoryFeedback(text) {
   if (!text || !text.trim()) {
@@ -568,24 +504,6 @@ export function parseStoryFeedback(text) {
     return { success: false, error: 'Feedback result is missing the "feedback" object.' };
   }
 
-  if (feedback.constructions != null && !Array.isArray(feedback.constructions)) {
-    return { success: false, error: 'Feedback "constructions" must be a list.' };
-  }
-
-  const warnings = [];
-  const constructions = [];
-  for (const item of feedback.constructions || []) {
-    const normalized = normalizeStoryConstruction(item, warnings);
-    if (normalized) constructions.push(normalized);
-  }
-
-  // Enforce the per-round cap client-side so a chatty model cannot overflow
-  // the end-of-session aggregation budget.
-  if (constructions.length > STORY_ROUND_CONSTRUCTION_CAP) {
-    warnings.push(`Capped constructions at ${STORY_ROUND_CONSTRUCTION_CAP} for this round.`);
-    constructions.length = STORY_ROUND_CONSTRUCTION_CAP;
-  }
-
   const improvedVersion = optionalText(feedback.improved_version) || '';
 
   // Honour an explicit flag when the model sends one; otherwise derive it from
@@ -600,9 +518,125 @@ export function parseStoryFeedback(text) {
       summary: optionalText(feedback.summary) || '',
       alreadyNatural,
       improvedVersion: alreadyNatural ? '' : improvedVersion,
-      constructions,
     },
-    warnings,
+  };
+}
+
+// ── On-Demand Construction Extraction ─────────────────────────────
+
+/**
+ * System prompt for extracting ONE reusable construction from a phrase the
+ * learner selected in AI-written session text (an improved version or an AI
+ * coach reply). Nothing is being corrected, so `original` stays empty.
+ *
+ * @param {string} selection - The phrase the learner selected
+ * @param {string} sourceBlock - The complete block the phrase was selected from
+ * @param {string} [passage] - The round's Russian passage, when applicable
+ * @param {Object} [settings] - Learner settings (level)
+ * @returns {string}
+ */
+export function generateConstructionExtractionPrompt(selection, sourceBlock, passage, settings = {}) {
+  const selected = (selection || '').trim();
+  const source = (sourceBlock || '').trim();
+  const russian = (passage || '').trim();
+
+  const passageBlock = russian
+    ? `\nThis English text is the learner's natural version of this Russian passage:\n"${russian}"\n`
+    : '';
+
+  return `You are an English speaking coach. A learner highlighted one phrase in natural English text and wants to save the reusable construction behind it as a study card.
+
+The phrase the learner selected:
+"${selected}"
+
+The complete text it was selected from:
+"${source}"
+${passageBlock}
+Return exactly ONE reusable construction that captures the pattern behind the selected phrase.
+
+Rules:
+- "construction": the abstracted pattern, kept SHORT: a single clause of roughly 2-7 words with bracket slots (e.g. "start taking [class] to [purpose]"). NEVER copy a whole sentence or chain multiple clauses — a pattern like "If I wake up at [time], I feel [adjective] and like I haven't had enough sleep" is TOO LONG; extract the single core structure instead.
+- "improved": the selected phrase written as the natural spoken English example of that construction.
+- "explanation": one sentence on why this pattern is worth reusing in spoken English.
+- "original": MUST be an empty string. Nothing is being corrected here.
+- "category": one of: grammar, vocabulary, collocation, idiom, pronunciation, structure
+- "spoken_frequency": one of: very_high, high, medium
+
+Respond with ONLY this JSON object — no markdown, no explanation, no extra text:
+{
+  "extraction": {
+    "construction": "short single-clause pattern, 2-7 words (e.g. invite [someone] over)",
+    "original": "",
+    "improved": "the selected phrase as a natural spoken example",
+    "explanation": "why this pattern is worth reusing",
+    "category": "one of: grammar, vocabulary, collocation, idiom, pronunciation, structure",
+    "spoken_frequency": "one of: very_high, high, medium"
+  }
+}
+
+Constraints: Level: ${settings.level || 'intermediate'}. Write the explanation in English.`;
+}
+
+/**
+ * Parse an extraction response into ONE construction in the vault improvement
+ * shape. `original` is always empty: the phrase was selected from AI-written
+ * text, so there is no learner error behind it.
+ *
+ * @param {string} text - Raw LLM response
+ * @returns {{ success: boolean, construction?: Object, warnings?: string[], error?: string }}
+ */
+export function parseExtractedConstruction(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty extraction response.' };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(extractJsonObject(text));
+  } catch {
+    return { success: false, error: 'Extraction result was not valid JSON.' };
+  }
+
+  const extraction = parsed?.extraction;
+  if (!extraction || typeof extraction !== 'object') {
+    return { success: false, error: 'Extraction result is missing the "extraction" object.' };
+  }
+
+  const construction = optionalText(extraction.construction);
+  if (!construction) {
+    return { success: false, error: 'Extraction result is missing a construction pattern.' };
+  }
+
+  const improved = optionalText(extraction.improved);
+  if (!improved) {
+    return { success: false, error: 'Extraction result is missing the improved example.' };
+  }
+
+  const warnings = [];
+
+  let category = extraction.category;
+  if (!allowedCategories.includes(category)) {
+    if (category) warnings.push(`Removed invalid category '${category}'.`);
+    category = 'collocation';
+  }
+
+  let freq = extraction.spoken_frequency;
+  if (!allowedFrequencies.includes(freq)) {
+    if (freq) warnings.push(`Removed invalid spoken frequency '${freq}'.`);
+    freq = 'medium';
+  }
+
+  return {
+    success: true,
+    construction: {
+      construction,
+      original: '',
+      improved,
+      explanation: optionalText(extraction.explanation) || '',
+      category,
+      spoken_frequency: freq,
+    },
+    warnings: warnings.length > 0 ? warnings : undefined,
   };
 }
 

@@ -54,18 +54,15 @@ The system SHALL provide a mode switcher allowing users to choose between automa
 - **AND** the user can freely toggle to `Prompt Copy/Paste` to manually copy prompts if desired
 
 ### Requirement 3: Automated In-App Voice Recording & AI Analysis
-The system SHALL support capturing spoken audio and sending requests directly to the OpenAI Chat Completions API to generate structured improvements upon completing a session.
+The system SHALL support capturing spoken audio and sending requests directly to the OpenAI Chat Completions API as a conversational coaching chat during a seamless session, and SHALL NOT generate a structured improvement batch when that session is finished.
 
-#### Scenario: User completes seamless session and triggers end-of-session evaluation
-- **GIVEN** the user is in a session with `Seamless AI` mode active and has recorded or typed multiple message turns
-- **WHEN** the user clicks "Finish Conversation"
-- **THEN** the system MUST join all user messages into a single text block
-- **AND** send the combined text to the OpenAI Chat Completions API (`generateSeamlessSessionFeedback`) using the configured OpenAI chat model
-- **AND** automatically parse the JSON response into improvement items for review in Step 4
+#### Scenario: Session completes by saving and exiting
+- **WHEN** the user finishes a seamless session after one or more message turns
+- **THEN** the learner's message text and the measured duration are saved to the session, an activity log entry is recorded, and the flow returns to the Dashboard without any end-of-session improvement batch.
 
 #### Scenario: Text generation is attempted without an OpenAI key
 - **GIVEN** only a Groq API key is configured and no OpenAI key is present
-- **WHEN** any AI text generation or evaluation action is attempted (session feedback, coach chat reply, translation passage generation, translation evaluation)
+- **WHEN** any AI text generation or evaluation action is attempted (coach chat reply, translation passage generation, translation evaluation, construction extraction)
 - **THEN** the system MUST NOT call the Groq chat completions API
 - **AND** MUST surface an error directing the user to configure an OpenAI API key in Settings
 
@@ -108,8 +105,8 @@ The system SHALL provide a multi-line text area for typing chat messages in a Se
 The system SHALL capture and store the full sentence or message context (`context`) alongside each improvement registered to the study list.
 
 #### Scenario: SRS card created with sentence context
-- **WHEN** an improvement is added from a seamless chat message turn
-- **THEN** the created improvement record and corresponding SRS card MUST include the sentence context string.
+- **WHEN** an improvement is harvested from a selected phrase in a session text block
+- **THEN** the created improvement record and corresponding SRS card MUST include the source block text as the sentence context string.
 
 ### Requirement: Speech-to-Text Provider Routing
 The system SHALL transcribe recorded audio using the Groq Whisper API when a Groq API key is configured, and SHALL fall back to the OpenAI Whisper API when only an OpenAI key is configured.
@@ -128,14 +125,6 @@ The system SHALL transcribe recorded audio using the Groq Whisper API when a Gro
 - **GIVEN** neither a Groq nor an OpenAI key is configured
 - **WHEN** transcription is requested
 - **THEN** the system MUST surface an error prompting the user to configure an API key in Settings
-
-### Requirement: Concise Construction Patterns in AI Evaluation
-The end-of-session evaluation prompt (`generateSeamlessSessionFeedback`) SHALL instruct the model to keep each `construction` pattern short and reusable: a single compact phrase structure of roughly 2–7 words in one clause, using bracket slots (e.g. `"start taking [class] to [purpose]"`), and SHALL give a counter-example of an overly long, multi-clause pattern to avoid (e.g. `"If I wake up at [time], I feel [adjective] and like I haven't had enough sleep"`).
-
-#### Scenario: Evaluation prompt constrains construction length
-- **WHEN** the end-of-session evaluation request is built
-- **THEN** the prompt MUST explicitly require each `construction` to be a short, single-clause pattern of roughly 2–7 words
-- **AND** MUST include both a short-pattern example and a long multi-clause counter-example.
 
 ### Requirement: Story passage generation prompt
 
@@ -169,26 +158,14 @@ The system SHALL generate each translation-story round passage via OpenAI chat a
 - **WHEN** a subsequent round starts with prior round topics in history
 - **THEN** the passage request includes the used topics and requires a fresh topic.
 
-### Requirement: Per-round translation feedback prompt
+### Requirement: Per-round improved-version feedback
 
-The system SHALL evaluate each learner translation via OpenAI chat and return a structured result containing a fluent daily-speaking improved version plus candidate constructions in the vault improvement shape.
+The system SHALL evaluate each learner translation via OpenAI chat and return a structured result containing a summary and a fluent daily-speaking improved version of the learner's own translation, and SHALL NOT request candidate constructions.
 
-#### Scenario: Feedback returns improved version and constructions
-- **WHEN** the learner submits an English translation for a story passage
-- **THEN** the feedback response contains an improved version preserving the learner's meaning with fluent spoken phrasing, and a constructions list with construction, original, improved, explanation, category, and spoken frequency.
+#### Scenario: Feedback returns the improved version without constructions
+- **WHEN** the learner submits an English translation of a story passage
+- **THEN** the feedback response contains a summary and an improved version preserving the learner's meaning with fluent spoken phrasing, and contains no construction list.
 
-#### Scenario: Feedback caps constructions per round
-- **WHEN** a round is evaluated
-- **THEN** the feedback holds at most a small per-round number of constructions so each round's feedback stays focused.
-
-### Requirement: Aggregation uses existing feedback shape
-
-The system SHALL aggregate per-round constructions client-side by deduping on normalized construction text, keeping the earliest occurrence, and presenting ALL deduplicated candidates with no session-wide cap, reusing the existing improvement object shape with no new AI call.
-
-#### Scenario: Dedupe keeps earliest occurrence
-- **WHEN** two rounds yield the same normalized construction
-- **THEN** the aggregated list keeps the earliest occurrence and drops later duplicates.
-
-#### Scenario: Aggregation needs no extra AI call
-- **WHEN** per-round constructions are aggregated
-- **THEN** no additional model request is required unless a future change adds cross-round rewrite.
+#### Scenario: Correct translation needs no rewrite
+- **WHEN** the submitted translation is already natural and fluent
+- **THEN** the response marks it as already natural, leaves the improved version empty, and proposes nothing to change.

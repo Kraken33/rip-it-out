@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, evaluateTranslationRound, generateTranslationStoryPassage, evaluateTranslationStory, OPENAI_MODEL_OPTIONS } from '../services/aiService';
+import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, evaluateTranslationRound, generateTranslationStoryPassage, evaluateTranslationStory, extractConstruction, OPENAI_MODEL_OPTIONS } from '../services/aiService';
 
 describe('AI Service Layer', () => {
   beforeEach(() => {
@@ -249,6 +249,82 @@ describe('AI Service Layer', () => {
       expect(systemPrompt).toContain('start taking [class] to [purpose]');
       expect(systemPrompt).toContain("If I wake up at [time], I feel [adjective] and like I haven't had enough sleep");
       expect(systemPrompt).toMatch(/NOT acceptable/i);
+    });
+  });
+
+  describe('extractConstruction', () => {
+    it('throws error when no API key is configured', async () => {
+      await expect(
+        extractConstruction({ selectedText: 'went through', sourceText: 'I went through it.', settings: {} })
+      ).rejects.toThrow('No API Key configured');
+    });
+
+    it('rejects when only a Groq API key is configured', async () => {
+      await expect(
+        extractConstruction({
+          selectedText: 'went through',
+          sourceText: 'I went through it.',
+          settings: { groqApiKey: 'gsk_123' },
+        })
+      ).rejects.toThrow('OpenAI API Key');
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('requests the extraction prompt at writing temperature and returns the raw reply', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"construction":{}}' } }] }),
+      });
+
+      const raw = await extractConstruction({
+        selectedText: 'went through a presentation',
+        sourceText: 'She went through a presentation yesterday.',
+        passage: 'Она провела презентацию.',
+        settings: { openaiApiKey: 'sk_123' },
+      });
+
+      expect(raw).toBe('{"construction":{}}');
+
+      const [url, options] = fetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+
+      expect(url).toBe('https://api.openai.com/v1/chat/completions');
+      expect(body.temperature).toBe(0.2);
+      expect(body.max_tokens).toBe(1000);
+      expect(body.messages[0].content).toContain('went through a presentation');
+      expect(body.messages[0].content).toContain('She went through a presentation yesterday.');
+      expect(body.messages[0].content).toContain('Она провела презентацию.');
+    });
+
+    it('rejects when the model returns an empty extraction', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '' } }] }),
+      });
+
+      await expect(
+        extractConstruction({
+          selectedText: 'went through',
+          sourceText: 'She went through it.',
+          settings: { openaiApiKey: 'sk_123' },
+        })
+      ).rejects.toThrow('ran out of tokens');
+    });
+
+    it('uses the configured openaiModel for the extraction request', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"construction":{}}' } }] }),
+      });
+
+      await extractConstruction({
+        selectedText: 'went through',
+        sourceText: 'She went through it.',
+        settings: { openaiApiKey: 'sk_123', openaiModel: 'gpt-4o' },
+      });
+
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      expect(body.model).toBe('gpt-4o');
     });
   });
 

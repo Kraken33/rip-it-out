@@ -59,3 +59,4 @@ The system SHALL let the user select which parsed improvements to import on the 
 **Reason**: The Review & Confirm picker now serves the Prompt Copy/Paste path only; the story activity finishes back on the Dashboard, and the seamless dialogue path no longer produces a parsed improvement list. Replaced by "Selective import of pasted prompt improvements".
 
 **Migration**: None. Pasted prompt JSON is still imported through the same picker with identical selection behaviour.
+

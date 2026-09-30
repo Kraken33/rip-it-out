@@ -7,11 +7,12 @@ import {
   generateTranslationPracticePrompt,
   generateStoryPassagePrompt,
   generateStoryFeedbackPrompt,
+  generateConstructionExtractionPrompt,
   resolveStoryTopic,
   parseImportJSON,
   parseTranslationVerdict,
   parseStoryFeedback,
-  STORY_ROUND_CONSTRUCTION_CAP
+  parseExtractedConstruction
 } from '../prompts';
 
 describe('Prompt Orchestrator & Parser', () => {
@@ -373,21 +374,18 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
   });
 
   describe('generateStoryFeedbackPrompt', () => {
-    it('requests a fluent daily-speaking improved version in the vault improvement shape', () => {
+    it('requests a fluent daily-speaking improved version for the learner translation', () => {
       const prompt = generateStoryFeedbackPrompt('Вчера я ходил в магазин.', storySettings);
       expect(prompt).toContain('Вчера я ходил в магазин.');
       expect(prompt).toMatch(/optimized for daily speaking/i);
-      expect(prompt).toContain('"construction"');
-      expect(prompt).toContain('"original"');
-      expect(prompt).toContain('"improved"');
-      expect(prompt).toContain('"explanation"');
-      expect(prompt).toContain('"category"');
-      expect(prompt).toContain('"spoken_frequency"');
+      expect(prompt).toContain('"summary"');
+      expect(prompt).toContain('"already_natural"');
+      expect(prompt).toContain('"improved_version"');
     });
 
-    it('caps constructions per round and forbids invented rewrites for correct translations', () => {
+    it('no longer requests candidate constructions and forbids invented rewrites', () => {
       const prompt = generateStoryFeedbackPrompt('passage', storySettings);
-      expect(prompt).toContain(`up to ${STORY_ROUND_CONSTRUCTION_CAP}`);
+      expect(prompt).not.toMatch(/constructions/i);
       expect(prompt).toContain('NEVER invent a rewrite');
       expect(prompt).toContain('"already_natural"');
     });
@@ -400,77 +398,45 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
           summary: 'Nice work.',
           already_natural: false,
           improved_version: 'Yesterday I invited a friend over to my place.',
-          constructions: [
-            {
-              construction: 'invite [someone] over',
-              original: 'invited a friend to my house',
-              improved: 'invited a friend over',
-              explanation: '"over" is the natural spoken choice.',
-              category: 'collocation',
-              spoken_frequency: 'very_high',
-            },
-          ],
           ...overrides,
         },
       });
 
-    it('parses improved version and constructions in the vault shape', () => {
+    it('parses the summary and the improved version', () => {
       const res = parseStoryFeedback(feedbackJson());
       expect(res.success).toBe(true);
+      expect(res.feedback.summary).toBe('Nice work.');
       expect(res.feedback.alreadyNatural).toBe(false);
       expect(res.feedback.improvedVersion).toContain('invited a friend over');
-      expect(res.feedback.constructions).toHaveLength(1);
-      expect(res.feedback.constructions[0]).toMatchObject({
-        construction: 'invite [someone] over',
-        original: 'invited a friend to my house',
-        improved: 'invited a friend over',
-        category: 'collocation',
-        spoken_frequency: 'very_high',
-      });
+      expect(res.feedback.constructions).toBeUndefined();
     });
 
     it('extracts feedback from markdown code fences with surrounding prose', () => {
       const wrapped = `Here you go:\n\`\`\`json\n${feedbackJson()}\n\`\`\`\nHope that helps.`;
       const res = parseStoryFeedback(wrapped);
       expect(res.success).toBe(true);
-      expect(res.feedback.constructions).toHaveLength(1);
+      expect(res.feedback.improvedVersion).toContain('invited a friend over');
     });
 
-    it('affirms an already-natural translation with no invented rewrite but keeps candidate constructions', () => {
+    it('affirms an already-natural translation with no invented rewrite', () => {
       const res = parseStoryFeedback(
         feedbackJson({ already_natural: true, improved_version: '' })
       );
       expect(res.success).toBe(true);
       expect(res.feedback.alreadyNatural).toBe(true);
       expect(res.feedback.improvedVersion).toBe('');
-      expect(res.feedback.constructions).toHaveLength(1);
     });
 
     it('derives alreadyNatural from an empty improved version when the flag is omitted', () => {
       const json = JSON.stringify({
-        feedback: { summary: 'ok', improved_version: '', constructions: [] },
+        feedback: { summary: 'ok', improved_version: '' },
       });
       const res = parseStoryFeedback(json);
       expect(res.success).toBe(true);
       expect(res.feedback.alreadyNatural).toBe(true);
     });
 
-    it('caps constructions at the per-round limit', () => {
-      const constructions = Array.from({ length: 5 }, (_, i) => ({
-        construction: `pattern ${i}`,
-        original: `orig ${i}`,
-        improved: `imp ${i}`,
-        explanation: 'why',
-        category: 'vocabulary',
-        spoken_frequency: 'medium',
-      }));
-      const res = parseStoryFeedback(feedbackJson({ constructions }));
-      expect(res.success).toBe(true);
-      expect(res.feedback.constructions).toHaveLength(STORY_ROUND_CONSTRUCTION_CAP);
-      expect(res.warnings.some((w) => /Capped constructions/.test(w))).toBe(true);
-    });
-
-    it('normalizes invalid category and frequency with warnings', () => {
+    it('ignores any constructions a chatty model still returns', () => {
       const res = parseStoryFeedback(
         feedbackJson({
           constructions: [
@@ -486,9 +452,7 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
         })
       );
       expect(res.success).toBe(true);
-      expect(res.feedback.constructions[0].category).toBe('vocabulary');
-      expect(res.feedback.constructions[0].spoken_frequency).toBe('medium');
-      expect(res.warnings.length).toBeGreaterThan(0);
+      expect(res.feedback.constructions).toBeUndefined();
     });
 
     it('rejects empty, non-JSON, and missing-feedback responses', () => {
@@ -497,11 +461,129 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(parseStoryFeedback('plain prose with no JSON').success).toBe(false);
       expect(parseStoryFeedback(JSON.stringify({ note: 'no feedback key' })).success).toBe(false);
     });
+  });
 
-    it('rejects a non-list constructions value', () => {
-      const res = parseStoryFeedback(feedbackJson({ constructions: 'nope' }));
+  describe('generateConstructionExtractionPrompt', () => {
+    const extractionSettings = { level: 'intermediate' };
+
+    it('carries the selected phrase and the block it came from', () => {
+      const prompt = generateConstructionExtractionPrompt(
+        'invited him over',
+        'Yesterday I invited him over to my place.',
+        '',
+        extractionSettings
+      );
+      expect(prompt).toContain('invited him over');
+      expect(prompt).toContain('Yesterday I invited him over to my place.');
+    });
+
+    it('requests exactly one construction in the vault shape with an empty original', () => {
+      const prompt = generateConstructionExtractionPrompt('invited him over', 'source', '', extractionSettings);
+      expect(prompt).toMatch(/exactly ONE reusable construction/i);
+      expect(prompt).toContain('"improved"');
+      expect(prompt).toContain('"explanation"');
+      expect(prompt).toContain('"category"');
+      expect(prompt).toContain('"spoken_frequency"');
+      expect(prompt).toMatch(/empty string/i);
+    });
+
+    it('requires a short single-clause pattern with a long counter-example', () => {
+      const prompt = generateConstructionExtractionPrompt('x', 'y', '', extractionSettings);
+      expect(prompt).toMatch(/2-7 words/i);
+      expect(prompt).toMatch(/single clause/i);
+      expect(prompt).toContain('start taking [class] to [purpose]');
+      expect(prompt).toContain("If I wake up at [time], I feel [adjective] and like I haven't had enough sleep");
+      expect(prompt).toMatch(/TOO LONG/i);
+    });
+
+    it('includes the learner level and the Russian passage when given', () => {
+      const prompt = generateConstructionExtractionPrompt(
+        'invited him over',
+        'source text',
+        'Вчера я пригласил друга в гости.',
+        { level: 'advanced' }
+      );
+      expect(prompt).toContain('advanced');
+      expect(prompt).toContain('Вчера я пригласил друга в гости.');
+    });
+
+    it('omits the passage block when no passage is given', () => {
+      const prompt = generateConstructionExtractionPrompt('x', 'y', '', extractionSettings);
+      expect(prompt).not.toMatch(/Russian passage/i);
+    });
+  });
+
+  describe('parseExtractedConstruction', () => {
+    const extractionJson = (overrides = {}) =>
+      JSON.stringify({
+        extraction: {
+          construction: 'invite [someone] over',
+          original: 'invited him to my home',
+          improved: 'invited him over',
+          explanation: '"over" is the natural spoken choice.',
+          category: 'collocation',
+          spoken_frequency: 'very_high',
+          ...overrides,
+        },
+      });
+
+    it('parses one construction in the vault shape with an empty original', () => {
+      const res = parseExtractedConstruction(extractionJson());
+      expect(res.success).toBe(true);
+      expect(res.construction).toMatchObject({
+        construction: 'invite [someone] over',
+        original: '',
+        improved: 'invited him over',
+        explanation: '"over" is the natural spoken choice.',
+        category: 'collocation',
+        spoken_frequency: 'very_high',
+      });
+    });
+
+    it('normalizes an invented category and frequency with warnings', () => {
+      const res = parseExtractedConstruction(
+        extractionJson({ category: 'syntax', spoken_frequency: 'rare' })
+      );
+      expect(res.success).toBe(true);
+      expect(res.construction.category).toBe('collocation');
+      expect(res.construction.spoken_frequency).toBe('medium');
+      expect(res.warnings.length).toBeGreaterThan(0);
+    });
+
+    it('defaults a missing category and frequency without warnings', () => {
+      const res = parseExtractedConstruction(
+        extractionJson({ category: undefined, spoken_frequency: undefined })
+      );
+      expect(res.success).toBe(true);
+      expect(res.construction.category).toBe('collocation');
+      expect(res.construction.spoken_frequency).toBe('medium');
+      expect(res.warnings).toBeUndefined();
+    });
+
+    it('extracts the object from markdown code fences with surrounding prose', () => {
+      const wrapped = `Here you go:\n\`\`\`json\n${extractionJson()}\n\`\`\`\nHope that helps.`;
+      const res = parseExtractedConstruction(wrapped);
+      expect(res.success).toBe(true);
+      expect(res.construction.construction).toBe('invite [someone] over');
+    });
+
+    it('rejects a response without a construction pattern', () => {
+      const res = parseExtractedConstruction(extractionJson({ construction: '   ' }));
       expect(res.success).toBe(false);
-      expect(res.error).toMatch(/constructions/);
+      expect(res.error).toMatch(/construction pattern/i);
+    });
+
+    it('rejects a response without an improved example', () => {
+      const res = parseExtractedConstruction(extractionJson({ improved: undefined }));
+      expect(res.success).toBe(false);
+      expect(res.error).toMatch(/improved example/i);
+    });
+
+    it('rejects empty, non-JSON, and missing-extraction responses', () => {
+      expect(parseExtractedConstruction('').success).toBe(false);
+      expect(parseExtractedConstruction(null).success).toBe(false);
+      expect(parseExtractedConstruction('plain prose with no JSON').success).toBe(false);
+      expect(parseExtractedConstruction(JSON.stringify({ note: 'nope' })).success).toBe(false);
     });
   });
 });
