@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { updateSession, logActivity, addSessionText } from '../store';
 import { streamSeamlessChatCompletion } from '../services/aiService';
 import AudioRecorder from '../components/AudioRecorder';
+import ConstructionExtractor from '../components/ConstructionExtractor';
 
 export default function SeamlessChatSession({ session: initialSession, settings, onFinish }) {
   const [session] = useState(initialSession);
@@ -161,13 +162,21 @@ export default function SeamlessChatSession({ session: initialSession, settings,
         {messages.map((m) => {
           if (m.role === 'assistant') {
             return (
-              <div key={m.id} className="flex gap-3 items-start max-w-[85%]">
+              <div key={m.id} className="flex gap-3 items-start max-w-[85%] w-full">
                 <div className="w-8 h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
                   🤖
                 </div>
-                <div className="glass-panel p-3.5 rounded-2xl rounded-tl-sm text-sm text-gray-200 leading-relaxed space-y-2 border border-purple-500/20">
-                  <p className="whitespace-pre-wrap">{m.content || 'Thinking...'}</p>
-                </div>
+                <ConstructionExtractor
+                  sessionId={session?.id}
+                  settings={settings}
+                  sourceText={m.content}
+                  disabled={loading}
+                  className="flex-1"
+                >
+                  <div className="glass-panel p-3.5 rounded-2xl rounded-tl-sm text-sm text-gray-200 leading-relaxed space-y-2 border border-purple-500/20">
+                    <p className="whitespace-pre-wrap">{m.content || 'Thinking...'}</p>
+                  </div>
+                </ConstructionExtractor>
               </div>
             );
           }

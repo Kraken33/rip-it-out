@@ -387,10 +387,10 @@ export async function addImprovements(sessionId, items) {
   const newItems = items.map((item) => ({
     id: generateId(),
     sessionId,
-    construction: item.construction || item.improved || item.original,
-    original: item.original,
-    improved: item.improved,
-    explanation: item.explanation,
+    construction: item.construction || item.improved || item.original || '',
+    original: item.original || '',
+    improved: item.improved || '',
+    explanation: item.explanation || '',
     category: normalizeCategory(item.category),
     spokenFrequency: normalizeFrequency(item.spoken_frequency || item.spokenFrequency),
     context: item.context || '',
@@ -451,12 +451,16 @@ function normalizeFrequency(freq) {
   return ['very_high', 'high', 'medium'].includes(lower) ? lower : 'high';
 }
 
-export async function findDuplicate(originalText) {
-  const normalized = originalText.toLowerCase().trim();
+export async function findDuplicate(text) {
+  if (!text) return undefined;
+  const normalized = text.toLowerCase().trim();
   const improvements = await getImprovements();
-  return improvements.find(
-    (i) => i.original.toLowerCase().trim() === normalized
-  );
+  return improvements.find((i) => {
+    const orig = (i.original || '').toLowerCase().trim();
+    const constr = (i.construction || '').toLowerCase().trim();
+    const impr = (i.improved || '').toLowerCase().trim();
+    return (orig && orig === normalized) || (constr && constr === normalized) || (impr && impr === normalized);
+  });
 }
 
 // ── SRS Cards ──────────────────────────────────────────────────────

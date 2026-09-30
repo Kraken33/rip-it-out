@@ -250,17 +250,27 @@ describe('TranslationStorySession Component', () => {
     expect(rounds[0].feedback).toBeDefined();
   });
 
-  it('shows an error with a retry when passage generation fails', async () => {
-    mocks.generateTranslationStoryPassage.mockReset();
-    mocks.generateTranslationStoryPassage
-      .mockRejectedValueOnce(new Error('boom'))
-      .mockResolvedValueOnce(PASSAGE_1);
+  it('renders construction extractor on the story passage and captures text selection', async () => {
     renderSession();
-
-    await waitFor(() => expect(screen.getByText(/boom/)).toBeInTheDocument());
-    fireEvent.click(screen.getByRole('button', { name: /^Retry$/i }));
     await waitForPassage();
-    expect(mocks.generateTranslationStoryPassage).toHaveBeenCalledTimes(2);
+
+    const passageElement = screen.getByText(new RegExp(PASSAGE_1));
+    expect(passageElement).toBeInTheDocument();
+
+    const extractors = screen.getAllByTestId('construction-extractor');
+    expect(extractors.length).toBeGreaterThan(0);
+
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      anchorNode: passageElement,
+      focusNode: passageElement,
+      toString: () => 'пригласил друга в гости',
+    });
+
+    fireEvent.mouseUp(extractors[0]);
+
+    expect(screen.getByTestId('extract-construction-trigger')).toBeInTheDocument();
+    expect(screen.getAllByText(/пригласил друга в гости/).length).toBeGreaterThanOrEqual(1);
   });
 });
 

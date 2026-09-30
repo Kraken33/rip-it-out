@@ -72,6 +72,15 @@ describe('Store Layer', () => {
     expect(await findDuplicate('completely new phrase')).toBeUndefined();
   });
 
+  it('finds duplicate by construction when original is empty', async () => {
+    const session = await createSession({ title: 'S2', sourceType: 'text' });
+    await addImprovements(session.id, [{ construction: 'bring [something] up', original: '', improved: 'She brought it up yesterday.', explanation: 'exp' }]);
+    expect(await findDuplicate('bring [something] up')).toBeDefined();
+    expect(await findDuplicate('BRING [SOMETHING] UP')).toBeDefined();
+    expect(await findDuplicate('She brought it up yesterday.')).toBeDefined();
+    expect(await findDuplicate('take [something] down')).toBeUndefined();
+  });
+
   it('deletes improvement and cascades deletion of SRS card', async () => {
     const session = await createSession({ title: 'S1', sourceType: 'video' });
     const [imp] = await addImprovements(session.id, [{ original: 'old', improved: 'new', explanation: 'why' }]);

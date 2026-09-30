@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { generateTranslationStoryPassage, evaluateTranslationStory } from '../services/aiService';
 import { parseStoryFeedback } from '../prompts';
 import AudioRecorder from '../components/AudioRecorder';
+import ConstructionExtractor from '../components/ConstructionExtractor';
 
 // Cap the auto-grown input so the round's Russian passage keeps its room.
 const MAX_INPUT_HEIGHT = 200;
@@ -38,7 +39,7 @@ export function aggregateStoryConstructions(rounds, maxImprovements = Infinity) 
  * version (or an affirmation when the translation was already natural), and
  * the candidate constructions demonstrated by the round.
  */
-function StoryFeedbackCard({ feedback }) {
+function StoryFeedbackCard({ feedback, sessionId, settings, passage }) {
   return (
     <div
       data-testid="story-feedback"
@@ -59,12 +60,20 @@ function StoryFeedbackCard({ feedback }) {
         </div>
       ) : (
         feedback.improvedVersion && (
-          <div className="rounded-xl bg-emerald-950/30 border border-emerald-700/40 p-3 space-y-1">
-            <p className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold">
-              Fluent daily-speaking version
-            </p>
-            <p className="text-sm text-emerald-100 leading-relaxed">{feedback.improvedVersion}</p>
-          </div>
+          <ConstructionExtractor
+            sessionId={sessionId}
+            settings={settings}
+            sourceText={feedback.improvedVersion}
+            passage={passage}
+            className="w-full"
+          >
+            <div className="rounded-xl bg-emerald-950/30 border border-emerald-700/40 p-3 space-y-1">
+              <p className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold">
+                Fluent daily-speaking version
+              </p>
+              <p className="text-sm text-emerald-100 leading-relaxed">{feedback.improvedVersion}</p>
+            </div>
+          </ConstructionExtractor>
         )
       )}
 
@@ -261,13 +270,21 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {rounds.map((round, idx) => (
           <div key={round.id} className="space-y-3">
-            <div className="flex flex-col items-start gap-1.5 max-w-[90%]">
+            <div className="flex flex-col items-start gap-1.5 max-w-[90%] w-full">
               <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold px-1">
                 Round {idx + 1} · Story passage
               </span>
-              <div className="glass-panel p-4 rounded-2xl rounded-tl-sm text-sm leading-relaxed border border-purple-500/20 text-white w-full">
-                <p className="whitespace-pre-wrap">📖 {round.passage}</p>
-              </div>
+              <ConstructionExtractor
+                sessionId={session.id}
+                settings={settings}
+                sourceText={round.passage}
+                passage={round.passage}
+                className="w-full"
+              >
+                <div className="glass-panel p-4 rounded-2xl rounded-tl-sm text-sm leading-relaxed border border-purple-500/20 text-white w-full">
+                  <p className="whitespace-pre-wrap">📖 {round.passage}</p>
+                </div>
+              </ConstructionExtractor>
             </div>
 
             {round.translation && (
@@ -278,7 +295,14 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
               </div>
             )}
 
-            {round.feedback && <StoryFeedbackCard feedback={round.feedback} />}
+            {round.feedback && (
+              <StoryFeedbackCard
+                feedback={round.feedback}
+                sessionId={session.id}
+                settings={settings}
+                passage={round.passage}
+              />
+            )}
 
             {round.unparsed && (
               <div className="glass-panel p-4 rounded-2xl rounded-tl-sm border border-amber-700/40 w-full space-y-2">
