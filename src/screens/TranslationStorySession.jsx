@@ -68,13 +68,13 @@ function StoryFeedbackCard({ feedback }) {
         )
       )}
 
-      {feedback.constructions.length > 0 && (
+      {(feedback.constructions || []).length > 0 && (
         <div className="space-y-2">
           <p className="text-[10px] uppercase tracking-wider text-purple-300 font-bold">
             Constructions from this round
           </p>
           <ul className="space-y-2">
-            {feedback.constructions.map((c, i) => (
+            {(feedback.constructions || []).map((c, i) => (
               <li
                 key={`${c.construction}-${i}`}
                 data-testid="story-construction"

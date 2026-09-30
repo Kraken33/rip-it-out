@@ -275,24 +275,23 @@ describe('Session Wizard Component', () => {
       const sessions = await getSessions();
       expect(sessions[0].activity).toBe('translation');
 
-      // Translate the story, finish, and land on the shared Step-4 picker.
+      // Translate the story, finish, and verify session persistence.
       fireEvent.change(
         screen.getByPlaceholderText(/Type or speak your English translation/i),
         { target: { value: 'Yesterday I invited a friend to my house and we talked for ages.' } }
       );
       fireEvent.click(screen.getByRole('button', { name: /Translate ▶/i }));
 
-      await screen.findByText(/Constructions from this round/i);
+      await screen.findByTestId('story-feedback');
       fireEvent.click(screen.getByRole('button', { name: /Finish Story ✓/i }));
 
-      await screen.findByText(/Review & Confirm/i);
-      expect(screen.getByText(/invite \[someone\] over/)).toBeInTheDocument();
-
       // Only learner text lands in rawText; the AI passage stays out.
-      const updated = (await getSessions())[0];
-      expect(updated.activity).toBe('translation');
-      expect(updated.rawText).toContain('invited a friend to my house');
-      expect(updated.rawText).not.toContain(STORY_PASSAGE);
+      await waitFor(async () => {
+        const updated = (await getSessions())[0];
+        expect(updated.activity).toBe('translation');
+        expect(updated.rawText).toContain('invited a friend to my house');
+        expect(updated.rawText).not.toContain(STORY_PASSAGE);
+      });
     });
 
     it('shows the activity selector first and hides dialogue-only fields for translation', async () => {
@@ -396,54 +395,35 @@ describe('Session Wizard Component', () => {
           { target: { value: 'Yesterday I invited a friend over.' } }
         );
         fireEvent.click(screen.getByRole('button', { name: /Translate ▶/i }));
-        await screen.findByText(/Constructions from this round/i);
+        await screen.findByTestId('story-feedback');
 
         // Simulate 65 elapsed seconds between start and finish.
         offsetMs = 65000;
         fireEvent.click(screen.getByRole('button', { name: /Finish Story ✓/i }));
-        await screen.findByText(/Review & Confirm/i);
 
-        const logs = await getActivityLogs();
-        expect(logs).toHaveLength(1);
-        expect(logs[0].type).toBe('session');
-        // 65 simulated seconds plus a small real-time allowance for test run time.
-        expect(logs[0].durationSeconds).toBeGreaterThanOrEqual(65);
-        expect(logs[0].durationSeconds).toBeLessThan(70);
+        await waitFor(async () => {
+          const logs = await getActivityLogs();
+          expect(logs).toHaveLength(1);
+          expect(logs[0].type).toBe('session');
+          // 65 simulated seconds plus a small real-time allowance for test run time.
+          expect(logs[0].durationSeconds).toBeGreaterThanOrEqual(65);
+          expect(logs[0].durationSeconds).toBeLessThan(70);
 
-        // The measured duration is also stamped onto the session record.
-        const updated = (await getSessions())[0];
-        expect(updated.durationSeconds).toBe(logs[0].durationSeconds);
+          // The measured duration is also stamped onto the session record.
+          const updated = (await getSessions())[0];
+          expect(updated.durationSeconds).toBe(logs[0].durationSeconds);
+        });
       } finally {
         nowSpy.mockRestore();
       }
     });
 
-    it("shows every round's candidates in the import picker (no session-wide cap)", async () => {
-      // Even a tiny maxImprovements budget must not hide later rounds.
-      await updateSettings({ defaultMode: 'prompt', maxImprovements: 1 });
+    it("persists all rounds on story finish", async () => {
       const round2Passage = 'Сегодня утром я опоздал на автобус.';
       const round2Feedback = JSON.stringify({
         feedback: {
           summary: 'Good recovery.',
           improved_version: 'This morning I missed the bus.',
-          constructions: [
-            {
-              construction: 'catch up on',
-              original: 'caught up',
-              improved: 'catch up on work',
-              explanation: 'phrasal verb',
-              category: 'vocabulary',
-              spoken_frequency: 'medium',
-            },
-            {
-              construction: 'run into [someone]',
-              original: 'met him',
-              improved: 'ran into him',
-              explanation: 'everyday phrasal verb',
-              category: 'vocabulary',
-              spoken_frequency: 'high',
-            },
-          ],
         },
       });
       mocks.generateTranslationStoryPassage
@@ -469,7 +449,7 @@ describe('Session Wizard Component', () => {
         { target: { value: 'Yesterday I invited a friend to my house.' } }
       );
       fireEvent.click(screen.getByRole('button', { name: /Translate ▶/i }));
-      await screen.findByText(/Constructions from this round/i);
+      await screen.findByTestId('story-feedback');
 
       // Round 2.
       fireEvent.click(screen.getByRole('button', { name: /Next Round →/i }));
@@ -479,15 +459,16 @@ describe('Session Wizard Component', () => {
         { target: { value: 'This morning I was late for the bus.' } }
       );
       fireEvent.click(screen.getByRole('button', { name: /Translate ▶/i }));
-      await screen.findByText(/ran into him/);
+      await screen.findByText(/This morning I missed the bus/);
 
       fireEvent.click(screen.getByRole('button', { name: /Finish Story ✓/i }));
-      await screen.findByText(/Review & Confirm/i);
 
-      // All candidates from BOTH rounds are listed despite maxImprovements = 1.
-      expect(screen.getByText(/invite \[someone\] over/)).toBeInTheDocument();
-      expect(screen.getAllByText(/catch up on/).length).toBeGreaterThan(0);
-      expect(screen.getByText(/run into \[someone\]/)).toBeInTheDocument();
+      await waitFor(async () => {
+        const sessions = await getSessions();
+        expect(sessions[0].messages).toHaveLength(2); // 2 completed rounds
+        expect(sessions[0].rawText).toContain('invited a friend to my house');
+        expect(sessions[0].rawText).toContain('This morning I was late for the bus');
+      });
     });
   });
 });

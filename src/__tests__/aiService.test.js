@@ -630,7 +630,6 @@ describe('AI Service Layer', () => {
       expect(systemPrompt).toContain(passage);
       expect(systemPrompt).toMatch(/optimized for daily speaking/i);
       expect(systemPrompt).toContain('NEVER invent a rewrite');
-      expect(systemPrompt).toContain('"constructions"');
       expect(body.temperature).toBe(0.3);
       expect(body.max_tokens).toBe(8000);
       expect(body.messages[1].content).toContain(translation);

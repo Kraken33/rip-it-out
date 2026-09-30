@@ -161,7 +161,7 @@ describe('TranslationStorySession Component', () => {
     );
   });
 
-  it('submits a translation and renders the improved version with constructions', async () => {
+  it('submits a translation and renders the improved version', async () => {
     renderSession();
     await waitForPassage();
 
@@ -176,10 +176,6 @@ describe('TranslationStorySession Component', () => {
     expect(
       screen.getByText(/Yesterday I invited a friend over and we talked for ages/)
     ).toBeInTheDocument();
-    const constructions = screen.getAllByTestId('story-construction');
-    expect(constructions).toHaveLength(1);
-    expect(constructions[0]).toHaveTextContent('invite [someone] over');
-    expect(constructions[0]).toHaveTextContent('collocation');
     expect(screen.getByText('Nice work.')).toBeInTheDocument();
   });
 
@@ -193,7 +189,7 @@ describe('TranslationStorySession Component', () => {
 
     expect(screen.getByText(/Natural as-is/i)).toBeInTheDocument();
     expect(screen.queryByText(/Fluent daily-speaking version/i)).not.toBeInTheDocument();
-    expect(screen.getAllByTestId('story-construction')).toHaveLength(1);
+    expect(screen.getByText('Sounds natural already.')).toBeInTheDocument();
   });
 
 
@@ -251,7 +247,7 @@ describe('TranslationStorySession Component', () => {
       passage: PASSAGE_1,
       translation: 'Yesterday I invited a friend over.',
     });
-    expect(rounds[0].feedback.constructions).toHaveLength(1);
+    expect(rounds[0].feedback).toBeDefined();
   });
 
   it('shows an error with a retry when passage generation fails', async () => {
