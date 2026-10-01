@@ -642,16 +642,25 @@ export async function updateSettings(updates) {
 
 // ── Stats ──────────────────────────────────────────────────────────
 
-export async function getStats() {
-  const improvements = await getImprovements();
-  const cards = await getSrsCards();
-  const dueCards = await getDueCards();
-  const sessions = await getSessions();
+export function calculateDueCards(cards = []) {
+  const now = new Date();
+  const due = (cards || []).filter((c) => new Date(c.nextReview) <= now);
 
-  const mature = cards.filter((c) => c.status === 'mature').length;
-  const newCards = cards.filter((c) => c.status === 'new').length;
+  return due.sort((a, b) => {
+    const priorityMap = { learning: 0, new: 1, reviewing: 2, mature: 3 };
+    const pa = a.lapses > 0 && a.status === 'learning' ? -1 : (priorityMap[a.status] ?? 2);
+    const pb = b.lapses > 0 && b.status === 'learning' ? -1 : (priorityMap[b.status] ?? 2);
+    if (pa !== pb) return pa - pb;
+    return new Date(a.nextReview) - new Date(b.nextReview);
+  });
+}
 
-  const reviewDates = cards
+export function calculateStats({ improvements = [], cards = [], dueCards = null, sessions = [] }) {
+  const mature = (cards || []).filter((c) => c.status === 'mature').length;
+  const newCards = (cards || []).filter((c) => c.status === 'new').length;
+  const resolvedDueCards = dueCards || calculateDueCards(cards);
+
+  const reviewDates = (cards || [])
     .filter((c) => c.lastReview)
     .map((c) => {
       const d = new Date(c.lastReview);
@@ -673,14 +682,24 @@ export async function getStats() {
   }
 
   return {
-    totalImprovements: improvements.length,
-    totalSessions: sessions.length,
-    dueToday: dueCards.length,
+    totalImprovements: (improvements || []).length,
+    totalSessions: (sessions || []).length,
+    dueToday: resolvedDueCards.length,
     newCards,
     mature,
     streak,
-    masteryPercent: improvements.length > 0 ? Math.round((mature / improvements.length) * 100) : 0,
+    masteryPercent: (improvements || []).length > 0 ? Math.round((mature / improvements.length) * 100) : 0,
   };
+}
+
+export async function getStats() {
+  const [improvements, cards, sessions] = await Promise.all([
+    getImprovements(),
+    getSrsCards(),
+    getSessions(),
+  ]);
+
+  return calculateStats({ improvements, cards, sessions });
 }
 
 // ── Activity Logs ──────────────────────────────────────────────────
@@ -749,29 +768,37 @@ export function formatDuration(totalSeconds) {
   return remainingMins > 0 ? `${hours}h ${remainingMins}m` : `${hours}h`;
 }
 
-export async function getTopicTime(topicId) {
-  const topic = await getTopic(topicId);
+export function calculateTopicTime(topic, sessionsForTopic = [], activityLogs = []) {
   if (!topic) return 0;
-
-  const sessions = (await getSessions()).filter((s) => s.topicId === topicId);
+  const sessions = sessionsForTopic || [];
   const sessionIds = new Set(sessions.map((s) => s.id));
 
   const sessionPracticeTime = sessions.reduce((sum, s) => sum + (s.durationSeconds || 0), 0);
 
-  const logs = await getActivityLogs();
+  const logs = activityLogs || [];
   const reviewTime = logs
-    .filter((l) => l.type === 'review' && (l.topicId === topicId || (l.sessionId && sessionIds.has(l.sessionId))))
+    .filter((l) => l.type === 'review' && (l.topicId === topic.id || (l.sessionId && sessionIds.has(l.sessionId))))
     .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
 
   const standaloneSessionTime = logs
-    .filter((l) => l.type === 'session' && l.topicId === topicId && !l.sessionId)
+    .filter((l) => l.type === 'session' && l.topicId === topic.id && !l.sessionId)
     .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
 
   return sessionPracticeTime + reviewTime + standaloneSessionTime;
 }
 
-export async function getActivityStats() {
-  const logs = await getActivityLogs();
+export async function getTopicTime(topicId) {
+  const [topic, allSessions, logs] = await Promise.all([
+    getTopic(topicId),
+    getSessions(),
+    getActivityLogs(),
+  ]);
+  if (!topic) return 0;
+  const sessions = (allSessions || []).filter((s) => s.topicId === topicId);
+  return calculateTopicTime(topic, sessions, logs);
+}
+
+export function calculateActivityStats(activityLogs = []) {
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
 
@@ -780,7 +807,7 @@ export async function getActivityStats() {
   let reviewTimeSeconds = 0;
   let sessionTimeSeconds = 0;
 
-  logs.forEach((log) => {
+  (activityLogs || []).forEach((log) => {
     const dur = log.durationSeconds || 0;
     totalTimeSeconds += dur;
     if (log.type === 'review') reviewTimeSeconds += dur;
@@ -801,15 +828,26 @@ export async function getActivityStats() {
   };
 }
 
-export async function getSessionTime(sessionId) {
-  const session = await getSession(sessionId);
+export async function getActivityStats() {
+  const logs = await getActivityLogs();
+  return calculateActivityStats(logs);
+}
+
+export function calculateSessionTime(session, activityLogs = []) {
   if (!session) return 0;
   const directDuration = session.durationSeconds || 0;
-  const logs = await getActivityLogs();
-  const reviewTime = logs
-    .filter((l) => l.type === 'review' && l.sessionId === sessionId)
+  const reviewTime = (activityLogs || [])
+    .filter((l) => l.type === 'review' && l.sessionId === session.id)
     .reduce((sum, l) => sum + (l.durationSeconds || 0), 0);
   return directDuration + reviewTime;
+}
+
+export async function getSessionTime(sessionId) {
+  const [session, logs] = await Promise.all([
+    getSession(sessionId),
+    getActivityLogs(),
+  ]);
+  return calculateSessionTime(session, logs);
 }
 
 // ── Word Metrics ──────────────────────────────────────────────────
@@ -837,8 +875,8 @@ export async function getSessionWordMetrics(sessionId) {
   return countTextWords(session.rawText);
 }
 
-export async function getTopicWordMetrics(topicId) {
-  const sessions = (await getSessions()).filter((s) => s.topicId === topicId && s.rawText);
+export function calculateTopicWordMetrics(sessionsForTopic = []) {
+  const sessions = (sessionsForTopic || []).filter((s) => s.rawText);
   if (sessions.length === 0) {
     return { totalWords: 0, uniqueWords: 0, vocabularyDensity: 0, sessionCountWithText: 0 };
   }
@@ -862,13 +900,18 @@ export async function getTopicWordMetrics(topicId) {
   };
 }
 
-export async function getTodayWordMetrics() {
-  const sessions = await getSessions();
+export async function getTopicWordMetrics(topicId) {
+  const allSessions = await getSessions();
+  const sessions = (allSessions || []).filter((s) => s.topicId === topicId);
+  return calculateTopicWordMetrics(sessions);
+}
+
+export function calculateTodayWordMetrics(sessions = []) {
   const now = new Date();
   const todayStr = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
   let todayWords = 0;
 
-  sessions.forEach((s) => {
+  (sessions || []).forEach((s) => {
     if (!s.rawText) return;
     const d = new Date(s.createdAt);
     const dateStr = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
@@ -881,15 +924,20 @@ export async function getTodayWordMetrics() {
   return todayWords;
 }
 
-export async function getAllTimeWordMetrics() {
-  const sessions = (await getSessions()).filter((s) => s.rawText);
-  if (sessions.length === 0) {
+export async function getTodayWordMetrics() {
+  const sessions = await getSessions();
+  return calculateTodayWordMetrics(sessions);
+}
+
+export function calculateAllTimeWordMetrics(sessions = []) {
+  const sessionsWithText = (sessions || []).filter((s) => s.rawText);
+  if (sessionsWithText.length === 0) {
     return { totalWords: 0, uniqueWords: 0, avgDensity: 0, sessionCountWithText: 0 };
   }
   let allWords = [];
   let totalDensitySum = 0;
 
-  sessions.forEach((s) => {
+  sessionsWithText.forEach((s) => {
     const { totalWords, vocabularyDensity } = countTextWords(s.rawText);
     const words = s.rawText.toLowerCase().match(/\b\w+\b/g) || [];
     allWords.push(...words);
@@ -903,70 +951,135 @@ export async function getAllTimeWordMetrics() {
   const unique = new Set(allWords);
   const totalWords = allWords.length;
   const uniqueWords = unique.size;
-  const avgDensity = Math.round((totalDensitySum / sessions.length) * 1000) / 1000;
+  const avgDensity = Math.round((totalDensitySum / sessionsWithText.length) * 1000) / 1000;
 
   return {
     totalWords,
     uniqueWords,
     avgDensity,
-    sessionCountWithText: sessions.length,
+    sessionCountWithText: sessionsWithText.length,
   };
 }
 
-export async function getTopicsWithSessions() {
-  const topics = await getTopics();
-  const allSessions = await getSessions();
-  const improvements = await getImprovements();
-  const sessionMap = new Map(allSessions.map((s) => [s.id, s]));
+export async function getAllTimeWordMetrics() {
+  const sessions = await getSessions();
+  return calculateAllTimeWordMetrics(sessions);
+}
 
-  const enriched = await Promise.all(
-    topics.map(async (topic) => {
-      const sessions = (
-        await Promise.all(
-          (topic.sessionIds || []).map(async (id) => {
-            const s = sessionMap.get(id);
-            if (!s) return null;
-            const wordMetrics = countTextWords(s.rawText);
-            const totalTimeSeconds = await getSessionTime(s.id);
-            return {
-              ...s,
-              totalTimeSeconds,
-              totalWords: wordMetrics.totalWords,
-              uniqueWords: wordMetrics.uniqueWords,
-              vocabularyDensity: wordMetrics.vocabularyDensity,
-            };
-          })
-        )
-      ).filter(Boolean);
+export async function getTopicsWithSessions(preloaded = null) {
+  let topics, allSessions, improvements, logs;
+  if (preloaded) {
+    topics = preloaded.topics;
+    allSessions = preloaded.sessions;
+    improvements = preloaded.improvements;
+    logs = preloaded.activityLogs;
+  } else {
+    [topics, allSessions, improvements, logs] = await Promise.all([
+      getTopics(),
+      getSessions(),
+      getImprovements(),
+      getActivityLogs(),
+    ]);
+  }
 
-      const totalPhrases = sessions.reduce((sum, s) => {
-        const sessionImps = improvements.filter((i) => i.sessionId === s.id);
-        return sum + sessionImps.length;
-      }, 0);
+  const sessionMap = new Map((allSessions || []).map((s) => [s.id, s]));
+  const improvementsBySession = new Map();
+  (improvements || []).forEach((imp) => {
+    if (!improvementsBySession.has(imp.sessionId)) {
+      improvementsBySession.set(imp.sessionId, []);
+    }
+    improvementsBySession.get(imp.sessionId).push(imp);
+  });
 
-      const latestDate = sessions.reduce((latest, s) => {
-        const d = new Date(s.createdAt);
-        return d > latest ? d : latest;
-      }, new Date(0));
+  const enriched = (topics || []).map((topic) => {
+    const sessions = (topic.sessionIds || [])
+      .map((id) => {
+        const s = sessionMap.get(id);
+        if (!s) return null;
+        const wordMetrics = countTextWords(s.rawText);
+        const totalTimeSeconds = calculateSessionTime(s, logs);
+        return {
+          ...s,
+          totalTimeSeconds,
+          totalWords: wordMetrics.totalWords,
+          uniqueWords: wordMetrics.uniqueWords,
+          vocabularyDensity: wordMetrics.vocabularyDensity,
+        };
+      })
+      .filter(Boolean);
 
-      const totalTimeSeconds = await getTopicTime(topic.id);
-      const topicWordMetrics = await getTopicWordMetrics(topic.id);
+    const totalPhrases = sessions.reduce((sum, s) => {
+      const sessionImps = improvementsBySession.get(s.id) || [];
+      return sum + sessionImps.length;
+    }, 0);
 
-      return {
-        ...topic,
-        sessions,
-        totalPhrases,
-        latestDate,
-        totalTimeSeconds,
-        totalWords: topicWordMetrics.totalWords,
-        uniqueWords: topicWordMetrics.uniqueWords,
-        vocabularyDensity: topicWordMetrics.vocabularyDensity,
-      };
-    })
-  );
+    const latestDate = sessions.reduce((latest, s) => {
+      const d = new Date(s.createdAt);
+      return d > latest ? d : latest;
+    }, new Date(0));
+
+    const totalTimeSeconds = calculateTopicTime(topic, sessions, logs);
+    const topicWordMetrics = calculateTopicWordMetrics(sessions);
+
+    return {
+      ...topic,
+      sessions,
+      totalPhrases,
+      latestDate,
+      totalTimeSeconds,
+      totalWords: topicWordMetrics.totalWords,
+      uniqueWords: topicWordMetrics.uniqueWords,
+      vocabularyDensity: topicWordMetrics.vocabularyDensity,
+    };
+  });
 
   enriched.sort((a, b) => b.latestDate - a.latestDate);
   return enriched;
+}
+
+export async function getDashboardData() {
+  const [topics, sessions, improvements, srsCards, activityLogs] = await Promise.all([
+    getTopics(),
+    getSessions(),
+    getImprovements(),
+    getSrsCards(),
+    getActivityLogs(),
+  ]);
+
+  const preloaded = { topics, sessions, improvements, srsCards, activityLogs };
+  const dueCards = calculateDueCards(srsCards);
+  const stats = calculateStats({ improvements, cards: srsCards, dueCards, sessions });
+  const activityStats = calculateActivityStats(activityLogs);
+  const wordsToday = calculateTodayWordMetrics(sessions);
+  const topicsWithSessions = await getTopicsWithSessions(preloaded);
+
+  return {
+    stats,
+    activityStats,
+    wordsToday,
+    topics: topicsWithSessions,
+  };
+}
+
+export async function getStatsData() {
+  const [topics, sessions, improvements, activityLogs] = await Promise.all([
+    getTopics(),
+    getSessions(),
+    getImprovements(),
+    getActivityLogs(),
+  ]);
+
+  const preloaded = { topics, sessions, improvements, activityLogs };
+  const activityStats = calculateActivityStats(activityLogs);
+  const topicsWithSessions = await getTopicsWithSessions(preloaded);
+  const allTimeWords = calculateAllTimeWordMetrics(sessions);
+
+  return {
+    activityStats,
+    topics: topicsWithSessions,
+    activityLogs,
+    allTimeWords,
+  };
 }
 
 // ── Export / Import ────────────────────────────────────────────────

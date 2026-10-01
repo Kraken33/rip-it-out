@@ -32,6 +32,17 @@ import {
   getTopicTime,
   getSessionTime,
   getActivityStats,
+  getTopicsWithSessions,
+  getDashboardData,
+  getStatsData,
+  calculateSessionTime,
+  calculateTopicTime,
+  calculateTopicWordMetrics,
+  calculateTodayWordMetrics,
+  calculateAllTimeWordMetrics,
+  calculateDueCards,
+  calculateStats,
+  calculateActivityStats,
 } from '../store';
 
 describe('Store Layer', () => {
@@ -283,6 +294,93 @@ describe('Settings — OpenAI Chat Model', () => {
     await updateSettings({ openaiModel: 'gpt-4o' });
     const saved = await getSettings();
     expect(saved.openaiModel).toBe('gpt-4o');
+  });
+});
+
+describe('Store In-Memory Calculation Helpers & Aggregated Loaders', () => {
+  beforeEach(async () => {
+    await clearAllData();
+  });
+
+  it('calculateDueCards correctly prioritizes and filters due cards', () => {
+    const past = new Date(Date.now() - 10000).toISOString();
+    const future = new Date(Date.now() + 10000).toISOString();
+    const cards = [
+      { improvementId: '1', nextReview: future, status: 'learning', lapses: 0 },
+      { improvementId: '2', nextReview: past, status: 'mature', lapses: 0 },
+      { improvementId: '3', nextReview: past, status: 'learning', lapses: 1 },
+      { improvementId: '4', nextReview: past, status: 'new', lapses: 0 },
+    ];
+    const due = calculateDueCards(cards);
+    expect(due).toHaveLength(3);
+    expect(due[0].improvementId).toBe('3'); // lapsed learning highest priority
+    expect(due.map((c) => c.improvementId)).toContain('2');
+    expect(due.map((c) => c.improvementId)).toContain('4');
+  });
+
+  it('calculateSessionTime sums session duration and matching review logs', () => {
+    const session = { id: 's1', durationSeconds: 60 };
+    const logs = [
+      { type: 'review', sessionId: 's1', durationSeconds: 30 },
+      { type: 'review', sessionId: 's2', durationSeconds: 100 },
+      { type: 'session', sessionId: 's1', durationSeconds: 50 },
+    ];
+    expect(calculateSessionTime(session, logs)).toBe(90);
+  });
+
+  it('calculateTopicTime aggregates session durations and topic review/session logs', () => {
+    const topic = { id: 't1' };
+    const sessions = [
+      { id: 's1', topicId: 't1', durationSeconds: 60 },
+      { id: 's2', topicId: 't1', durationSeconds: 40 },
+    ];
+    const logs = [
+      { type: 'review', topicId: 't1', sessionId: null, durationSeconds: 20 },
+      { type: 'review', topicId: null, sessionId: 's1', durationSeconds: 15 },
+      { type: 'session', topicId: 't1', sessionId: null, durationSeconds: 10 },
+      { type: 'review', topicId: 't2', sessionId: 's3', durationSeconds: 99 },
+    ];
+    // 60 + 40 + 20 + 15 + 10 = 145
+    expect(calculateTopicTime(topic, sessions, logs)).toBe(145);
+  });
+
+  it('calculateTopicWordMetrics aggregates text from sessions', () => {
+    const sessions = [
+      { id: 's1', rawText: 'Hello world! Hello everyone.' },
+      { id: 's2', rawText: 'Nice to meet you.' },
+      { id: 's3', rawText: '' },
+    ];
+    const metrics = calculateTopicWordMetrics(sessions);
+    expect(metrics.totalWords).toBe(8);
+    expect(metrics.sessionCountWithText).toBe(2);
+    expect(metrics.uniqueWords).toBe(7);
+  });
+
+  it('getDashboardData loads all dashboard statistics and topics seamlessly', async () => {
+    const session = await createSession({ title: 'Topic A', sourceType: 'video', rawText: 'One two three' });
+    await addImprovements(session.id, [{ original: 'a', improved: 'b', explanation: 'c' }]);
+    await logActivity({ type: 'session', durationSeconds: 120, sessionId: session.id, topicId: session.topicId });
+
+    const data = await getDashboardData();
+    expect(data.stats).toBeDefined();
+    expect(data.stats.totalImprovements).toBe(1);
+    expect(data.stats.totalSessions).toBe(1);
+    expect(data.activityStats.todayTimeSeconds).toBeGreaterThan(0);
+    expect(data.wordsToday).toBe(3);
+    expect(data.topics).toHaveLength(1);
+    expect(data.topics[0].title).toBe('Topic A');
+    expect(data.topics[0].sessions).toHaveLength(1);
+  });
+
+  it('getStatsData loads activity stats, topics, logs, and all-time words', async () => {
+    const session = await createSession({ title: 'Topic B', sourceType: 'podcast', rawText: 'Quick brown fox' });
+    await logActivity({ type: 'review', durationSeconds: 60, sessionId: session.id });
+
+    const data = await getStatsData();
+    expect(data.activityStats.totalTimeSeconds).toBe(60);
+    expect(data.topics).toHaveLength(1);
+    expect(data.activityLogs).toHaveLength(1);
+    expect(data.allTimeWords.totalWords).toBe(3);
   });
 });
 

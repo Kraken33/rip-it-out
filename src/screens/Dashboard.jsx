@@ -1,11 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
-  getStats, 
-  getTopicsWithSessions, 
-  getActivityStats, 
+  getDashboardData, 
   formatDuration, 
-  getTodayWordMetrics,
   getImprovementsBySession 
 } from '../store';
 import ConversationViewerModal from './ConversationViewerModal';
@@ -58,17 +55,12 @@ export default function Dashboard() {
     async function loadDashboardData() {
       try {
         setLoading(true);
-        const [s, act, top, w] = await Promise.all([
-          getStats(),
-          getActivityStats(),
-          getTopicsWithSessions(),
-          getTodayWordMetrics(),
-        ]);
+        const data = await getDashboardData();
         if (isMounted) {
-          setStats(s);
-          setActivityStats(act);
-          setTopics(top);
-          setWordsToday(w);
+          setStats(data.stats);
+          setActivityStats(data.activityStats);
+          setTopics(data.topics);
+          setWordsToday(data.wordsToday);
         }
       } catch (err) {
         console.error('Error loading dashboard data:', err);

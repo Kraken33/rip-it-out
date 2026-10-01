@@ -1,11 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  getActivityStats, 
-  formatDuration, 
-  getTopicsWithSessions, 
-  getActivityLogs,
-  getAllTimeWordMetrics 
+  getStatsData, 
+  formatDuration 
 } from '../store';
 
 export default function Stats() {
@@ -18,16 +15,11 @@ export default function Stats() {
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const [activityStats, topicsWithSessions, activityLogs, wordMetrics] = await Promise.all([
-        getActivityStats(),
-        getTopicsWithSessions(),
-        getActivityLogs(),
-        getAllTimeWordMetrics(),
-      ]);
-      setStats(activityStats);
-      setTopics(topicsWithSessions);
-      setLogs(activityLogs);
-      setAllTimeWords(wordMetrics);
+      const data = await getStatsData();
+      setStats(data.activityStats);
+      setTopics(data.topics);
+      setLogs(data.activityLogs);
+      setAllTimeWords(data.allTimeWords);
     } catch (err) {
       console.error('Error loading stats:', err);
     } finally {
