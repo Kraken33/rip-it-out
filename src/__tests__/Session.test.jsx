@@ -349,6 +349,61 @@ describe('Session Wizard Component', () => {
       expect(sessions[0].messages[0].content).toBe('__story_demands:ordering coffee and small talk');
     });
 
+    it('supports selecting Variety Matrix presets and passing matrix state into session', async () => {
+      await updateSettings({ defaultMode: 'prompt' });
+      render(
+        <BrowserRouter>
+          <Session />
+        </BrowserRouter>
+      );
+
+      fireEvent.click(screen.getByText(/Story Translation/i));
+
+      // Open Variety Matrix accordion
+      fireEvent.click(screen.getByText(/Story Flavor & Variety Matrix/i));
+
+      // Click "Office Drama" preset
+      fireEvent.click(screen.getByText(/Office Drama/i));
+
+      await submitStep1();
+      await screen.findByText(/Вчера я пригласил друга в гости/);
+
+      const [sessionArg] = mocks.generateTranslationStoryPassage.mock.calls[0];
+      expect(sessionArg.varietyMatrix).toMatchObject({
+        domain: 'work',
+        tone: 'annoyed',
+        format: 'dialogue',
+        catalyst: 'misunderstanding',
+      });
+    });
+
+    it('supports custom dimension dropdown selection in Variety Matrix', async () => {
+      await updateSettings({ defaultMode: 'prompt' });
+      const { container } = render(
+        <BrowserRouter>
+          <Session />
+        </BrowserRouter>
+      );
+
+      fireEvent.click(screen.getByText(/Story Translation/i));
+      fireEvent.click(screen.getByText(/Story Flavor & Variety Matrix/i));
+
+      fireEvent.change(container.querySelector('#matrix-domain'), {
+        target: { value: 'travel' },
+      });
+      fireEvent.change(container.querySelector('#matrix-tone'), {
+        target: { value: 'rushed' },
+      });
+
+      await submitStep1();
+      await screen.findByText(/Вчера я пригласил друга в гости/);
+
+      const [sessionArg] = mocks.generateTranslationStoryPassage.mock.calls[0];
+      expect(sessionArg.varietyMatrix.domain).toBe('travel');
+      expect(sessionArg.varietyMatrix.tone).toBe('rushed');
+      expect(sessionArg.varietyMatrix.format).toBe('auto');
+    });
+
     it('falls back to a date-based title when story demands are empty', async () => {
       await updateSettings({ defaultMode: 'prompt' });
       render(

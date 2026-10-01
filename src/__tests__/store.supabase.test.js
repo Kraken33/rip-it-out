@@ -51,6 +51,7 @@ import {
   getSession,
   getImprovement,
   getSrsCard,
+  addImprovements,
 } from '../store';
 
 describe('Store Layer — Supabase maybeSingle queries', () => {
@@ -167,6 +168,75 @@ describe('Store Layer — Supabase maybeSingle queries', () => {
       expect(mockEq).toHaveBeenCalledWith('improvement_id', 'non-existent-card');
       expect(mockMaybeSingle).toHaveBeenCalled();
       expect(card).toBeNull();
+    });
+  });
+
+  describe('addImprovements Supabase handling', () => {
+    it('throws when Supabase insertion returns an error', async () => {
+      const mockInsert = vi.fn().mockReturnValue({
+        select: vi.fn().mockResolvedValue({
+          data: null,
+          error: { message: 'Foreign key violation: session does not exist' },
+        }),
+      });
+
+      mockFrom.mockReturnValue({
+        insert: mockInsert,
+      });
+
+      await expect(
+        addImprovements('sess_invalid', [
+          { construction: 'test construction', improved: 'test example' },
+        ])
+      ).rejects.toThrow('Foreign key violation: session does not exist');
+    });
+
+    it('successfully saves improvements and creates SRS cards on valid Supabase insert', async () => {
+      const mockSelectAfterInsert = vi.fn().mockResolvedValue({
+        data: [
+          {
+            id: 'imp_1',
+            session_id: 'sess_1',
+            construction: 'test construction',
+            original: '',
+            improved: 'test example',
+            explanation: 'exp',
+            category: 'collocation',
+            spoken_frequency: 'high',
+            context: 'source',
+            created_at: new Date().toISOString(),
+          },
+        ],
+        error: null,
+      });
+
+      const mockInsert = vi.fn().mockReturnValue({
+        select: mockSelectAfterInsert,
+      });
+
+      const mockUpdateEq = vi.fn().mockReturnValue({
+        select: vi.fn().mockReturnValue({
+          single: vi.fn().mockResolvedValue({ data: {}, error: null }),
+        }),
+      });
+
+      const mockUpdate = vi.fn().mockReturnValue({
+        eq: mockUpdateEq,
+      });
+
+      mockFrom.mockImplementation((table) => {
+        if (table === 'improvements') return { insert: mockInsert };
+        if (table === 'srs_cards') return { insert: vi.fn().mockResolvedValue({ error: null }) };
+        if (table === 'sessions') return { update: mockUpdate };
+        return {};
+      });
+
+      const res = await addImprovements('sess_1', [
+        { construction: 'test construction', improved: 'test example' },
+      ]);
+
+      expect(res).toHaveLength(1);
+      expect(res[0].construction).toBe('test construction');
     });
   });
 });

@@ -36,7 +36,7 @@ The system SHALL present a construction-extraction control inside each Russian s
 
 ### Requirement: Extraction turns a selection into one construction
 
-The system SHALL send the selected phrase, the complete source block it was selected from, the learner's level, and — for a story round — that round's Russian passage, to the configured OpenAI chat model, and SHALL interpret the response as exactly one construction in the existing vault improvement shape whose `original` is empty because no learner error is being corrected.
+The system SHALL send the selected phrase, the complete source block it was selected from, the learner's level, and — for a story round — that round's Russian passage, to the configured OpenAI chat model, and SHALL interpret the response as exactly one construction in the existing vault improvement shape whose `original` is empty because no learner error is being corrected and whose `improved` is a complete, natural spoken English sentence illustrating the construction in context.
 
 #### Scenario: Request carries the selection and its block
 - **WHEN** an extraction runs for a selection
@@ -54,6 +54,10 @@ The system SHALL send the selected phrase, the complete source block it was sele
 - **WHEN** an extraction request is built
 - **THEN** it requires the construction to be a single-clause pattern of roughly 2-7 words using bracket slots, and forbids whole sentences and multi-clause patterns.
 
+#### Scenario: Full natural example sentence required
+- **WHEN** an extraction response is produced
+- **THEN** its `improved` field is a complete, natural spoken sentence in context containing the construction rather than just the selected phrase snippet.
+
 #### Scenario: Empty original
 - **WHEN** a construction is extracted from AI-written text
 - **THEN** its `original` is empty.
@@ -64,7 +68,7 @@ The system SHALL send the selected phrase, the complete source block it was sele
 
 ### Requirement: Extraction preview before saving
 
-The system SHALL present an extracted construction as a read-only card beneath its source block showing the construction, its improved example, its explanation, its category, and its spoken frequency, offering an add action and a discard action, and SHALL write nothing until the add action is chosen.
+The system SHALL present an extracted construction as a read-only card beneath its source block showing the construction, its improved example, its explanation, its category, and its spoken frequency, offering an add action and a discard action, and SHALL write nothing until the add action is chosen. Upon saving, the extraction preview SHALL clear the active selection lock so subsequent selections in the same source block can be immediately extracted.
 
 #### Scenario: Preview appears beneath its source block
 - **WHEN** an extraction succeeds
@@ -82,13 +86,17 @@ The system SHALL present an extracted construction as a read-only card beneath i
 - **WHEN** a preview card is displayed and the add action is not chosen
 - **THEN** the vault and the SRS state remain unchanged.
 
+#### Scenario: Save clears preview to allow another selection
+- **WHEN** the learner saves an extracted construction
+- **THEN** the vault record is created and the extractor clears its active preview state so selecting another phrase in the same block enables the extraction trigger.
+
 ### Requirement: Harvested construction is saved to the vault
 
-The system SHALL persist an accepted construction as a vault improvement linked to the current session, SHALL create its SRS card, and SHALL record the source block text as its sentence context.
+The system SHALL persist an accepted construction as a vault improvement linked to the active session, SHALL create its SRS card, SHALL record the source block text as its sentence context, and SHALL present explicit error feedback if persistence fails rather than silently aborting or falsely indicating success.
 
 #### Scenario: Accepting a construction
 - **WHEN** the learner chooses the add action on a preview card
-- **THEN** the construction is stored as a vault improvement linked to the current session, its SRS card is created, and the card reports that it was saved.
+- **THEN** the construction is stored as a vault improvement linked to the active session, its SRS card is created, and the card reports that it was saved.
 
 #### Scenario: Harvested construction appears in Library
 - **WHEN** a construction has been harvested from a session
@@ -101,6 +109,10 @@ The system SHALL persist an accepted construction as a vault improvement linked 
 #### Scenario: Several harvests from one block
 - **WHEN** the learner extracts more than one construction from the same block
 - **THEN** each accepted construction becomes its own vault improvement and SRS card.
+
+#### Scenario: Persistence failure surfaces explicit error
+- **WHEN** saving an extracted construction fails due to a missing session ID, network issue, or database rejection
+- **THEN** an error message is presented on the extraction card, the card does not transition to a saved state, and the learner is offered an option to retry.
 
 ### Requirement: Duplicate construction guard
 

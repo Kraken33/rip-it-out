@@ -404,10 +404,11 @@ Constraints: Level: ${settings.level || 'intermediate'}. Write the summary, the 
  * @param {Object} session - Session record (storyDemands is the topic source, sourceType)
  * @param {Object} settings - Learner settings (level, formality, openaiApiKey, openaiModel)
  * @param {string[]} historyTopics - Topics/passages already used this session
+ * @param {Object} [matrixSample=null] - Resolved Variety Matrix sample
  * @returns {Promise<string>} Raw Russian passage text
  */
-export async function generateTranslationStoryPassage(session = {}, settings = {}, historyTopics = []) {
-  const systemMessage = generateStoryPassagePrompt(session, settings, historyTopics);
+export async function generateTranslationStoryPassage(session = {}, settings = {}, historyTopics = [], matrixSample = null) {
+  const systemMessage = generateStoryPassagePrompt(session, settings, historyTopics, matrixSample);
   const formattedMessages = [
     { role: 'system', content: systemMessage },
     { role: 'user', content: 'Write the story passage now.' },

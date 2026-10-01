@@ -580,6 +580,28 @@ describe('AI Service Layer', () => {
       expect(systemPrompt).toMatch(/FRESH topic/i);
     });
 
+    it('passes matrixSample parameters to the prompt generator', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: 'История из аэропорта.' } }] }),
+      });
+
+      const matrixSample = {
+        domain: { label: 'Airport & Transit', desc: 'airports' },
+        tone: { label: 'Amused / Ironic', desc: 'humorous' },
+        format: { label: 'Spoken Anecdote', desc: 'anecdote' },
+        catalyst: { label: 'Lost Item', desc: 'lost things' },
+      };
+
+      await generateTranslationStoryPassage(session, settings, [], matrixSample);
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      const systemPrompt = body.messages[0].content;
+      expect(systemPrompt).toContain('Airport & Transit');
+      expect(systemPrompt).toContain('Amused / Ironic');
+      expect(systemPrompt).toContain('Spoken Anecdote');
+      expect(systemPrompt).toContain('Lost Item');
+    });
+
     it('surfaces the empty-content error when the model returns nothing', async () => {
       fetch.mockResolvedValueOnce({
         ok: true,

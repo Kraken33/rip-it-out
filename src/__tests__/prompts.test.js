@@ -12,7 +12,10 @@ import {
   parseImportJSON,
   parseTranslationVerdict,
   parseStoryFeedback,
-  parseExtractedConstruction
+  parseExtractedConstruction,
+  VARIETY_MATRIX,
+  VARIETY_PRESETS,
+  sampleVarietyMatrix
 } from '../prompts';
 
 describe('Prompt Orchestrator & Parser', () => {
@@ -313,12 +316,31 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(prompt).toMatch(/No title, no English translation, no commentary/i);
     });
 
-    it('requires natural spoken Russian instead of literary narration', () => {
+    it('requires natural spoken Russian and includes conversational discourse markers', () => {
       const prompt = generateStoryPassagePrompt(storySession, storySettings);
       expect(prompt).toMatch(/natural spoken Russian/i);
       expect(prompt).toMatch(/out loud/i);
       expect(prompt).toMatch(/conversational, everyday register/i);
       expect(prompt).toMatch(/never literary, bookish, or formal narration/i);
+      expect(prompt).toContain('Короче');
+      expect(prompt).toContain('Представляешь');
+      expect(prompt).toContain('В общем');
+    });
+
+    it('injects dynamic variety matrix parameters and does not contain hardcoded neighbor/alarm anchor examples', () => {
+      const sample = {
+        domain: { label: 'Airport & Flight', desc: 'airports' },
+        tone: { label: 'Amused / Ironic', desc: 'humorous' },
+        format: { label: 'Spoken Anecdote', desc: 'anecdote' },
+        catalyst: { label: 'Lost Item', desc: 'lost things' },
+      };
+      const prompt = generateStoryPassagePrompt({ title: '', storyDemands: '' }, storySettings, [], sample);
+      expect(prompt).toContain('Airport & Flight');
+      expect(prompt).toContain('Amused / Ironic');
+      expect(prompt).toContain('Spoken Anecdote');
+      expect(prompt).toContain('Lost Item');
+      expect(prompt).not.toContain('running into a neighbour');
+      expect(prompt).not.toContain('getting ready for the day');
     });
 
     it('forbids calendar-date references while allowing relative time words', () => {
@@ -370,6 +392,43 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(prompt).not.toContain('Story —');
       expect(prompt).not.toContain('Sep 23, 2026');
       expect(prompt).not.toContain('2026');
+    });
+  });
+
+  describe('Variety Matrix & sampleVarietyMatrix', () => {
+    it('defines all required matrix dimensions and presets', () => {
+      expect(VARIETY_MATRIX.domains.length).toBeGreaterThanOrEqual(6);
+      expect(VARIETY_MATRIX.tones.length).toBeGreaterThanOrEqual(4);
+      expect(VARIETY_MATRIX.formats.length).toBeGreaterThanOrEqual(3);
+      expect(VARIETY_MATRIX.catalysts.length).toBeGreaterThanOrEqual(4);
+      expect(VARIETY_PRESETS.length).toBeGreaterThanOrEqual(4);
+    });
+
+    it('samples randomized dimensions and builds a vibeLabel', () => {
+      const sample = sampleVarietyMatrix();
+      expect(sample.domain).toBeDefined();
+      expect(sample.tone).toBeDefined();
+      expect(sample.format).toBeDefined();
+      expect(sample.catalyst).toBeDefined();
+      expect(typeof sample.vibeLabel).toBe('string');
+      expect(sample.vibeLabel).toContain(sample.domain.label);
+    });
+
+    it('honors fixed user selections over random sampling', () => {
+      const sample = sampleVarietyMatrix({ domain: 'work', tone: 'annoyed' });
+      expect(sample.domain.id).toBe('work');
+      expect(sample.tone.id).toBe('annoyed');
+    });
+
+    it('avoids recently used dimensions when sampling without overrides', () => {
+      const recent = [
+        { domain: { id: 'work' }, tone: { id: 'annoyed' }, format: { id: 'anecdote' }, catalyst: { id: 'misunderstanding' } }
+      ];
+      // Sample multiple times to verify candidates pool avoids recent when possible
+      const samples = Array.from({ length: 10 }, () => sampleVarietyMatrix({}, recent));
+      // None of the samples should immediately pick 'work' if other domains exist
+      const workPick = samples.find(s => s.domain.id === 'work');
+      expect(workPick).toBeUndefined();
     });
   });
 
@@ -481,6 +540,7 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       const prompt = generateConstructionExtractionPrompt('invited him over', 'source', '', extractionSettings);
       expect(prompt).toMatch(/exactly ONE reusable construction/i);
       expect(prompt).toContain('"improved"');
+      expect(prompt).toMatch(/complete, natural spoken English sentence in context/i);
       expect(prompt).toContain('"explanation"');
       expect(prompt).toContain('"category"');
       expect(prompt).toContain('"spoken_frequency"');

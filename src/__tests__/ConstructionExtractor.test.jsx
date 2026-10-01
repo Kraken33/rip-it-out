@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import ConstructionExtractor from '../components/ConstructionExtractor';
 import * as aiService from '../services/aiService';
 import * as store from '../store';
@@ -176,6 +176,95 @@ describe('ConstructionExtractor Component', () => {
     await waitFor(() => {
       expect(screen.getByTestId('saved-indicator')).toBeDefined();
     });
+
+    const doneBtn = screen.getByRole('button', { name: /done/i });
+    expect(doneBtn).toBeDefined();
+    fireEvent.click(doneBtn);
+    expect(screen.queryByTestId('extracted-construction-preview')).toBeNull();
+  });
+
+  it('allows consecutive extractions from the same source block after saving', async () => {
+    const secondExtractionJson = JSON.stringify({
+      extraction: {
+        construction: 'catch up on [something]',
+        improved: 'We had to catch up on work yesterday.',
+        explanation: 'Used to mean doing work that was delayed.',
+        category: 'collocation',
+        spoken_frequency: 'high',
+      },
+    });
+
+    aiService.extractConstruction
+      .mockResolvedValueOnce(validExtractionJson)
+      .mockResolvedValueOnce(secondExtractionJson);
+    store.findDuplicate.mockResolvedValue(null);
+    store.addImprovements.mockResolvedValue([]);
+
+    const { container } = render(
+      <ConstructionExtractor
+        sessionId="sess_1"
+        settings={dummySettings}
+        sourceText="I invited him over yesterday to catch up on work."
+      >
+        <p>I invited him over yesterday to catch up on work.</p>
+      </ConstructionExtractor>
+    );
+
+    // 1st extraction
+    mockSelection(container, 'invited him over');
+    await act(async () => {
+      fireEvent.mouseUp(container.firstChild);
+    });
+    await act(async () => {
+      fireEvent.click(screen.getByTestId('extract-construction-trigger'));
+    });
+
+    const addBtn1 = await screen.findByTestId('add-extracted-btn');
+    await act(async () => {
+      fireEvent.click(addBtn1);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-indicator')).toBeDefined();
+    });
+
+    // 2nd extraction from same container without having to reload
+    mockSelection(container, 'catch up on work');
+    await act(async () => {
+      fireEvent.mouseUp(container.firstChild);
+    });
+
+    // The previous preview is cleared and the new extract trigger appears
+    const trigger2 = await screen.findByTestId('extract-construction-trigger');
+    expect(trigger2).toBeDefined();
+    await act(async () => {
+      fireEvent.click(trigger2);
+    });
+
+    expect(aiService.extractConstruction).toHaveBeenLastCalledWith({
+      selectedText: 'catch up on work',
+      sourceText: 'I invited him over yesterday to catch up on work.',
+      passage: '',
+      settings: dummySettings,
+    });
+
+    const addBtn2 = await screen.findByTestId('add-extracted-btn');
+    await act(async () => {
+      fireEvent.click(addBtn2);
+    });
+
+    expect(store.addImprovements).toHaveBeenCalledTimes(2);
+    expect(store.addImprovements).toHaveBeenLastCalledWith('sess_1', [
+      {
+        construction: 'catch up on [something]',
+        original: '',
+        improved: 'We had to catch up on work yesterday.',
+        explanation: 'Used to mean doing work that was delayed.',
+        category: 'collocation',
+        spoken_frequency: 'high',
+        context: 'I invited him over yesterday to catch up on work.',
+      },
+    ]);
   });
 
   it('clears preview when Discard is clicked', async () => {
@@ -225,5 +314,102 @@ describe('ConstructionExtractor Component', () => {
 
     expect(screen.getByText('invalid unparsed response')).toBeDefined();
     expect(screen.getByTestId('retry-extraction-btn')).toBeDefined();
+  });
+
+  it('surfaces error and provides retry when sessionId is missing during save', async () => {
+    aiService.extractConstruction.mockResolvedValueOnce(validExtractionJson);
+    store.findDuplicate.mockResolvedValueOnce(null);
+
+    const { container } = render(
+      <ConstructionExtractor
+        sessionId={null}
+        settings={dummySettings}
+        sourceText="I invited him over yesterday."
+      >
+        <p>I invited him over yesterday.</p>
+      </ConstructionExtractor>
+    );
+
+    mockSelection(container, 'invited him over');
+    fireEvent.mouseUp(container.firstChild);
+    fireEvent.click(screen.getByTestId('extract-construction-trigger'));
+
+    const addBtn = await screen.findByTestId('add-extracted-btn');
+    fireEvent.click(addBtn);
+
+    expect(store.addImprovements).not.toHaveBeenCalled();
+    expect(await screen.findByTestId('extraction-error')).toBeDefined();
+    expect(screen.getByText(/Session is not ready or active/i)).toBeDefined();
+    expect(screen.getByTestId('retry-save-btn')).toBeDefined();
+  });
+
+  it('surfaces error and allows retry when addImprovements throws', async () => {
+    aiService.extractConstruction.mockResolvedValueOnce(validExtractionJson);
+    store.findDuplicate.mockResolvedValueOnce(null);
+    store.addImprovements.mockRejectedValueOnce(new Error('Database write rejected'));
+
+    const { container } = render(
+      <ConstructionExtractor
+        sessionId="sess_1"
+        settings={dummySettings}
+        sourceText="I invited him over yesterday."
+      >
+        <p>I invited him over yesterday.</p>
+      </ConstructionExtractor>
+    );
+
+    mockSelection(container, 'invited him over');
+    fireEvent.mouseUp(container.firstChild);
+    fireEvent.click(screen.getByTestId('extract-construction-trigger'));
+
+    const addBtn = await screen.findByTestId('add-extracted-btn');
+    fireEvent.click(addBtn);
+
+    expect(await screen.findByTestId('extraction-error')).toBeDefined();
+    expect(screen.getByText(/Database write rejected/i)).toBeDefined();
+
+    // Now mock resolved for retry
+    store.addImprovements.mockResolvedValueOnce([]);
+    const retryBtn = screen.getByTestId('retry-save-btn');
+    fireEvent.click(retryBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-indicator')).toBeDefined();
+    });
+  });
+
+  it('does not dismiss preview card when clicking inside the preview card even with active selection', async () => {
+    aiService.extractConstruction.mockResolvedValueOnce(validExtractionJson);
+    store.findDuplicate.mockResolvedValueOnce(null);
+    store.addImprovements.mockResolvedValueOnce([]);
+
+    const { container } = render(
+      <ConstructionExtractor
+        sessionId="sess_1"
+        settings={dummySettings}
+        sourceText="I invited him over yesterday."
+      >
+        <p>I invited him over yesterday.</p>
+      </ConstructionExtractor>
+    );
+
+    mockSelection(container, 'invited him over');
+    fireEvent.mouseUp(container.firstChild);
+    fireEvent.click(screen.getByTestId('extract-construction-trigger'));
+
+    const preview = await screen.findByTestId('extracted-construction-preview');
+    expect(preview).toBeDefined();
+
+    // Mouse up on preview card directly
+    fireEvent.mouseUp(preview);
+    expect(screen.queryByTestId('extracted-construction-preview')).not.toBeNull();
+
+    const addBtn = screen.getByTestId('add-extracted-btn');
+    fireEvent.click(addBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-indicator')).toBeDefined();
+    });
+    expect(store.addImprovements).toHaveBeenCalledTimes(1);
   });
 });

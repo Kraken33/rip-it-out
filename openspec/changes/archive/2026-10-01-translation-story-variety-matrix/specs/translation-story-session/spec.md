@@ -1,10 +1,6 @@
-# Translation Story Session
+# Spec Delta
 
-## Purpose
-
-The translation-story-session capability lets learners run story-translation sessions that generate Russian stories, collect English translations, show fluent daily-speaking improved versions, and aggregate candidate constructions for vault import.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Unlimited story-translation rounds
 
@@ -26,6 +22,8 @@ The system SHALL provide unlimited on-demand Russian story rounds inside a sessi
 - **WHEN** the user finishes the translation activity without submitting any translation
 - **THEN** no improvements are produced and the flow returns without creating vault entries.
 
+## ADDED Requirements
+
 ### Requirement: Story Variety Matrix and in-session flavor controls
 
 The system SHALL support an opt-in Variety Matrix consisting of Domain/Setting, Emotional Tone, Narrative Format, and Conflict/Catalyst, offering 1-click combo presets, granular dimension selection, and live in-session controls to inspect vibe tags, reroll the current passage, or tune the next round's flavor.
@@ -45,43 +43,3 @@ The system SHALL support an opt-in Variety Matrix consisting of Domain/Setting, 
 #### Scenario: Tuning flavor mid-session
 - **WHEN** the learner adjusts Variety Matrix settings or selects a new preset while inside an active session
 - **THEN** subsequent generated rounds use the updated matrix parameters.
-
-### Requirement: Per-round improved version for daily speaking
-
-The system SHALL return, for each submitted translation, an improved version that is comprehensive, fluent, and optimized for daily speaking, preserving the learner's meaning, and SHALL NOT require or generate candidate constructions for the round.
-
-#### Scenario: Improved version preserves meaning
-- **WHEN** the learner submits an English translation of a story passage
-- **THEN** the improved version keeps the learner's meaning and wording where natural, fixes errors, and uses fluent spoken phrasing rather than formal written style.
-
-#### Scenario: Correct translation is affirmed
-- **WHEN** the submitted translation is already natural and fluent
-- **THEN** the system affirms success and presents no invented rewrite.
-
-#### Scenario: Unparsable feedback is preserved
-- **WHEN** the per-round feedback response cannot be parsed into the expected structure
-- **THEN** the system displays the raw feedback text in the round thread, marks structured extraction as unavailable, and offers retry without discarding the learner's translation.
-
-#### Scenario: Feedback rendering handles missing constructions safely
-- **WHEN** the per-round feedback object lacks a `constructions` array
-- **THEN** the UI renders the summary and improved version without runtime errors.
-
-### Requirement: Translation session artefact
-
-The system SHALL persist a finished translation-story session to the configured storage backend as a session record carrying the activity marker, all rounds (passage, learner translation, and improved version), timing measured from session start and logged as activity, and learner-only word metrics.
-
-#### Scenario: Finished translation session is saved
-- **WHEN** the user finishes after at least one submitted translation
-- **THEN** the system creates a session with `activity` set to `translation`, `messages` or rounds holding one entry per round, `rawText` built ONLY from learner translations, and `durationSeconds` measured from session start.
-
-#### Scenario: Finishing returns to the Dashboard
-- **WHEN** the learner finishes the translation activity after submitting at least one translation
-- **THEN** the session is saved and the flow returns to the Dashboard with no import or review step.
-
-#### Scenario: Session time is logged as activity
-- **WHEN** a translation-story session is finished
-- **THEN** an activity log entry of type `session` with the measured duration is recorded so Dashboard and Stats time widgets include the session.
-
-#### Scenario: Translation session appears in Library and stats
-- **WHEN** a translation-story session record exists
-- **THEN** it appears in Library under its title, constructions harvested from it are listed as vault items scoped to that session, its learner translations contribute to word metrics, and passages/improved versions are excluded from word counts.

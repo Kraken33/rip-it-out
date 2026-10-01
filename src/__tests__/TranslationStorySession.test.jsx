@@ -146,7 +146,7 @@ describe('TranslationStorySession Component', () => {
     mocks.evaluateTranslationStory.mockResolvedValue(IMPROVED_FEEDBACK);
   });
 
-  it('generates the first story passage on mount', async () => {
+  it('generates the first story passage on mount with variety sample and renders vibe badge', async () => {
     renderSession();
 
     expect(screen.getByRole('button', { name: /Next Round/i })).toBeInTheDocument();
@@ -157,7 +157,62 @@ describe('TranslationStorySession Component', () => {
     expect(mocks.generateTranslationStoryPassage).toHaveBeenCalledWith(
       dummySession,
       dummySettings,
-      []
+      [],
+      expect.objectContaining({ domain: expect.any(Object), vibeLabel: expect.any(String) })
+    );
+
+    expect(screen.getByTestId('story-vibe-badge')).toBeInTheDocument();
+  });
+
+  it('supports rerolling the active round passage before submitting translation', async () => {
+    const REROLLED_PASSAGE = 'Совершенно новая история после реролла.';
+    mocks.generateTranslationStoryPassage.mockReset();
+    mocks.generateTranslationStoryPassage
+      .mockResolvedValueOnce(PASSAGE_1)
+      .mockResolvedValueOnce(REROLLED_PASSAGE);
+
+    renderSession();
+    await waitForPassage(PASSAGE_1);
+
+    const rerollBtn = screen.getByRole('button', { name: /Reroll Story/i });
+    expect(rerollBtn).toBeInTheDocument();
+
+    fireEvent.click(rerollBtn);
+    await waitForPassage(REROLLED_PASSAGE);
+
+    expect(mocks.generateTranslationStoryPassage).toHaveBeenCalledTimes(2);
+    expect(screen.getByText(new RegExp(REROLLED_PASSAGE.slice(0, 20)))).toBeInTheDocument();
+  });
+
+  it('allows tuning story flavor mid-session and applies to next round', async () => {
+    renderSession();
+    await waitForPassage();
+
+    // Open Flavor drawer
+    fireEvent.click(screen.getByRole('button', { name: /Flavor/i }));
+    expect(screen.getByText(/Tune Story Flavor/i)).toBeInTheDocument();
+
+    // Click "Office Drama" preset
+    fireEvent.click(screen.getByRole('button', { name: /Office Drama/i }));
+
+    // Submit translation for round 1
+    submitTranslation('Yesterday I invited a friend over.');
+    await waitFor(() => expect(screen.getByTestId('story-feedback')).toBeInTheDocument());
+
+    // Advance to next round
+    fireEvent.click(screen.getByRole('button', { name: /Next Round/i }));
+    await waitForPassage(PASSAGE_2);
+
+    expect(mocks.generateTranslationStoryPassage).toHaveBeenLastCalledWith(
+      dummySession,
+      dummySettings,
+      [PASSAGE_1],
+      expect.objectContaining({
+        domain: expect.objectContaining({ id: 'work' }),
+        tone: expect.objectContaining({ id: 'annoyed' }),
+        format: expect.objectContaining({ id: 'dialogue' }),
+        catalyst: expect.objectContaining({ id: 'misunderstanding' }),
+      })
     );
   });
 
@@ -225,7 +280,8 @@ describe('TranslationStorySession Component', () => {
     expect(mocks.generateTranslationStoryPassage).toHaveBeenLastCalledWith(
       dummySession,
       dummySettings,
-      [PASSAGE_1]
+      [PASSAGE_1],
+      expect.any(Object)
     );
     expect(screen.getByText(/Round 1 · Story passage/)).toBeInTheDocument();
     expect(screen.getByText(/Round 2 · Story passage/)).toBeInTheDocument();

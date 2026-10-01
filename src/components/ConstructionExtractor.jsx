@@ -28,8 +28,16 @@ export default function ConstructionExtractor({
 
   const hasApiKey = Boolean(settings?.openaiApiKey);
 
-  const handleSelectionChange = () => {
+  const handleSelectionChange = (e) => {
     if (disabled || isExtracting || !hasApiKey) return;
+    if (
+      e?.target?.closest?.(
+        '[data-testid="extracted-construction-preview"], [data-testid="extract-construction-trigger"], [data-testid="unparsed-extraction-card"], [data-testid="extraction-error"]'
+      )
+    ) {
+      return;
+    }
+
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !containerRef.current) {
       return;
@@ -43,7 +51,14 @@ export default function ConstructionExtractor({
       containerRef.current.contains(focus)
     ) {
       const text = typeof sel.toString === 'function' ? sel.toString().trim() : '';
-      if (text) {
+      if (text && text !== selectedText) {
+        // If there was a previous extracted card, saved card, or error, clear it only when a new/different selection is made
+        if (extracted || isSaved || isUnparsed || errorMsg) {
+          setExtracted(null);
+          setIsSaved(false);
+          setIsUnparsed(false);
+          setErrorMsg('');
+        }
         setSelectedText(text);
       }
     }
@@ -51,6 +66,11 @@ export default function ConstructionExtractor({
 
   const handleExtract = async () => {
     if (!selectedText || isExtracting || disabled) return;
+    try {
+      window.getSelection()?.removeAllRanges();
+    } catch {
+      // Ignore if getSelection is not available in test/SSR environment
+    }
     setIsExtracting(true);
     setErrorMsg('');
     setIsUnparsed(false);
@@ -86,7 +106,11 @@ export default function ConstructionExtractor({
   };
 
   const handleSave = async () => {
-    if (!extracted || isDuplicate || isSaved || !sessionId) return;
+    if (!extracted || isDuplicate || isSaved) return;
+    if (!sessionId) {
+      setErrorMsg('Session is not ready or active. Please wait or reload.');
+      return;
+    }
     try {
       await addImprovements(sessionId, [
         {
@@ -123,11 +147,18 @@ export default function ConstructionExtractor({
 
       {/* Selection Extraction Trigger Button */}
       {hasApiKey && selectedText && !isExtracting && !extracted && !isUnparsed && !errorMsg && (
-        <div className="mt-2 flex items-center gap-2">
+        <div
+          className="mt-2 flex items-center gap-2"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
+        >
           <button
             type="button"
             data-testid="extract-construction-trigger"
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={handleExtract}
             className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600/90 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg shadow-sm backdrop-blur transition cursor-pointer border border-purple-400/30 animate-fade-in"
           >
@@ -141,7 +172,10 @@ export default function ConstructionExtractor({
           </button>
           <button
             type="button"
-            onMouseDown={(e) => e.preventDefault()}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={() => setSelectedText('')}
             className="text-gray-400 hover:text-gray-200 text-xs px-1 cursor-pointer"
             title="Dismiss selection"
@@ -155,6 +189,8 @@ export default function ConstructionExtractor({
       {isExtracting && (
         <div
           data-testid="extracting-spinner"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
           className="mt-2 text-xs text-purple-300 italic flex items-center gap-2"
         >
           <span className="animate-spin">⏳</span>
@@ -166,6 +202,8 @@ export default function ConstructionExtractor({
       {extracted && (
         <div
           data-testid="extracted-construction-preview"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
           className="mt-3 p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-white space-y-2.5 shadow-lg animate-fade-in"
         >
           <div className="flex items-start justify-between gap-2">
@@ -215,24 +253,37 @@ export default function ConstructionExtractor({
 
           {/* Action buttons */}
           <div className="flex items-center justify-end gap-2 pt-1 border-t border-purple-500/20">
-            <button
-              type="button"
-              data-testid="discard-extracted-btn"
-              onClick={handleDiscard}
-              className="px-3 py-1 text-xs text-gray-400 hover:text-gray-200 transition cursor-pointer"
-            >
-              Discard
-            </button>
-
-            {!isDuplicate && !isSaved && (
+            {isSaved ? (
               <button
                 type="button"
-                data-testid="add-extracted-btn"
-                onClick={handleSave}
-                className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow transition cursor-pointer"
+                data-testid="discard-extracted-btn"
+                onClick={handleDiscard}
+                className="px-3.5 py-1 bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold rounded-lg shadow transition cursor-pointer"
               >
-                + Add to Study List
+                Done
               </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  data-testid="discard-extracted-btn"
+                  onClick={handleDiscard}
+                  className="px-3 py-1 text-xs text-gray-400 hover:text-gray-200 transition cursor-pointer"
+                >
+                  Discard
+                </button>
+
+                {!isDuplicate && (
+                  <button
+                    type="button"
+                    data-testid="add-extracted-btn"
+                    onClick={handleSave}
+                    className="px-3.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow transition cursor-pointer"
+                  >
+                    + Add to Study List
+                  </button>
+                )}
+              </>
             )}
           </div>
         </div>
@@ -242,6 +293,8 @@ export default function ConstructionExtractor({
       {isUnparsed && (
         <div
           data-testid="unparsed-extraction-card"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
           className="mt-3 p-3 rounded-xl bg-amber-950/30 border border-amber-600/40 text-white space-y-2 text-xs shadow-lg"
         >
           <p className="font-bold text-amber-400 uppercase tracking-wider text-[10px]">
@@ -272,17 +325,31 @@ export default function ConstructionExtractor({
       {errorMsg && (
         <div
           data-testid="extraction-error"
+          onMouseDown={(e) => e.stopPropagation()}
+          onMouseUp={(e) => e.stopPropagation()}
           className="mt-2 p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2"
         >
           <span>⚠️ {errorMsg}</span>
           <div className="flex gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={handleExtract}
-              className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-[11px] cursor-pointer"
-            >
-              Retry
-            </button>
+            {extracted ? (
+              <button
+                type="button"
+                data-testid="retry-save-btn"
+                onClick={handleSave}
+                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-[11px] cursor-pointer"
+              >
+                Retry
+              </button>
+            ) : (
+              <button
+                type="button"
+                data-testid="retry-extract-btn"
+                onClick={handleExtract}
+                className="px-2 py-0.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded text-[11px] cursor-pointer"
+              >
+                Retry
+              </button>
+            )}
             <button
               type="button"
               onClick={handleDiscard}

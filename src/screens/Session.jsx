@@ -12,7 +12,9 @@ import {
 import { 
   generateDescriptionPrompt, 
   generateExportPrompt, 
-  parseImportJSON 
+  parseImportJSON,
+  VARIETY_MATRIX,
+  VARIETY_PRESETS
 } from '../prompts';
 import { generateSeamlessSessionFeedback } from '../services/aiService';
 import ModeToggle from '../components/ModeToggle';
@@ -84,6 +86,15 @@ export default function Session() {
   const [activity, setActivity] = useState('dialogue');
   // Optional learner-authored topic/demands for the story-translation activity.
   const [storyDemands, setStoryDemands] = useState('');
+  // Variety Matrix state for translation stories
+  const [matrixOpen, setMatrixOpen] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState(null);
+  const [varietyMatrix, setVarietyMatrix] = useState({
+    domain: 'auto',
+    tone: 'auto',
+    format: 'auto',
+    catalyst: 'auto',
+  });
 
   // Map of unique previous titles with their most recent session data
   const previousTitlesMap = useMemo(() => {
@@ -202,9 +213,9 @@ export default function Session() {
           activity: 'translation',
           messages: [{ role: 'user', content: `__story_demands:${demands}` }],
         });
-        // storyDemands is transient prompt seed data (no DB column); keep it
+        // storyDemands and varietyMatrix are transient prompt seed data (no DB column); keep them
         // on the in-memory session object handed to the story component.
-        newSession = { ...newSession, storyDemands: demands };
+        newSession = { ...newSession, storyDemands: demands, varietyMatrix };
       }
       setSession(newSession);
       setStartTime(Date.now());
@@ -214,7 +225,7 @@ export default function Session() {
     } finally {
       setLoading(false);
     }
-  }, [title, sourceType, tags, notes, activity, storyDemands]);
+  }, [title, sourceType, tags, notes, activity, storyDemands, varietyMatrix]);
 
   const copyToClipboard = useCallback(async (text, setter) => {
     if (!startTime) {
@@ -442,18 +453,173 @@ export default function Session() {
           </div>
 
           {activity === 'translation' && (
-            <div className="space-y-1.5">
-              <label htmlFor="story-demands" className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
-                Story Topics / Demands <span className="text-gray-500 font-normal lowercase">(optional)</span>
-              </label>
-              <textarea
-                id="story-demands"
-                value={storyDemands}
-                onChange={(e) => setStoryDemands(e.target.value)}
-                placeholder="e.g. ordering at a restaurant, small talk with coworkers, travel stories..."
-                rows={2}
-                className="w-full bg-[#1b1c2b] border border-[#27283d] rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-all resize-none font-medium"
-              />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <label htmlFor="story-demands" className="block text-xs font-bold text-gray-300 uppercase tracking-wider">
+                  Story Topics / Demands <span className="text-gray-500 font-normal lowercase">(optional)</span>
+                </label>
+                <textarea
+                  id="story-demands"
+                  value={storyDemands}
+                  onChange={(e) => setStoryDemands(e.target.value)}
+                  placeholder="e.g. ordering at a restaurant, small talk with coworkers, travel stories..."
+                  rows={2}
+                  className="w-full bg-[#1b1c2b] border border-[#27283d] rounded-lg px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition-all resize-none font-medium"
+                />
+              </div>
+
+              {/* Collapsible Variety Matrix */}
+              <div className="rounded-xl border border-[#27283d] bg-[#141523]/60 p-3 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setMatrixOpen(!matrixOpen)}
+                  className="flex items-center justify-between w-full text-left text-xs font-bold text-purple-300 hover:text-purple-200 transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <span>✨</span>
+                    <span>Story Flavor & Variety Matrix</span>
+                    <span className="text-[10px] text-gray-400 font-normal">
+                      ({selectedPreset ? VARIETY_PRESETS.find((p) => p.id === selectedPreset)?.label : 'Auto / Random Variety'})
+                    </span>
+                  </span>
+                  <span className="text-gray-400 text-xs">{matrixOpen ? '▲' : '▼'}</span>
+                </button>
+
+                {matrixOpen && (
+                  <div className="space-y-3 pt-2 border-t border-[#27283d]">
+                    {/* Presets */}
+                    <div className="space-y-1.5">
+                      <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+                        Quick 1-Click Themes
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedPreset(null);
+                            setVarietyMatrix({ domain: 'auto', tone: 'auto', format: 'auto', catalyst: 'auto' });
+                          }}
+                          className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition cursor-pointer ${
+                            !selectedPreset && Object.values(varietyMatrix).every((v) => v === 'auto')
+                              ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+                              : 'bg-[#1b1c2b] text-gray-300 border-[#27283d] hover:border-purple-500/50'
+                          }`}
+                        >
+                          🎲 Auto Variety
+                        </button>
+                        {VARIETY_PRESETS.map((preset) => (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedPreset(preset.id);
+                              setVarietyMatrix({ ...preset.matrix });
+                            }}
+                            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition cursor-pointer ${
+                              selectedPreset === preset.id
+                                ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+                                : 'bg-[#1b1c2b] text-gray-300 border-[#27283d] hover:border-purple-500/50'
+                            }`}
+                          >
+                            {preset.emoji} {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Granular Dials */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                      <div>
+                        <label htmlFor="matrix-domain" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                          Domain / Setting
+                        </label>
+                        <select
+                          id="matrix-domain"
+                          value={varietyMatrix.domain}
+                          onChange={(e) => {
+                            setSelectedPreset(null);
+                            setVarietyMatrix((prev) => ({ ...prev, domain: e.target.value }));
+                          }}
+                          className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+                        >
+                          <option value="auto">🎲 Auto / Random Domain</option>
+                          {VARIETY_MATRIX.domains.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.emoji} {d.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label htmlFor="matrix-tone" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                          Tone / Mood
+                        </label>
+                        <select
+                          id="matrix-tone"
+                          value={varietyMatrix.tone}
+                          onChange={(e) => {
+                            setSelectedPreset(null);
+                            setVarietyMatrix((prev) => ({ ...prev, tone: e.target.value }));
+                          }}
+                          className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+                        >
+                          <option value="auto">🎲 Auto / Random Tone</option>
+                          {VARIETY_MATRIX.tones.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.emoji} {t.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label htmlFor="matrix-format" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                          Narrative Format
+                        </label>
+                        <select
+                          id="matrix-format"
+                          value={varietyMatrix.format}
+                          onChange={(e) => {
+                            setSelectedPreset(null);
+                            setVarietyMatrix((prev) => ({ ...prev, format: e.target.value }));
+                          }}
+                          className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+                        >
+                          <option value="auto">🎲 Auto / Random Format</option>
+                          {VARIETY_MATRIX.formats.map((f) => (
+                            <option key={f.id} value={f.id}>
+                              {f.emoji} {f.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label htmlFor="matrix-catalyst" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                          Conflict / Catalyst
+                        </label>
+                        <select
+                          id="matrix-catalyst"
+                          value={varietyMatrix.catalyst}
+                          onChange={(e) => {
+                            setSelectedPreset(null);
+                            setVarietyMatrix((prev) => ({ ...prev, catalyst: e.target.value }));
+                          }}
+                          className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2.5 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+                        >
+                          <option value="auto">🎲 Auto / Random Catalyst</option>
+                          {VARIETY_MATRIX.catalysts.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.emoji} {c.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

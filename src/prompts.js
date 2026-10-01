@@ -385,6 +385,128 @@ export function parseTranslationVerdict(text) {
 }
 
 
+// ── Translation Story Variety Matrix ──────────────────────────────
+
+export const VARIETY_MATRIX = {
+  domains: [
+    { id: 'work', label: 'Work & Office', emoji: '🏢', desc: 'coworkers, projects, meetings, or workplace dynamics' },
+    { id: 'cafe', label: 'Coffee Shop & Food', emoji: '☕', desc: 'ordering, cooking, cafes, or restaurant encounters' },
+    { id: 'travel', label: 'Travel & Airport', emoji: '✈️', desc: 'flights, trains, hotels, packing, or exploring new places' },
+    { id: 'transit', label: 'Public Transit', emoji: '🚇', desc: 'subway, buses, traffic, or commuting moments' },
+    { id: 'shopping', label: 'Shopping & Services', emoji: '🛒', desc: 'supermarkets, finding items, customer service, or repairs' },
+    { id: 'home', label: 'Home & Daily Life', emoji: '🏠', desc: 'chores, neighbors, DIY fixes, or daily home routines' },
+    { id: 'fitness', label: 'Health & Fitness', emoji: '🏃', desc: 'gym, sports, wellness, or doctor visits' },
+    { id: 'social', label: 'Social & Friends', emoji: '🎉', desc: 'gatherings, parties, meeting acquaintances, or catching up' },
+    { id: 'tech', label: 'Tech & Modern Life', emoji: '📱', desc: 'apps, gadgets, battery dying, or delivery mix-ups' },
+  ],
+  tones: [
+    { id: 'amused', label: 'Amused / Ironic', emoji: '😅', desc: 'humorous, lighthearted, self-deprecating chuckle' },
+    { id: 'annoyed', label: 'Mildly Annoyed / Vented', emoji: '😤', desc: 'venting about a daily pet peeve or minor hassle' },
+    { id: 'surprised', label: 'Surprised / Baffled', emoji: '😲', desc: 'unexpected turn of events, caught off guard' },
+    { id: 'relieved', label: 'Relieved / Lucky', emoji: '😮‍💨', desc: 'dodged a bullet, narrow escape from trouble' },
+    { id: 'rushed', label: 'Rushed / Chaotic', emoji: '🏃‍♂️', desc: 'hurrying against the clock, juggling too many things' },
+    { id: 'triumphant', label: 'Proud / Small Win', emoji: '✨', desc: 'a satisfying small win or clever solution' },
+  ],
+  formats: [
+    { id: 'anecdote', label: 'Spoken Anecdote', emoji: '🗣️', desc: 'first-person story ("Вчера со мной произошло...")' },
+    { id: 'dialogue', label: 'Recounted Dialogue', emoji: '💬', desc: 'sharing a conversation or exchange with someone' },
+    { id: 'observation', label: 'Observation / Hot Take', emoji: '👀', desc: 'commentary on a funny habit or daily situation' },
+    { id: 'dilemma', label: 'Micro-Dilemma', emoji: '🤔', desc: 'facing a quick, relatable choice in the moment' },
+  ],
+  catalysts: [
+    { id: 'misunderstanding', label: 'Misunderstanding', emoji: '🤷', desc: 'lost in translation, confusing signals, or wrong assumptions' },
+    { id: 'sideways', label: 'Plans Going Sideways', emoji: '🔄', desc: 'a simple plan turning unexpectedly complicated' },
+    { id: 'encounter', label: 'Unexpected Encounter', emoji: '👋', desc: 'bumping into an acquaintance or memorable person' },
+    { id: 'glitch', label: 'Tech / Gadget Glitch', emoji: '⚡', desc: 'navigation leading astray, alarm fails, auto-correct chaos' },
+    { id: 'awkward', label: 'Awkward Social Moment', emoji: '🙈', desc: 'trying to be polite, elevator silence, minor faux pas' },
+    { id: 'surprise', label: 'Pleasant Surprise', emoji: '🎁', desc: 'unexpected freebie, finding something lost, random kindness' },
+  ],
+};
+
+export const VARIETY_PRESETS = [
+  {
+    id: 'office_drama',
+    label: 'Office Drama',
+    emoji: '🏢',
+    matrix: { domain: 'work', tone: 'annoyed', format: 'dialogue', catalyst: 'misunderstanding' },
+  },
+  {
+    id: 'travel_chaos',
+    label: 'Travel Chaos',
+    emoji: '✈️',
+    matrix: { domain: 'travel', tone: 'rushed', format: 'anecdote', catalyst: 'sideways' },
+  },
+  {
+    id: 'awkward_social',
+    label: 'Awkward Moment',
+    emoji: '🤦',
+    matrix: { domain: 'social', tone: 'amused', format: 'anecdote', catalyst: 'awkward' },
+  },
+  {
+    id: 'cafe_mishap',
+    label: 'Cafe & Food',
+    emoji: '☕',
+    matrix: { domain: 'cafe', tone: 'surprised', format: 'dialogue', catalyst: 'surprise' },
+  },
+  {
+    id: 'tech_trouble',
+    label: 'Tech Glitch',
+    emoji: '📱',
+    matrix: { domain: 'tech', tone: 'annoyed', format: 'observation', catalyst: 'glitch' },
+  },
+  {
+    id: 'small_win',
+    label: 'Small Victory',
+    emoji: '🍀',
+    matrix: { domain: 'home', tone: 'triumphant', format: 'anecdote', catalyst: 'surprise' },
+  },
+];
+
+/**
+ * Sample a Variety Matrix combination given optional user selections and
+ * recently sampled items to avoid repetition.
+ *
+ * @param {Object} [userSelections={}] User-chosen overrides ({ domain, tone, format, catalyst })
+ * @param {Array} [recentSamples=[]] Array of previously resolved sample objects
+ * @returns {Object} Resolved sample with item objects and a formatted vibeLabel
+ */
+export function sampleVarietyMatrix(userSelections = {}, recentSamples = []) {
+  const sampleDimension = (dimKey, list) => {
+    const chosenVal = userSelections[dimKey];
+    if (chosenVal && chosenVal !== 'auto') {
+      const match = list.find((item) => item.id === chosenVal);
+      if (match) return match;
+      return { id: chosenVal, label: chosenVal, emoji: '✨', desc: chosenVal };
+    }
+
+    // Avoid the most recent 1-2 samples for this dimension if list is large enough
+    const recentIds = (recentSamples || [])
+      .slice(-2)
+      .map((s) => s?.[dimKey]?.id)
+      .filter(Boolean);
+
+    const candidates = list.filter((item) => !recentIds.includes(item.id));
+    const pool = candidates.length > 0 ? candidates : list;
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    return pool[randomIndex];
+  };
+
+  const domain = sampleDimension('domain', VARIETY_MATRIX.domains);
+  const tone = sampleDimension('tone', VARIETY_MATRIX.tones);
+  const format = sampleDimension('format', VARIETY_MATRIX.formats);
+  const catalyst = sampleDimension('catalyst', VARIETY_MATRIX.catalysts);
+
+  const vibeLabel = `${domain.emoji} ${domain.label} · ${tone.emoji} ${tone.label} · ${format.label}`;
+
+  return {
+    domain,
+    tone,
+    format,
+    catalyst,
+    vibeLabel,
+  };
+}
+
 // ── Translation Story Session ─────────────────────────────────────
 
 /**
@@ -404,16 +526,17 @@ export function resolveStoryTopic(session) {
 /**
  * System prompt for one translation-story round passage: ONE short Russian
  * story in natural spoken register, grounded in the learner's story
- * topic/demands when given (free everyday topic otherwise), at the learner
+ * topic/demands when given (dynamic Variety Matrix scenario otherwise), at the learner
  * level, on a topic not already used this session. Output is ONLY the Russian
  * passage text.
  *
  * @param {Object} session - Session record (storyDemands is the topic source)
  * @param {Object} settings - Learner settings (level, formality)
  * @param {string[]} historyTopics - Topics/passages already used this session
+ * @param {Object} [matrixSample=null] - Resolved Variety Matrix sample
  * @returns {string}
  */
-export function generateStoryPassagePrompt(session, settings, historyTopics = []) {
+export function generateStoryPassagePrompt(session, settings, historyTopics = [], matrixSample = null) {
   const usedTopics = (Array.isArray(historyTopics) ? historyTopics : [])
     .map((t) => (typeof t === 'string' ? t.trim() : ''))
     .filter(Boolean);
@@ -428,13 +551,18 @@ export function generateStoryPassagePrompt(session, settings, historyTopics = []
   const demandsBlock = topic
     ? `\n\nThe learner specifically asked to practice: "${topic}". The story MUST match this request.`
     : '';
+
+  const sample = matrixSample || session?.varietyMatrixSample || sampleVarietyMatrix(session?.varietyMatrix || {});
+
+  const matrixBlock = `\n\nScenario Variety Parameters:\n- Domain/Setting: ${sample.domain.label} (${sample.domain.desc})\n- Emotional Tone: ${sample.tone.label} (${sample.tone.desc})\n- Format/Style: ${sample.format.label} (${sample.format.desc})\n- Conflict/Catalyst: ${sample.catalyst.label} (${sample.catalyst.desc})`;
+
   const topicBlock = topic
-    ? ''
-    : `\n\nThe learner gave no topic, so the subject is yours to pick: choose ONE fresh, concrete everyday topic (for example running into a neighbour, a small problem at home, or getting ready for the day) and make the whole story about it.`;
+    ? matrixBlock
+    : `\n\nThe learner gave no topic, so choose a fresh, concrete everyday topic guided by the scenario variety parameters:${matrixBlock}`;
 
   return `You are a Russian language tutor creating story-translation practice material for an English learner.
 
-Write ONE short natural Russian story (3-6 sentences) in natural spoken Russian — the way a native speaker would actually say it out loud to a friend. Use conversational, everyday register: short spoken sentences, common everyday vocabulary, and natural spoken constructions, never literary, bookish, or formal narration.${topicBlock}${demandsBlock}${usedTopicsBlock}
+Write ONE short natural Russian story (3-6 sentences) in natural spoken Russian — the way a native speaker would actually say it out loud to a friend. Use conversational, everyday register: short spoken sentences, common everyday vocabulary, and natural spoken constructions with lively conversational discourse markers where appropriate (e.g. "Короче", "Представляешь", "В общем", "Оказывается"), never literary, bookish, or formal narration.${topicBlock}${demandsBlock}${usedTopicsBlock}
 
 Rules:
 - Write ONLY the Russian story text. No title, no English translation, no commentary, no formatting marks.
@@ -556,7 +684,7 @@ Return exactly ONE reusable construction that captures the pattern behind the se
 
 Rules:
 - "construction": the abstracted pattern, kept SHORT: a single clause of roughly 2-7 words with bracket slots (e.g. "start taking [class] to [purpose]"). NEVER copy a whole sentence or chain multiple clauses — a pattern like "If I wake up at [time], I feel [adjective] and like I haven't had enough sleep" is TOO LONG; extract the single core structure instead.
-- "improved": the selected phrase written as the natural spoken English example of that construction.
+- "improved": the complete, natural spoken English sentence in context demonstrating the construction (e.g. from the source text or a full natural spoken example sentence).
 - "explanation": one sentence on why this pattern is worth reusing in spoken English.
 - "original": MUST be an empty string. Nothing is being corrected here.
 - "category": one of: grammar, vocabulary, collocation, idiom, pronunciation, structure
@@ -567,7 +695,7 @@ Respond with ONLY this JSON object — no markdown, no explanation, no extra tex
   "extraction": {
     "construction": "short single-clause pattern, 2-7 words (e.g. invite [someone] over)",
     "original": "",
-    "improved": "the selected phrase as a natural spoken example",
+    "improved": "complete natural spoken sentence demonstrating the pattern in context",
     "explanation": "why this pattern is worth reusing",
     "category": "one of: grammar, vocabulary, collocation, idiom, pronunciation, structure",
     "spoken_frequency": "one of: very_high, high, medium"

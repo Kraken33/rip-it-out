@@ -400,7 +400,11 @@ export async function addImprovements(sessionId, items) {
   if (isSupabaseConfigured) {
     const dbItems = newItems.map(mapImprovementToDb);
     const { data, error } = await supabase.from('improvements').insert(dbItems).select();
-    if (!error && data) {
+    if (error) {
+      console.error('Supabase addImprovements error:', error);
+      throw new Error(error.message || 'Failed to save improvements to cloud storage.');
+    }
+    if (data) {
       for (const imp of newItems) {
         await createSrsCard(imp.id);
       }

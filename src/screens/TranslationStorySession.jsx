@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { generateTranslationStoryPassage, evaluateTranslationStory } from '../services/aiService';
-import { parseStoryFeedback } from '../prompts';
+import { parseStoryFeedback, VARIETY_MATRIX, VARIETY_PRESETS, sampleVarietyMatrix } from '../prompts';
 import AudioRecorder from '../components/AudioRecorder';
 import ConstructionExtractor from '../components/ConstructionExtractor';
 
@@ -119,10 +119,17 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
   const [passageLoading, setPassageLoading] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [matrixOpen, setMatrixOpen] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState(null);
+  const [varietyMatrix, setVarietyMatrix] = useState(
+    session.varietyMatrix || { domain: 'auto', tone: 'auto', format: 'auto', catalyst: 'auto' }
+  );
+
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const roundsRef = useRef([]);
   const requestedRoundsRef = useRef(new Set());
+  const recentMatrixSamples = useRef([]);
 
   useEffect(() => {
     roundsRef.current = rounds;
@@ -150,13 +157,16 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
       setErrorMsg('');
 
       try {
+        const sample = sampleVarietyMatrix(varietyMatrix, recentMatrixSamples.current);
+        recentMatrixSamples.current = [...recentMatrixSamples.current, sample];
         const historyTopics = roundsRef.current.map((r) => r.passage).filter(Boolean);
-        const passage = await generateTranslationStoryPassage(session, settings, historyTopics);
+        const passage = await generateTranslationStoryPassage(session, settings, historyTopics, sample);
         setRounds((prev) => [
           ...prev,
           {
             id: `round_${idx}`,
             passage,
+            varietySample: sample,
             translation: '',
             feedback: null,
             rawFeedback: '',
@@ -177,6 +187,41 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
     loadStoryPassage(roundIndex);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roundIndex, retryTick]);
+
+  const handleRerollStory = async () => {
+    if (passageLoading || evaluating || !currentRound || currentRound.translation) return;
+    setPassageLoading(true);
+    setErrorMsg('');
+
+    try {
+      const sample = sampleVarietyMatrix(varietyMatrix, recentMatrixSamples.current);
+      recentMatrixSamples.current = [...recentMatrixSamples.current, sample];
+      const historyTopics = roundsRef.current
+        .filter((_, i) => i !== roundIndex)
+        .map((r) => r.passage)
+        .filter(Boolean);
+      const passage = await generateTranslationStoryPassage(session, settings, historyTopics, sample);
+      setRounds((prev) =>
+        prev.map((r, i) =>
+          i === roundIndex
+            ? {
+                ...r,
+                passage,
+                varietySample: sample,
+                translation: '',
+                feedback: null,
+                rawFeedback: '',
+                unparsed: false,
+              }
+            : r
+        )
+      );
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to reroll story passage.');
+    } finally {
+      setPassageLoading(false);
+    }
+  };
 
   const requestFeedback = async (idx, passage, translation) => {
     setEvaluating(true);
@@ -271,11 +316,21 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
         {rounds.map((round, idx) => (
           <div key={round.id} className="space-y-3">
             <div className="flex flex-col items-start gap-1.5 max-w-[90%] w-full">
-              <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold px-1">
-                Round {idx + 1} · Story passage
-              </span>
+              <div className="flex items-center justify-between gap-2 w-full px-1">
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                  Round {idx + 1} · Story passage
+                </span>
+                {round.varietySample?.vibeLabel && (
+                  <span
+                    data-testid="story-vibe-badge"
+                    className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2.5 py-0.5 rounded-full"
+                  >
+                    {round.varietySample.vibeLabel}
+                  </span>
+                )}
+              </div>
               <ConstructionExtractor
-                sessionId={session.id}
+                sessionId={session?.id}
                 settings={settings}
                 sourceText={round.passage}
                 passage={round.passage}
@@ -285,6 +340,17 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
                   <p className="whitespace-pre-wrap">📖 {round.passage}</p>
                 </div>
               </ConstructionExtractor>
+              {idx === roundIndex && !round.translation && !evaluating && !passageLoading && (
+                <div className="flex justify-end w-full pt-0.5">
+                  <button
+                    type="button"
+                    onClick={handleRerollStory}
+                    className="px-2.5 py-1 text-[11px] font-bold text-gray-400 hover:text-purple-300 transition cursor-pointer flex items-center gap-1 hover:bg-purple-950/30 rounded-lg"
+                  >
+                    <span>🎲</span> Reroll Story
+                  </button>
+                </div>
+              )}
             </div>
 
             {round.translation && (
@@ -298,7 +364,7 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
             {round.feedback && (
               <StoryFeedbackCard
                 feedback={round.feedback}
-                sessionId={session.id}
+                sessionId={session?.id}
                 settings={settings}
                 passage={round.passage}
               />
@@ -354,6 +420,150 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
         </div>
       )}
 
+      {/* In-Session Variety Matrix Drawer */}
+      {matrixOpen && (
+        <div className="p-3.5 border-t border-[#27283d] bg-[#121320] space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+              <span>✨</span> Tune Story Flavor (Applies to next rounds)
+            </span>
+            <button
+              type="button"
+              onClick={() => setMatrixOpen(false)}
+              className="text-gray-400 hover:text-white text-xs font-bold"
+            >
+              ✕ Close
+            </button>
+          </div>
+
+          {/* Quick Presets */}
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedPreset(null);
+                setVarietyMatrix({ domain: 'auto', tone: 'auto', format: 'auto', catalyst: 'auto' });
+              }}
+              className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition cursor-pointer ${
+                !selectedPreset && Object.values(varietyMatrix).every((v) => v === 'auto')
+                  ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+                  : 'bg-[#1b1c2b] text-gray-300 border-[#27283d] hover:border-purple-500/50'
+              }`}
+            >
+              🎲 Auto Variety
+            </button>
+            {VARIETY_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                onClick={() => {
+                  setSelectedPreset(preset.id);
+                  setVarietyMatrix({ ...preset.matrix });
+                }}
+                className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition cursor-pointer ${
+                  selectedPreset === preset.id
+                    ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+                    : 'bg-[#1b1c2b] text-gray-300 border-[#27283d] hover:border-purple-500/50'
+                }`}
+              >
+                {preset.emoji} {preset.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Granular Dials */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-1">
+            <div>
+              <label htmlFor="insession-matrix-domain" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                Domain
+              </label>
+              <select
+                id="insession-matrix-domain"
+                value={varietyMatrix.domain}
+                onChange={(e) => {
+                  setSelectedPreset(null);
+                  setVarietyMatrix((prev) => ({ ...prev, domain: e.target.value }));
+                }}
+                className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+              >
+                <option value="auto">🎲 Auto Domain</option>
+                {VARIETY_MATRIX.domains.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.emoji} {d.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="insession-matrix-tone" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                Tone
+              </label>
+              <select
+                id="insession-matrix-tone"
+                value={varietyMatrix.tone}
+                onChange={(e) => {
+                  setSelectedPreset(null);
+                  setVarietyMatrix((prev) => ({ ...prev, tone: e.target.value }));
+                }}
+                className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+              >
+                <option value="auto">🎲 Auto Tone</option>
+                {VARIETY_MATRIX.tones.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.emoji} {t.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="insession-matrix-format" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                Format
+              </label>
+              <select
+                id="insession-matrix-format"
+                value={varietyMatrix.format}
+                onChange={(e) => {
+                  setSelectedPreset(null);
+                  setVarietyMatrix((prev) => ({ ...prev, format: e.target.value }));
+                }}
+                className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+              >
+                <option value="auto">🎲 Auto Format</option>
+                {VARIETY_MATRIX.formats.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.emoji} {f.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label htmlFor="insession-matrix-catalyst" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+                Catalyst
+              </label>
+              <select
+                id="insession-matrix-catalyst"
+                value={varietyMatrix.catalyst}
+                onChange={(e) => {
+                  setSelectedPreset(null);
+                  setVarietyMatrix((prev) => ({ ...prev, catalyst: e.target.value }));
+                }}
+                className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+              >
+                <option value="auto">🎲 Auto Catalyst</option>
+                {VARIETY_MATRIX.catalysts.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.emoji} {c.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Navigation & Controls Footer */}
       <div className="p-3.5 border-t border-[var(--border-color)] bg-[var(--bg-card)] space-y-3">
         <div className="flex justify-between items-center">
@@ -364,6 +574,18 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
           />
 
           <div className="flex gap-2 items-center">
+            <button
+              type="button"
+              onClick={() => setMatrixOpen(!matrixOpen)}
+              className={`px-3 py-2 text-xs font-bold rounded-xl border transition cursor-pointer flex items-center gap-1.5 ${
+                matrixOpen
+                  ? 'bg-purple-900/50 text-purple-200 border-purple-500'
+                  : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
+              }`}
+            >
+              <span>✨</span>
+              <span>Flavor</span>
+            </button>
             <button
               onClick={handleNextRound}
               disabled={evaluating || passageLoading || !currentRound?.translation}
