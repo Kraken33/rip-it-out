@@ -1,16 +1,45 @@
-# React + Vite
+# Rip It Out — Language Learning Prompt Orchestrator
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Turn reading and listening into speaking practice with guided prompts for LLMs and spaced repetition (SM-2).
 
-Currently, two official plugins are available:
+## Tech Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **React 19 + Vite**
+- **Tailwind CSS v4**
+- **Vitest + React Testing Library**
+- **Zero backend**: Local persistence with optional Supabase sync
 
-## React Compiler
+## Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+# Install dependencies
+npm install
 
-## Expanding the Oxlint configuration
+# Start local dev server
+npm run dev
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+# Run unit tests
+npm run test
+
+# Run linter
+npm run lint
+
+# Build for production (outputs to docs/)
+npm run build
+```
+
+## GitHub Pages Deployment
+
+This repository is configured to deploy directly to GitHub Pages from the `/docs` directory:
+
+1. Build the production assets:
+   ```bash
+   npm run build
+   ```
+2. Commit and push the generated `docs/` folder to the `main` branch.
+3. In your GitHub repository settings:
+   - Navigate to **Settings** > **Pages**.
+   - Under **Build and deployment** > **Source**, select **Deploy from a branch**.
+   - Choose the `main` branch and select `/docs` as the folder.
+   - Click **Save**.
+
