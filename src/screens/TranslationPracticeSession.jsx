@@ -386,17 +386,19 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
   };
 
   return (
-    <div className="w-full flex flex-col h-[82vh] glass-panel rounded-2xl overflow-hidden border border-[var(--border-color)] animate-fade-in">
+    <div className="w-full flex flex-col h-[calc(100dvh-5.5rem)] sm:h-[82vh] min-h-[480px] glass-panel rounded-2xl overflow-hidden border border-[var(--border-color)] animate-fade-in">
       {/* Session Header */}
-      <div className="px-5 py-3.5 border-b border-[var(--border-color)] bg-[var(--bg-card)] flex items-center justify-between">
-        <div>
-          <h1 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-            <span>🌐 Russian Translation Practice</span>
-            <span className="text-xs px-2.5 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/50">
+      <div className="px-3.5 sm:px-5 py-2.5 sm:py-3.5 border-b border-[var(--border-color)] bg-[var(--bg-card)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
+        <div className="w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <h1 className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-1.5">
+              <span>🌐 Russian Translation Practice</span>
+            </h1>
+            <span className="text-[11px] sm:text-xs px-2 sm:px-2.5 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/50 shrink-0">
               Round {currentRoundIndex + 1} · {distinctCardCount(rounds.slice(0, currentRoundIndex + 1))} practiced
             </span>
-          </h1>
-          <p className="text-xs text-gray-400 font-medium">
+          </div>
+          <p className="text-[11px] sm:text-xs text-gray-400 font-medium line-clamp-1 sm:line-clamp-none mt-0.5">
             Read Russian text with highlighted constructions and translate it into English!
           </p>
         </div>
@@ -405,19 +407,19 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
           id="btn-finish-translation-practice"
           onClick={handleFinishSession}
           disabled={evaluating}
-          className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50"
+          className="hidden sm:inline-flex px-3.5 py-1.5 sm:px-4 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 shrink-0"
         >
           Finish & Rate Recall →
         </button>
       </div>
 
       {/* Target Constructions Chip Bar */}
-      <div className="px-5 py-2.5 bg-[#0a0b12] border-b border-gray-800 flex items-center gap-2 overflow-x-auto text-xs">
-        <span className="text-gray-400 font-bold shrink-0">Round Targets:</span>
+      <div className="px-3.5 sm:px-5 py-2 bg-[#0a0b12] border-b border-gray-800 flex items-center gap-1.5 sm:gap-2 overflow-x-auto text-xs">
+        <span className="text-gray-400 font-bold shrink-0 text-[11px] sm:text-xs">Round Targets:</span>
         {currentRoundCards.map((c, i) => (
           <span
             key={i}
-            className="px-2.5 py-1 rounded-md bg-purple-950/60 text-purple-300 border border-purple-800/50 font-medium shrink-0"
+            className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-purple-950/60 text-purple-300 border border-purple-800/50 text-[11px] sm:text-xs font-medium shrink-0"
           >
             🎯 {c.construction || c.improved}
           </span>
@@ -518,26 +520,26 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
       )}
 
       {/* Navigation & Controls Footer */}
-      <div className="p-3.5 border-t border-[var(--border-color)] bg-[var(--bg-card)] space-y-3">
-        <div className="flex justify-between items-center">
+      <div className="p-2.5 sm:p-3.5 border-t border-[var(--border-color)] bg-[var(--bg-card)] space-y-2.5 sm:space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <AudioRecorder
             settings={settings}
             onTranscribed={insertTranscription}
             onError={(err) => setErrorMsg(err)}
           />
 
-          <div className="flex gap-2 items-center">
+          <div className="flex gap-2 items-center ml-auto">
             <button
               onClick={handleNextRound}
               disabled={evaluating || roundLoading}
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
+              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50 shrink-0"
             >
               Next Round →
             </button>
             <button
               onClick={handleFinishSession}
               disabled={evaluating}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50"
+              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 shrink-0"
             >
               Finish Practice ✓
             </button>
@@ -564,16 +566,16 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
             placeholder="Type or speak your English translation..."
             rows={3}
             disabled={evaluating}
-            className="w-full min-h-[76px] max-h-[200px] bg-[#0e0f17] border border-gray-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-y"
+            className="w-full min-h-[64px] sm:min-h-[76px] max-h-[160px] sm:max-h-[200px] bg-[#0e0f17] border border-gray-800 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-y"
           />
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] text-gray-500 font-medium">
+            <span className="hidden sm:inline text-[10px] text-gray-500 font-medium">
               Enter adds a new line · Ctrl/⌘ + Enter translates
             </span>
             <button
               type="submit"
               disabled={!inputText.trim() || evaluating}
-              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0"
+              className="w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
             >
               Translate ▶
             </button>

@@ -361,7 +361,7 @@ export default function Practice() {
   // Interactive Seamless AI Session for Translation Practice
   if (practiceType === 'translation' && translationSubMode === 'seamless') {
     return (
-      <div className="max-w-4xl mx-auto space-y-4 py-2">
+      <div className="max-w-4xl mx-auto space-y-2 sm:space-y-4 py-1 sm:py-2">
         {/* Practice Mode Selector Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-3 bg-[#11121c] p-2 rounded-xl border border-gray-800">
           <div className="flex items-center gap-2">

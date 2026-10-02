@@ -401,4 +401,24 @@ describe('TranslationPracticeSession Component', () => {
     await waitForPassage();
     expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(1);
   });
+
+  it('renders responsive mobile container, header, and toolbar controls', async () => {
+    const { container } = renderSession();
+    await waitForPassage();
+
+    // Check container has dynamic dvh and sm:h-[82vh] classes
+    const outerContainer = container.querySelector('.glass-panel');
+    expect(outerContainer.className).toContain('h-[calc(100dvh-5.5rem)]');
+    expect(outerContainer.className).toContain('sm:h-[82vh]');
+
+    // Check round targets chip container is horizontally scrollable
+    const targetBar = screen.getByText(/Round Targets:/i).parentElement;
+    expect(targetBar.className).toContain('overflow-x-auto');
+
+    // Check Translate submit button is present and responsive
+    const translateBtn = screen.getByRole('button', { name: /Translate/i });
+    expect(translateBtn).toBeInTheDocument();
+    expect(translateBtn.className).toContain('w-full');
+    expect(translateBtn.className).toContain('sm:w-auto');
+  });
 });

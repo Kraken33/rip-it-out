@@ -88,23 +88,23 @@ export default function AudioRecorder({ settings, onTranscribed, onError, classN
   };
 
   return (
-    <div className={`flex flex-col items-center justify-center gap-3 ${className}`}>
+    <div className={`flex flex-col items-center justify-center gap-2 sm:gap-3 ${className}`}>
       {transcribing ? (
-        <div className="flex items-center gap-3 px-6 py-4 rounded-2xl bg-[var(--accent)]/15 border border-[var(--accent)]/40 text-[var(--accent)] text-sm font-semibold animate-pulse">
-          <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+        <div className="flex items-center gap-2 sm:gap-3 px-3.5 py-2 sm:px-6 sm:py-3.5 rounded-xl sm:rounded-2xl bg-[var(--accent)]/15 border border-[var(--accent)]/40 text-[var(--accent)] text-xs sm:text-sm font-semibold animate-pulse">
+          <svg className="animate-spin h-4 w-4 sm:h-5 sm:w-5" fill="none" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
           </svg>
-          <span>Transcribing audio with Whisper AI...</span>
+          <span className="truncate">Transcribing audio with Whisper AI...</span>
         </div>
       ) : recording ? (
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 sm:gap-4">
           <button
             type="button"
             onClick={stopRecording}
-            className="flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold transition-all shadow-[0_0_20px_rgba(239,68,68,0.5)] animate-pulse cursor-pointer"
+            className="flex items-center gap-2 sm:gap-3 px-3.5 py-2 sm:px-6 sm:py-3.5 rounded-xl sm:rounded-2xl bg-red-500 hover:bg-red-600 text-white font-bold text-xs sm:text-sm transition-all shadow-[0_0_20px_rgba(239,68,68,0.5)] animate-pulse cursor-pointer shrink-0"
           >
-            <span className="w-3 h-3 rounded-sm bg-white" />
+            <span className="w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-sm bg-white" />
             <span>Stop Recording ({formatTimer(recordSeconds)})</span>
           </button>
         </div>
@@ -112,9 +112,9 @@ export default function AudioRecorder({ settings, onTranscribed, onError, classN
         <button
           type="button"
           onClick={startRecording}
-          className="flex items-center gap-3 px-6 py-3.5 rounded-2xl bg-[var(--accent)] text-white font-bold hover:bg-[var(--accent-glow)] transition-all shadow-[0_0_15px_hsla(262,83%,65%,0.3)] cursor-pointer"
+          className="flex items-center gap-2 sm:gap-3 px-3.5 py-2 sm:px-6 sm:py-3.5 rounded-xl sm:rounded-2xl bg-[var(--accent)] text-white font-bold text-xs sm:text-sm hover:bg-[var(--accent-glow)] transition-all shadow-[0_0_15px_hsla(262,83%,65%,0.3)] cursor-pointer shrink-0"
         >
-          <svg className="w-5 h-5 fill-current" viewBox="0 0 24 24">
+          <svg className="w-4 h-4 sm:w-5 sm:h-5 fill-current shrink-0" viewBox="0 0 24 24">
             <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z" />
             <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
           </svg>
