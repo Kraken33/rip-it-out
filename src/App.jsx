@@ -55,7 +55,10 @@ function AuthenticatedApp() {
     return <AuthScreen />;
   }
 
-  const hideNav = location.pathname === '/review' || location.pathname === '/practice';
+  const hideNav =
+    location.pathname === '/review' ||
+    location.pathname === '/practice' ||
+    location.pathname.startsWith('/session');
 
   return (
     <div className="min-h-screen flex flex-col bg-[#0d0e15] text-[#f3f4f6]">
@@ -85,7 +88,11 @@ function AuthenticatedApp() {
         </header>
       )}
 
-      <main className="flex-1 w-full max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-28">
+      <main
+        className={`flex-1 w-full max-w-3xl mx-auto px-2 sm:px-6 ${
+          hideNav ? 'pt-1 sm:pt-4 pb-1 sm:pb-4 flex flex-col' : 'pt-6 pb-28'
+        }`}
+      >
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/session/new" element={<Session />} />

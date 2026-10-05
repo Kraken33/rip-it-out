@@ -384,44 +384,52 @@ export default function Session() {
   }, []);
 
   return (
-    <div className="w-full space-y-6 animate-fade-in max-w-2xl mx-auto py-2">
-      <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
-          <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight pt-1">New Practice Session</h1>
-          <ModeToggle mode={mode} onChange={setMode} settings={settings} />
-        </div>
+    <div
+      className={`w-full ${
+        step === 2 && activity === 'translation'
+          ? 'h-[100dvh] sm:h-[88vh] flex flex-col max-w-4xl mx-auto -my-1 sm:my-0'
+          : 'space-y-6 animate-fade-in max-w-2xl mx-auto py-2'
+      }`}
+    >
+      {!(step === 2 && activity === 'translation') && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight pt-1">New Practice Session</h1>
+            <ModeToggle mode={mode} onChange={setMode} settings={settings} />
+          </div>
 
-        {/* Progress Indicator */}
-        <div className="pt-2">
-          <div className="flex items-center justify-between relative">
-            <div className="absolute left-0 top-1/2 w-full h-1 bg-gray-800 -z-10 -translate-y-1/2 rounded-full overflow-hidden">
-              <div 
-                className="h-full bg-purple-500 transition-all duration-300"
-                style={{ width: `${((step - 1) / 3) * 100}%` }}
-              ></div>
-            </div>
-
-            {[1, 2, 3, 4].map((num) => (
-              <div 
-                key={num} 
-                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
-                  step >= num 
-                    ? 'bg-purple-600 text-white shadow' 
-                    : 'bg-gray-800 text-gray-500 border border-gray-700'
-                }`}
-              >
-                {num}
+          {/* Progress Indicator */}
+          <div className="pt-2">
+            <div className="flex items-center justify-between relative">
+              <div className="absolute left-0 top-1/2 w-full h-1 bg-gray-800 -z-10 -translate-y-1/2 rounded-full overflow-hidden">
+                <div 
+                  className="h-full bg-purple-500 transition-all duration-300"
+                  style={{ width: `${((step - 1) / 3) * 100}%` }}
+                ></div>
               </div>
-            ))}
-          </div>
-          <div className="flex justify-between mt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
-            <span>1. Details</span>
-            <span>2. Describe</span>
-            <span>3. Export</span>
-            <span>4. Import</span>
+
+              {[1, 2, 3, 4].map((num) => (
+                <div 
+                  key={num} 
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs transition-all ${
+                    step >= num 
+                      ? 'bg-purple-600 text-white shadow' 
+                      : 'bg-gray-800 text-gray-500 border border-gray-700'
+                  }`}
+                >
+                  {num}
+                </div>
+              ))}
+            </div>
+            <div className="flex justify-between mt-2 text-[10px] font-bold text-gray-400 uppercase tracking-wider">
+              <span>1. Details</span>
+              <span>2. Describe</span>
+              <span>3. Export</span>
+              <span>4. Import</span>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {step === 1 && (
         <form onSubmit={handleCreateSession} className="glass-panel p-6 space-y-5">
@@ -732,11 +740,13 @@ export default function Session() {
       )}
 
       {step === 2 && activity === 'translation' && (
-        <TranslationStorySession
-          session={session}
-          settings={settings}
-          onFinish={handleTranslationFinish}
-        />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <TranslationStorySession
+            session={session}
+            settings={settings}
+            onFinish={handleTranslationFinish}
+          />
+        </div>
       )}
 
       {step === 2 && activity === 'dialogue' && mode === 'seamless' && (

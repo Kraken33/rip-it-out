@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import React from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import TranslationStorySession, {
@@ -189,8 +189,8 @@ describe('TranslationStorySession Component', () => {
     await waitForPassage();
 
     // Open Flavor drawer
-    fireEvent.click(screen.getByRole('button', { name: /Flavor/i }));
-    expect(screen.getByText(/Tune Story Flavor/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^✨?\s*Flavor$/i }));
+    expect(screen.getByText(/Tune Story Flavor \(Applies to next rounds\)/i)).toBeInTheDocument();
 
     // Click "Office Drama" preset
     fireEvent.click(screen.getByRole('button', { name: /Office Drama/i }));
@@ -328,5 +328,28 @@ describe('TranslationStorySession Component', () => {
     expect(screen.getByTestId('extract-construction-trigger')).toBeInTheDocument();
     expect(screen.getAllByText(/пригласил друга в гости/).length).toBeGreaterThanOrEqual(1);
   });
+
+  it('supports expanding and collapsing mobile action controls with vertical buttons', async () => {
+    renderSession();
+    await waitForPassage();
+
+    // Mobile actions panel is collapsed by default
+    expect(screen.queryByTestId('mobile-actions-panel')).not.toBeInTheDocument();
+    const toggleBtn = screen.getByTestId('toggle-mobile-actions');
+    expect(toggleBtn).toBeInTheDocument();
+
+    // Tap to expand
+    fireEvent.click(toggleBtn);
+    const panel = screen.getByTestId('mobile-actions-panel');
+    expect(panel).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: /Tune Story Flavor/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: /Next Round/i })).toBeInTheDocument();
+    expect(within(panel).getByRole('button', { name: /Finish Story/i })).toBeInTheDocument();
+
+    // Tap close to collapse
+    fireEvent.click(screen.getByTestId('close-mobile-actions'));
+    expect(screen.queryByTestId('mobile-actions-panel')).not.toBeInTheDocument();
+  });
 });
+
 
