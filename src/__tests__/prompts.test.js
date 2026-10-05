@@ -316,15 +316,16 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(prompt).toMatch(/No title, no English translation, no commentary/i);
     });
 
-    it('requires natural spoken Russian and includes conversational discourse markers', () => {
+    it('requires natural spoken Russian and conversational flow without hardcoded marker strings', () => {
       const prompt = generateStoryPassagePrompt(storySession, storySettings);
       expect(prompt).toMatch(/natural spoken Russian/i);
       expect(prompt).toMatch(/out loud/i);
       expect(prompt).toMatch(/conversational, everyday register/i);
       expect(prompt).toMatch(/never literary, bookish, or formal narration/i);
-      expect(prompt).toContain('Короче');
-      expect(prompt).toContain('Представляешь');
-      expect(prompt).toContain('В общем');
+      expect(prompt).not.toContain('Короче');
+      expect(prompt).not.toContain('Представляешь');
+      expect(prompt).not.toContain('В общем');
+      expect(prompt).not.toContain('Оказывается');
     });
 
     it('injects dynamic variety matrix parameters and does not contain hardcoded neighbor/alarm anchor examples', () => {

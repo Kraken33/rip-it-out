@@ -95,25 +95,51 @@ function VerdictCard({ verdict }) {
 export const ITEMS_PER_ROUND = 2;
 
 /**
- * Take up to ITEMS_PER_ROUND distinct cards starting at `offset`, wrapping
- * around `allCards` so unlimited rounds never repeat a construction until
- * every queued construction has been practiced once.
+ * Match the LLM's picked constructions back to card objects from the candidate pool.
+ * Falls back to candidate cards from the pool if fewer than 2 matched.
  */
-function takeNextCards(allCards, offset) {
-  const perRound = Math.min(ITEMS_PER_ROUND, allCards.length);
-  const picked = [];
-  const seen = new Set();
-  let idx = offset;
-  while (picked.length < perRound && idx < offset + allCards.length) {
-    const card = allCards[idx % allCards.length];
-    const key = card.id ?? card.improvementId ?? card.construction;
-    if (!seen.has(key)) {
-      seen.add(key);
-      picked.push(card);
-    }
-    idx += 1;
+export function matchPickedCards(pickedStrings = [], pool = [], passage = '') {
+  const matched = [];
+  const matchedKeys = new Set();
+  const candidatePool = Array.isArray(pool) && pool.length > 0 ? pool : [];
+
+  let targets = Array.isArray(pickedStrings) ? [...pickedStrings] : [];
+  if (targets.length === 0 && passage) {
+    const bracketMatches = [...passage.matchAll(/\[\[(.*?)\|(.*?)\]\]/g)];
+    targets = bracketMatches.map((m) => m[2].trim()).filter(Boolean);
   }
-  return picked;
+
+  for (const p of targets) {
+    const pNorm = String(p).trim().toLowerCase();
+    if (!pNorm) continue;
+    const found = candidatePool.find((c) => {
+      const key = c.id ?? c.improvementId ?? c.construction;
+      if (matchedKeys.has(key)) return false;
+      const constrNorm = String(c.construction || c.improved || '').trim().toLowerCase();
+      const impNorm = String(c.improved || '').trim().toLowerCase();
+      return (
+        constrNorm === pNorm ||
+        impNorm === pNorm ||
+        (constrNorm && constrNorm.includes(pNorm)) ||
+        (pNorm && pNorm.includes(constrNorm))
+      );
+    });
+    if (found) {
+      matched.push(found);
+      matchedKeys.add(found.id ?? found.improvementId ?? found.construction);
+    }
+  }
+
+  for (const c of candidatePool) {
+    if (matched.length >= 2) break;
+    const key = c.id ?? c.improvementId ?? c.construction;
+    if (!matchedKeys.has(key)) {
+      matched.push(c);
+      matchedKeys.add(key);
+    }
+  }
+
+  return matched;
 }
 
 function distinctCardCount(rounds) {
@@ -125,10 +151,14 @@ function distinctCardCount(rounds) {
 }
 
 export default function TranslationPracticeSession({ allCards = [], settings = {}, onFinish }) {
+  const [availableCards, setAvailableCards] = useState(() => [...allCards]);
+  const availableCardsRef = useRef(allCards);
+  useEffect(() => {
+    availableCardsRef.current = availableCards;
+  }, [availableCards]);
+
   // Unlimited on-demand rounds of exactly 2 constructions each (no pre-computed count).
-  const [rounds, setRounds] = useState(() => [
-    { cards: takeNextCards(allCards, 0) },
-  ]);
+  const [rounds, setRounds] = useState(() => [{ cards: [] }]);
   const [currentRoundIndex, setCurrentRoundIndex] = useState(0);
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
@@ -172,7 +202,7 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
   // Trigger passage generation when the round changes or starts.
   // The ref keeps StrictMode's double effect invocation from issuing two requests.
   useEffect(() => {
-    async function loadRoundPassage(roundCards, roundIndex, history) {
+    async function loadRoundPassage(roundIndex) {
       setRoundLoading(true);
       setErrorMsg('');
 
@@ -183,12 +213,35 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
       ]);
 
       try {
+        const pool =
+          availableCardsRef.current.length >= 2
+            ? availableCardsRef.current
+            : allCards.length > 0
+            ? allCards
+            : [];
+
         const reply = await generateTranslationRoundPassage(
-          roundCards,
+          pool,
           settings,
-          history
+          buildPassageHistory(messagesRef.current)
         );
-        setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: reply } : m)));
+
+        const passage = typeof reply === 'object' && reply?.passage ? reply.passage : String(reply || '');
+        const rawPicked = typeof reply === 'object' && Array.isArray(reply?.picked) ? reply.picked : [];
+
+        const pickedCards = matchPickedCards(rawPicked, pool, passage);
+
+        setRounds((prev) =>
+          prev.map((r, i) => (i === roundIndex ? { ...r, cards: pickedCards } : r))
+        );
+
+        const pickedKeys = new Set(pickedCards.map((c) => c.id ?? c.improvementId ?? c.construction));
+        setAvailableCards((prev) => {
+          const next = prev.filter((c) => !pickedKeys.has(c.id ?? c.improvementId ?? c.construction));
+          return next.length >= 2 ? next : allCards.filter((c) => !pickedKeys.has(c.id ?? c.improvementId ?? c.construction));
+        });
+
+        setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: passage } : m)));
       } catch (err) {
         // Allow a later attempt for this round instead of caching the failure.
         requestedRoundsRef.current.delete(roundIndex);
@@ -199,11 +252,11 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
       }
     }
 
-    if (!currentRoundCards || currentRoundCards.length === 0) return;
+    if (!allCards || allCards.length === 0) return;
     if (requestedRoundsRef.current.has(currentRoundIndex)) return;
     requestedRoundsRef.current.add(currentRoundIndex);
 
-    loadRoundPassage(currentRoundCards, currentRoundIndex, buildPassageHistory(messagesRef.current));
+    loadRoundPassage(currentRoundIndex);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentRoundIndex]);
 
@@ -331,10 +384,7 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
     const nextIndex = currentRoundIndex + 1;
     setRounds((prev) => {
       if (nextIndex < prev.length) return prev;
-      // Deterministic queue order, wrapping to the start only after every
-      // queued construction has been practiced once.
-      const offset = prev.reduce((sum, r) => sum + (r.cards?.length || 0), 0);
-      return [...prev, { cards: takeNextCards(allCards, offset) }];
+      return [...prev, { cards: [] }];
     });
     setCurrentRoundIndex(nextIndex);
   };
@@ -416,14 +466,20 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
       {/* Target Constructions Chip Bar */}
       <div className="px-3.5 sm:px-5 py-2 bg-[#0a0b12] border-b border-gray-800 flex items-center gap-1.5 sm:gap-2 overflow-x-auto text-xs">
         <span className="text-gray-400 font-bold shrink-0 text-[11px] sm:text-xs">Round Targets:</span>
-        {currentRoundCards.map((c, i) => (
-          <span
-            key={i}
-            className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-purple-950/60 text-purple-300 border border-purple-800/50 text-[11px] sm:text-xs font-medium shrink-0"
-          >
-            🎯 {c.construction || c.improved}
+        {currentRoundCards.length > 0 ? (
+          currentRoundCards.map((c, i) => (
+            <span
+              key={i}
+              className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-md bg-purple-950/60 text-purple-300 border border-purple-800/50 text-[11px] sm:text-xs font-medium shrink-0"
+            >
+              🎯 {c.construction || c.improved}
+            </span>
+          ))
+        ) : (
+          <span className="text-gray-500 italic text-[11px] sm:text-xs">
+            {roundLoading ? 'Selecting constructions...' : 'No targets'}
           </span>
-        ))}
+        )}
       </div>
 
       {/* Messages Thread */}

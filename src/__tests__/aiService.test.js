@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, evaluateTranslationRound, generateTranslationStoryPassage, evaluateTranslationStory, extractConstruction, OPENAI_MODEL_OPTIONS } from '../services/aiService';
+import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, parseRoundPassagePayload, evaluateTranslationRound, generateTranslationStoryPassage, evaluateTranslationStory, extractConstruction, OPENAI_MODEL_OPTIONS } from '../services/aiService';
 
 describe('AI Service Layer', () => {
   beforeEach(() => {
@@ -365,7 +365,45 @@ describe('AI Service Layer', () => {
       await expect(generateTranslationRoundPassage([], {})).rejects.toThrow('No API Key configured');
     });
 
-    it('requests a tagged Russian passage for the round at writing temperature', async () => {
+    it('requests a tagged Russian passage for candidate cards and parses structured JSON', async () => {
+      const roundCards = [
+        { construction: 'invite over', improved: 'I invited him over' },
+        { construction: 'catch up', improved: 'We should catch up' },
+      ];
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  picked: ['invite over', 'catch up'],
+                  passage: 'Вчера я [[пригласил друга в гости|invite over]], и мы [[поболтали|catch up]].',
+                }),
+              },
+            },
+          ],
+        }),
+      });
+
+      const reply = await generateTranslationRoundPassage(roundCards, { openaiApiKey: 'sk-test123' });
+
+      expect(reply.picked).toEqual(['invite over', 'catch up']);
+      expect(reply.passage).toContain('пригласил друга в гости');
+
+      const [url, options] = fetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+
+      expect(url).toBe('https://api.openai.com/v1/chat/completions');
+      expect(body.temperature).toBe(0.7);
+      expect(body.messages[0].content).toContain('Candidate pool of target constructions available for practice:');
+      expect(body.messages[0].content).toContain('invite over');
+      expect(body.messages[0].content).toContain('catch up');
+      expect(body.messages[0].content).not.toContain('NEVER invent changes');
+    });
+
+    it('gracefully falls back when the model returns prose with bracket tags instead of JSON', async () => {
       const roundCards = [
         { construction: 'invite over', improved: 'I invited him over' },
         { construction: 'catch up', improved: 'We should catch up' },
@@ -385,18 +423,8 @@ describe('AI Service Layer', () => {
       });
 
       const reply = await generateTranslationRoundPassage(roundCards, { openaiApiKey: 'sk-test123' });
-
-      expect(reply).toContain('пригласил друга в гости');
-
-      const [url, options] = fetch.mock.calls[0];
-      const body = JSON.parse(options.body);
-
-      expect(url).toBe('https://api.openai.com/v1/chat/completions');
-      expect(body.temperature).toBe(0.7);
-      expect(body.messages[0].content).toContain('[[Russian phrase|Target English Construction]]');
-      expect(body.messages[0].content).toContain('invite over');
-      expect(body.messages[0].content).toContain('catch up');
-      expect(body.messages[0].content).not.toContain('NEVER invent changes');
+      expect(reply.picked).toEqual(['invite over', 'catch up']);
+      expect(reply.passage).toContain('пригласил друга в гости');
     });
 
     it('rejects when the model returns an empty passage', async () => {
@@ -415,6 +443,37 @@ describe('AI Service Layer', () => {
         generateTranslationRoundPassage([{ construction: 'invite over' }], { groqApiKey: 'gsk_1' })
       ).rejects.toThrow('OpenAI API Key');
       expect(fetch).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('parseRoundPassagePayload', () => {
+    it('parses valid JSON with picked array and passage string', () => {
+      const json = JSON.stringify({
+        picked: ['invite over', 'catch up'],
+        passage: 'Вчера я [[пригласил|invite over]].',
+      });
+      const res = parseRoundPassagePayload(json);
+      expect(res.picked).toEqual(['invite over', 'catch up']);
+      expect(res.passage).toBe('Вчера я [[пригласил|invite over]].');
+    });
+
+    it('extracts JSON from markdown code blocks', () => {
+      const raw = '```json\n{"picked": ["on the other hand"], "passage": "С другой стороны..."}\n```';
+      const res = parseRoundPassagePayload(raw);
+      expect(res.picked).toEqual(['on the other hand']);
+      expect(res.passage).toBe('С другой стороны...');
+    });
+
+    it('derives picked from bracket tags when JSON lacks picked field', () => {
+      const json = JSON.stringify({
+        passage: 'Вчера я [[пригласил|invite over]] и мы [[поболтали|catch up]].',
+      });
+      const res = parseRoundPassagePayload(json);
+      expect(res.picked).toEqual(['invite over', 'catch up']);
+    });
+
+    it('throws error for empty response', () => {
+      expect(() => parseRoundPassagePayload('')).toThrow('ran out of tokens');
     });
   });
 

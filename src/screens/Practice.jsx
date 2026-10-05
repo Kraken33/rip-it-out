@@ -33,7 +33,7 @@ export default function Practice() {
     let isMounted = true;
     async function loadData() {
       try {
-        const practiceCards = await getPracticeCards(20, 5);
+        const practiceCards = await getPracticeCards(20, 20);
         if (!isMounted) return;
 
         if (!practiceCards || practiceCards.length === 0) {

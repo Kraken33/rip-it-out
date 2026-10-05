@@ -571,7 +571,7 @@ export async function getDueCards() {
   });
 }
 
-export async function getPracticeCards(requestedLimit = 20, fallbackLimit = 5) {
+export async function getPracticeCards(requestedLimit = 20, fallbackLimit = 20) {
   const due = await getDueCards();
   if (due.length > 0) {
     return due.slice(0, requestedLimit);

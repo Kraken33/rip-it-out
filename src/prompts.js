@@ -562,7 +562,7 @@ export function generateStoryPassagePrompt(session, settings, historyTopics = []
 
   return `You are a Russian language tutor creating story-translation practice material for an English learner.
 
-Write ONE short natural Russian story (3-6 sentences) in natural spoken Russian — the way a native speaker would actually say it out loud to a friend. Use conversational, everyday register: short spoken sentences, common everyday vocabulary, and natural spoken constructions with lively conversational discourse markers where appropriate (e.g. "Короче", "Представляешь", "В общем", "Оказывается"), never literary, bookish, or formal narration.${topicBlock}${demandsBlock}${usedTopicsBlock}
+Write ONE short natural Russian story (3-6 sentences) in natural spoken Russian — the way a native speaker would actually say it out loud to a friend. Use conversational, everyday register: short spoken sentences, common everyday vocabulary, and natural spoken constructions with lively conversational flow, never literary, bookish, or formal narration.${topicBlock}${demandsBlock}${usedTopicsBlock}
 
 Rules:
 - Write ONLY the Russian story text. No title, no English translation, no commentary, no formatting marks.

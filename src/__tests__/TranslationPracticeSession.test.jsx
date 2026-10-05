@@ -114,19 +114,32 @@ describe('TranslationPracticeSession Component', () => {
     });
   });
 
-  it('advances 5 fallback cards as two 2-construction rounds via Next Round', async () => {
+  it('advances candidate pool across rounds via Next Round', async () => {
+    mocks.generateTranslationRoundPassage
+      .mockResolvedValueOnce({
+        picked: ['invite over', 'plan on'],
+        passage: 'Вчера я [[пригласил друга в гости|invite over]] и мы [[планировали|plan on]].',
+      })
+      .mockResolvedValueOnce({
+        picked: ['turn down', 'catch up'],
+        passage: 'Он [[отказался|turn down]], но мы [[поболтали|catch up]].',
+      });
+
     render(
       <MemoryRouter>
         <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} />
       </MemoryRouter>
     );
 
-    await waitForPassage();
-    // Round 1 uses the first 2 queued constructions.
+    await waitFor(() => expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument());
+    // Round 1 receives the full pool of available cards (5 cards)
     expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(1);
     expect(mocks.generateTranslationRoundPassage.mock.calls[0][0].map((c) => c.construction)).toEqual([
       'invite over',
       'plan on',
+      'turn down',
+      'catch up',
+      'look forward to',
     ]);
 
     submitTranslation('Yesterday I invited a friend over and we plan on meeting.');
@@ -134,15 +147,27 @@ describe('TranslationPracticeSession Component', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Next Round/i }));
     await waitFor(() => expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(2));
+    // Round 2 receives the reduced candidate pool (3 remaining cards: turn down, catch up, look forward to)
     expect(mocks.generateTranslationRoundPassage.mock.calls[1][0].map((c) => c.construction)).toEqual([
       'turn down',
       'catch up',
+      'look forward to',
     ]);
     expect(screen.getByText(/Round 2/i)).toBeInTheDocument();
     expect(screen.queryByText(/of \d/i)).not.toBeInTheDocument();
   });
 
   it('passes ordered per-round payload and distinct practiced cards to onFinish', async () => {
+    mocks.generateTranslationRoundPassage
+      .mockResolvedValueOnce({
+        picked: ['invite over', 'plan on'],
+        passage: 'Вчера я [[пригласил друга в гости|invite over]] и мы [[планировали|plan on]].',
+      })
+      .mockResolvedValueOnce({
+        picked: ['turn down', 'catch up'],
+        passage: 'Он [[отказался|turn down]], но мы [[поболтали|catch up]].',
+      });
+
     const onFinishMock = vi.fn();
     render(
       <MemoryRouter>
@@ -150,7 +175,7 @@ describe('TranslationPracticeSession Component', () => {
       </MemoryRouter>
     );
 
-    await waitForPassage();
+    await waitFor(() => expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument());
     submitTranslation('First translation here.');
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 

@@ -2,6 +2,7 @@ import {
   generateDescriptionPrompt,
   generateExportPrompt,
   parseImportJSON,
+  extractJsonObject,
   generateStoryPassagePrompt,
   generateStoryFeedbackPrompt,
   generateConstructionExtractionPrompt,
@@ -281,38 +282,98 @@ Respond naturally to what they share, validate their ideas, and ask 1 engaging f
 /**
  * Generate the Russian practice passage for one translation round.
  * Passage generation and evaluation are separate calls so each carries its own
- * prompt, temperature and token budget.
+/**
+ * Parse structured or prose round passage payload returned by the LLM.
  *
- * @param {Array} roundCards Target construction items for the current round
- * @param {Object} settings User configuration settings
- * @param {Array} [history] Prior passage/translation turns (no verdict payloads)
- * @returns {Promise<string>} Russian passage with [[Russian phrase|target]] tags
+ * @param {string} rawReply - Raw LLM reply
+ * @param {Array} [candidateCards=[]] - Fallback candidate cards
+ * @returns {{ picked: string[], passage: string }}
  */
-export async function generateTranslationRoundPassage(roundCards = [], settings = {}, history = []) {
-  const phraseList = roundCards
+export function parseRoundPassagePayload(rawReply, candidateCards = []) {
+  if (!rawReply || !rawReply.trim()) {
+    throw new Error(
+      'The AI model ran out of tokens before producing output. Try a shorter round, or switch to a different OpenAI model in Settings.'
+    );
+  }
+
+  const jsonStr = extractJsonObject(rawReply);
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      const passage =
+        typeof parsed.passage === 'string'
+          ? parsed.passage.trim()
+          : typeof parsed.story === 'string'
+          ? parsed.story.trim()
+          : '';
+      let picked = Array.isArray(parsed.picked)
+        ? parsed.picked.map((p) => (typeof p === 'string' ? p.trim() : (p?.construction || ''))).filter(Boolean)
+        : Array.isArray(parsed.picked_constructions)
+        ? parsed.picked_constructions.map((p) => (typeof p === 'string' ? p.trim() : (p?.construction || ''))).filter(Boolean)
+        : [];
+
+      if (picked.length === 0 && passage) {
+        const bracketMatches = [...passage.matchAll(/\[\[(.*?)\|(.*?)\]\]/g)];
+        picked = bracketMatches.map((m) => m[2].trim()).filter(Boolean);
+      }
+
+      if (passage) {
+        return { picked, passage };
+      }
+    } catch {
+      // Fall through to regex extraction
+    }
+  }
+
+  const cleanText = rawReply.trim();
+  const bracketMatches = [...cleanText.matchAll(/\[\[(.*?)\|(.*?)\]\]/g)];
+  const picked = bracketMatches.map((m) => m[2].trim()).filter(Boolean);
+  return {
+    picked:
+      picked.length > 0
+        ? picked
+        : candidateCards.slice(0, 2).map((c) => c.construction || c.improved || ''),
+    passage: cleanText,
+  };
+}
+
+/**
+ * Generate a Russian passage embedding target constructions for translation practice.
+ * In dynamic candidate pool mode, the unpracticed candidate pool is provided to the LLM,
+ * which selects 2 naturally compatible constructions and returns a structured JSON payload
+ * containing the picked constructions and the tagged Russian passage.
+ *
+ * @param {Array} candidateCards Candidate construction items available for this round
+ * @param {Object} settings User configuration settings
+ * @param {Array} [history] Prior passage/translation turns (retained for backward compatibility)
+ * @returns {Promise<{ picked: string[], passage: string }>}
+ */
+export async function generateTranslationRoundPassage(candidateCards = [], settings = {}, history = []) {
+  const phraseList = candidateCards
     .map((c, i) => `${i + 1}. Construction: "${c.construction || c.improved}" (Target usage: "${c.improved}")`)
     .join('\n');
 
   const systemMessage = `You are an English speaking coach and translation trainer.
 Your task is to write the Russian source passage for a Russian-to-English translation round.
 
-The target constructions for this round are:
+Candidate pool of target constructions available for practice:
 ${phraseList}
 
 Rules:
-1. Write ONE short, natural passage in RUSSIAN (на русском языке) containing natural Russian equivalents of these target constructions.
-2. CRITICAL TAG FORMAT: Wrap each targeted Russian phrase in double brackets like: [[Russian phrase|Target English Construction]] (e.g. [[пригласил друга в гости|invite over]]).
-3. Output ONLY the Russian passage with the tagged phrases — no heading, no English translation, no commentary, and never translate the passage yourself.
-4. Do not reuse a passage topic that already appeared earlier in this conversation.
+1. Select EXACTLY 2 constructions from the candidate pool above that naturally fit together into a short, cohesive everyday situation or conversation.
+2. Write ONE short, natural passage in RUSSIAN (на русском языке) (3-5 sentences) containing natural Russian equivalents of the 2 selected constructions.
+3. CRITICAL TAG FORMAT: In the Russian passage, wrap each of the 2 targeted Russian phrases in double brackets with the exact English construction from the candidate list like: [[Russian phrase|Exact Target English Construction]] (e.g. [[пригласил друга в гости|invite over]]).
+4. Output ONLY a valid JSON object in this exact format (no markdown code blocks, no title, no extra text):
+{
+  "picked": ["Exact Target Construction 1", "Exact Target Construction 2"],
+  "passage": "Russian passage with [[Russian phrase 1|Target Construction 1]] and [[Russian phrase 2|Target Construction 2]]"
+}
 
 Constraints: Level: ${settings.level || 'intermediate'}. Formality: ${settings.formality || 'casual'}. Keep the passage to 3-5 sentences.`;
 
   const formattedMessages = [
     { role: 'system', content: systemMessage },
-    ...history
-      .filter((m) => m && typeof m.content === 'string' && m.content.trim())
-      .map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
-    { role: 'user', content: 'Write the Russian passage for this round now.' },
+    { role: 'user', content: 'Select 2 constructions from the pool and write the Russian passage now.' },
   ];
 
   const reply = await requestOpenAIChat(settings, {
@@ -320,12 +381,8 @@ Constraints: Level: ${settings.level || 'intermediate'}. Formality: ${settings.f
     temperature: 0.7,
     maxTokens: 2000,
   });
-  if (!reply.trim()) {
-    throw new Error(
-      'The AI model ran out of tokens before producing output. Try a shorter round, or switch to a different OpenAI model in Settings.'
-    );
-  }
-  return reply;
+
+  return parseRoundPassagePayload(reply, candidateCards);
 }
 
 /**

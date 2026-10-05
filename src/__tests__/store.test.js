@@ -258,9 +258,9 @@ describe('getPracticeCards — Fallback Behavior', () => {
     expect(cards).toEqual([]);
   });
 
-  it('falls back to top 5 upcoming cards when 0 cards are due today', async () => {
+  it('falls back to top 20 upcoming cards when 0 cards are due today', async () => {
     const session = await createSession({ title: 'Practice Fallback', sourceType: 'video' });
-    const items = Array.from({ length: 8 }, (_, i) => ({
+    const items = Array.from({ length: 25 }, (_, i) => ({
       original: `orig ${i}`,
       improved: `improved ${i}`,
       explanation: `exp ${i}`,
@@ -277,7 +277,7 @@ describe('getPracticeCards — Fallback Behavior', () => {
 
     expect(await getDueCards()).toHaveLength(0);
     const practiceCards = await getPracticeCards();
-    expect(practiceCards).toHaveLength(5);
+    expect(practiceCards).toHaveLength(20);
   });
 });
 
