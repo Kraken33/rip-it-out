@@ -412,4 +412,110 @@ describe('ConstructionExtractor Component', () => {
     });
     expect(store.addImprovements).toHaveBeenCalledTimes(1);
   });
+
+  it('captures touch text selection via document selectionchange event', async () => {
+    aiService.extractConstruction.mockResolvedValueOnce(validExtractionJson);
+    store.findDuplicate.mockResolvedValueOnce(null);
+
+    const { container } = render(
+      <ConstructionExtractor
+        sessionId="sess_1"
+        settings={dummySettings}
+        sourceText="Mobile touch text selection"
+      >
+        <p>Mobile touch text selection</p>
+      </ConstructionExtractor>
+    );
+
+    mockSelection(container, 'touch text');
+    act(() => {
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    const triggerBtn = await screen.findByTestId('extract-construction-trigger');
+    expect(triggerBtn).toBeDefined();
+    expect(screen.getByText(/"touch text"/i)).toBeDefined();
+
+    // Tap the trigger button (with touch events)
+    fireEvent.touchStart(triggerBtn);
+    fireEvent.click(triggerBtn);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('extracted-construction-preview')).toBeDefined();
+    });
+  });
+
+  it('clears trigger button when selection is collapsed via selectionchange', async () => {
+    const { container } = render(
+      <ConstructionExtractor
+        sessionId="sess_1"
+        settings={dummySettings}
+        sourceText="Mobile text selection"
+      >
+        <p>Mobile text selection</p>
+      </ConstructionExtractor>
+    );
+
+    mockSelection(container, 'Mobile text');
+    act(() => {
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    expect(await screen.findByTestId('extract-construction-trigger')).toBeDefined();
+
+    // Collapse selection
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: true,
+      toString: () => '',
+    });
+
+    act(() => {
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    expect(screen.queryByTestId('extract-construction-trigger')).toBeNull();
+  });
+
+  it('isolates selections between multiple extractor instances', async () => {
+    const { container } = render(
+      <div>
+        <div id="first-block">
+          <ConstructionExtractor
+            sessionId="sess_1"
+            settings={dummySettings}
+            sourceText="First paragraph text"
+          >
+            <p className="first-p">First paragraph text</p>
+          </ConstructionExtractor>
+        </div>
+        <div id="second-block">
+          <ConstructionExtractor
+            sessionId="sess_1"
+            settings={dummySettings}
+            sourceText="Second paragraph text"
+          >
+            <p className="second-p">Second paragraph text</p>
+          </ConstructionExtractor>
+        </div>
+      </div>
+    );
+
+    const secondP = container.querySelector('.second-p');
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      isCollapsed: false,
+      anchorNode: secondP.firstChild,
+      focusNode: secondP.firstChild,
+      toString: () => 'Second paragraph',
+    });
+
+    act(() => {
+      document.dispatchEvent(new Event('selectionchange'));
+    });
+
+    // Only one trigger button should appear in the whole document
+    const triggers = screen.getAllByTestId('extract-construction-trigger');
+    expect(triggers).toHaveLength(1);
+    expect(screen.getByText(/"Second paragraph"/i)).toBeDefined();
+  });
 });
+

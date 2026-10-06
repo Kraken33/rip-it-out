@@ -28,6 +28,49 @@ export default function ConstructionExtractor({
 
   const hasApiKey = Boolean(settings?.openaiApiKey);
 
+  useEffect(() => {
+    const onSelectionChange = () => {
+      if (disabled || isExtracting || !hasApiKey || !containerRef.current) return;
+
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed) {
+        if (selectedText) {
+          setSelectedText('');
+        }
+        return;
+      }
+
+      const anchor = sel.anchorNode;
+      const focus = sel.focusNode;
+      if (
+        containerRef.current.contains(anchor) &&
+        containerRef.current.contains(focus)
+      ) {
+        const text = typeof sel.toString === 'function' ? sel.toString().trim() : '';
+        if (text && text !== selectedText) {
+          if (extracted || isSaved || isUnparsed || errorMsg) {
+            setExtracted(null);
+            setIsSaved(false);
+            setIsUnparsed(false);
+            setErrorMsg('');
+          }
+          setSelectedText(text);
+        } else if (!text && selectedText) {
+          setSelectedText('');
+        }
+      } else {
+        if (selectedText) {
+          setSelectedText('');
+        }
+      }
+    };
+
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => {
+      document.removeEventListener('selectionchange', onSelectionChange);
+    };
+  }, [disabled, isExtracting, hasApiKey, selectedText, extracted, isSaved, isUnparsed, errorMsg]);
+
   const handleSelectionChange = (e) => {
     if (disabled || isExtracting || !hasApiKey) return;
     if (
@@ -39,7 +82,14 @@ export default function ConstructionExtractor({
     }
 
     const sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !containerRef.current) {
+    if (!sel || !containerRef.current) {
+      return;
+    }
+
+    if (sel.isCollapsed) {
+      if (selectedText) {
+        setSelectedText('');
+      }
       return;
     }
 
@@ -60,6 +110,12 @@ export default function ConstructionExtractor({
           setErrorMsg('');
         }
         setSelectedText(text);
+      } else if (!text && selectedText) {
+        setSelectedText('');
+      }
+    } else {
+      if (selectedText) {
+        setSelectedText('');
       }
     }
   };
@@ -151,6 +207,8 @@ export default function ConstructionExtractor({
           className="mt-2 flex items-center gap-2"
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
         >
           <button
             type="button"
@@ -159,6 +217,7 @@ export default function ConstructionExtractor({
               e.preventDefault();
               e.stopPropagation();
             }}
+            onTouchStart={(e) => e.stopPropagation()}
             onClick={handleExtract}
             className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-600/90 hover:bg-purple-500 text-white text-xs font-semibold rounded-lg shadow-sm backdrop-blur transition cursor-pointer border border-purple-400/30 animate-fade-in"
           >
@@ -176,6 +235,7 @@ export default function ConstructionExtractor({
               e.preventDefault();
               e.stopPropagation();
             }}
+            onTouchStart={(e) => e.stopPropagation()}
             onClick={() => setSelectedText('')}
             className="text-gray-400 hover:text-gray-200 text-xs px-1 cursor-pointer"
             title="Dismiss selection"
@@ -204,6 +264,8 @@ export default function ConstructionExtractor({
           data-testid="extracted-construction-preview"
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
           className="mt-3 p-3.5 rounded-xl bg-purple-950/40 border border-purple-500/30 text-white space-y-2.5 shadow-lg animate-fade-in"
         >
           <div className="flex items-start justify-between gap-2">
@@ -295,6 +357,8 @@ export default function ConstructionExtractor({
           data-testid="unparsed-extraction-card"
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
           className="mt-3 p-3 rounded-xl bg-amber-950/30 border border-amber-600/40 text-white space-y-2 text-xs shadow-lg"
         >
           <p className="font-bold text-amber-400 uppercase tracking-wider text-[10px]">
@@ -327,6 +391,8 @@ export default function ConstructionExtractor({
           data-testid="extraction-error"
           onMouseDown={(e) => e.stopPropagation()}
           onMouseUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
           className="mt-2 p-2.5 rounded-lg bg-rose-950/40 border border-rose-500/30 text-rose-300 text-xs flex items-center justify-between gap-2"
         >
           <span>⚠️ {errorMsg}</span>

@@ -8,7 +8,7 @@ Lets a learner turn a phrase they select in AI-written session text into one reu
 
 ### Requirement: Selection-scoped extraction control
 
-The system SHALL present a construction-extraction control inside each Russian story passage and improved-version block of a story-translation round and with each AI coach reply in a free-dialogue session, and SHALL enable that control only while the learner's current text selection lies inside the block it belongs to.
+The system SHALL present a construction-extraction control inside each Russian story passage and improved-version block of a story-translation round and with each AI coach reply in a free-dialogue session, and SHALL enable that control only while the learner's current text selection lies inside the block it belongs to across both mouse and touch-based (mobile) selection interactions.
 
 #### Scenario: Control presented on a Russian story passage
 - **WHEN** a story-translation round displays its Russian story passage
@@ -25,6 +25,10 @@ The system SHALL present a construction-extraction control inside each Russian s
 #### Scenario: Control enabled only for a selection inside its own block
 - **WHEN** the learner selects text inside one story passage block, improved-version block, or coach reply
 - **THEN** that block's extraction control becomes enabled and every other block's control stays disabled.
+
+#### Scenario: Touch-based text selection on mobile devices
+- **WHEN** the learner selects text using touch handles or long-press gestures on a mobile device inside a story passage, improved version, or coach reply
+- **THEN** the extraction control is presented and enabled with the selected phrase.
 
 #### Scenario: Control disabled without a usable selection
 - **WHEN** the current selection is empty, collapsed, or lies outside the block
