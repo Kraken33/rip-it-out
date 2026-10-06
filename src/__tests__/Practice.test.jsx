@@ -82,7 +82,7 @@ describe('Practice Component', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText(/Russian Translation Practice/i)).toBeInTheDocument()
+      expect(screen.getByText(/Round 1/i)).toBeInTheDocument()
     );
   });
 
@@ -97,9 +97,9 @@ describe('Practice Component', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText(/Russian Translation Practice/i)).toBeInTheDocument()
+      expect(screen.getByText(/Round 1/i)).toBeInTheDocument()
     );
-    expect(screen.getByRole('button', { name: /Finish Practice/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Finish & Rate Recall/i })).toBeInTheDocument();
   });
 
   it('switches between translation practice and scenario practice mode', async () => {
@@ -113,8 +113,15 @@ describe('Practice Component', () => {
     );
 
     await waitFor(() =>
-      expect(screen.getByText(/Russian Translation Practice/i)).toBeInTheDocument()
+      expect(screen.getByText(/Round 1/i)).toBeInTheDocument()
     );
+
+    // Switch to Copy Prompt #5 submode via Exit button
+    const exitBtn = screen.getByRole('button', { name: /Exit/i });
+    fireEvent.click(exitBtn);
+
+    expect(screen.getByText(/Russian Translation Practice \(Prompt #5\)/i)).toBeInTheDocument();
+    expect(document.getElementById('btn-copy-prompt-5')).toBeInTheDocument();
 
     // Switch to Scenario Q&A (Prompt #3)
     const scenarioTab = screen.getByRole('button', { name: /Scenario Q&A/i });
@@ -123,15 +130,17 @@ describe('Practice Component', () => {
     expect(screen.getByText(/Russian Scenario Practice Mode/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Copy Prompt #3/i })).toBeInTheDocument();
 
-    // Switch to Copy Prompt #5 submode
+    // Switch back to Translation Practice tab
     const transTab = screen.getByRole('button', { name: /Translation Practice/i });
     fireEvent.click(transTab);
 
-    const prompt5Tab = screen.getByRole('button', { name: /📋 Copy Prompt #5/i });
-    fireEvent.click(prompt5Tab);
+    // Switch to Seamless AI
+    const seamlessTab = screen.getByRole('button', { name: /✨ Seamless AI/i });
+    fireEvent.click(seamlessTab);
 
-    expect(screen.getByText(/Russian Translation Practice \(Prompt #5\)/i)).toBeInTheDocument();
-    expect(document.getElementById('btn-copy-prompt-5')).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText(/Round 1/i)).toBeInTheDocument()
+    );
   });
 
   it('persists Easy rating and advances the queue after a seamless translation session finishes', async () => {
@@ -147,7 +156,7 @@ describe('Practice Component', () => {
       </BrowserRouter>
     );
 
-    const finishBtn = await screen.findByRole('button', { name: /Finish Practice/i });
+    const finishBtn = await screen.findByRole('button', { name: /Finish & Rate Recall/i });
     fireEvent.click(finishBtn);
 
     // No rounds submitted → no session artefact saved, straight to rating.
@@ -191,9 +200,9 @@ describe('Practice Component', () => {
       </BrowserRouter>
     );
 
-    // Wait for the seamless session, then switch to the Copy Prompt #5 sub-mode
-    await screen.findByRole('button', { name: /Finish & Rate Recall →/i });
-    fireEvent.click(screen.getByRole('button', { name: /📋 Copy Prompt #5/i }));
+    // Wait for the seamless session, then switch to the Copy Prompt #5 sub-mode via Exit
+    await screen.findByRole('button', { name: /Finish & Rate Recall/i });
+    fireEvent.click(screen.getByRole('button', { name: /Exit/i }));
 
     const doneBtn = await screen.findByRole('button', { name: /Done Practicing/i });
     fireEvent.click(doneBtn);

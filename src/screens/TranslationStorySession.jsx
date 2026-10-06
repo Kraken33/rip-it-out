@@ -313,7 +313,7 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
   return (
     <div className="flex flex-col h-full min-h-0 relative">
       {/* Session Top Header */}
-      <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-card)] flex items-center justify-between gap-2 shrink-0">
+      <div className="hidden sm:flex px-3 sm:px-4 py-2 sm:py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-card)] items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-1.5 sm:gap-2">
           <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1">
             <span>📖</span>
@@ -371,17 +371,28 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
       {mobileActionsOpen && (
         <div
           data-testid="mobile-actions-panel"
-          className="sm:hidden absolute top-11 left-2 right-2 z-50 flex flex-col gap-2 p-3 rounded-xl bg-[#10111c] border border-purple-500/40 shadow-2xl animate-fade-in"
+          className="sm:hidden absolute top-4 left-2 right-2 z-50 flex flex-col gap-2 p-3.5 rounded-xl bg-[#10111c] border border-purple-500/40 shadow-2xl animate-fade-in"
         >
-          <div className="flex items-center justify-between pb-1.5 border-b border-gray-800/80">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-              Session Actions
-            </span>
+          <div className="flex items-center justify-between pb-2 border-b border-gray-800/80">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold text-white flex items-center gap-1">
+                <span>📖</span>
+                <span>Round {roundIndex + 1}</span>
+              </span>
+              {currentRound?.varietySample?.vibeLabel && (
+                <span
+                  data-testid="story-hud-vibe-badge"
+                  className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full"
+                >
+                  {currentRound.varietySample.vibeLabel}
+                </span>
+              )}
+            </div>
             <button
               type="button"
               data-testid="close-mobile-actions"
               onClick={() => setMobileActionsOpen(false)}
-              className="text-gray-400 hover:text-white text-xs font-bold px-2 py-0.5"
+              className="text-gray-400 hover:text-white text-xs font-bold px-2 py-0.5 cursor-pointer"
             >
               ✕ Close
             </button>
@@ -398,6 +409,22 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
               onError={(err) => setErrorMsg(err)}
             />
           </div>
+
+          {/* Translate Button */}
+          <button
+            type="button"
+            data-testid="mobile-story-translate-button"
+            onClick={() => {
+              if (!canSubmit) return;
+              setMobileActionsOpen(false);
+              handleSubmitTranslation();
+            }}
+            disabled={!canSubmit}
+            className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            <span>▶</span>
+            <span>Translate Translation</span>
+          </button>
 
           {/* Story Flavor Matrix */}
           <button
@@ -745,14 +772,16 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
                 type="button"
                 data-testid="toggle-mobile-actions"
                 onClick={() => setMobileActionsOpen(!mobileActionsOpen)}
-                className="py-1 px-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold border border-gray-700/70 flex items-center gap-1 transition cursor-pointer"
+                className="py-1 px-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold border border-gray-700/70 flex items-center gap-1.5 transition cursor-pointer"
               >
                 <span>⚡</span>
-                <span className="text-[11px] text-purple-300 font-bold">Actions {mobileActionsOpen ? '▼' : '▲'}</span>
+                <span className="text-[11px] text-purple-300 font-bold">
+                  Actions · R{roundIndex + 1} {mobileActionsOpen ? '▼' : '▲'}
+                </span>
               </button>
 
-              {/* Audio Recorder Button */}
-              <div className="shrink-0 flex items-center">
+              {/* Audio Recorder Button (Desktop only inline) */}
+              <div className="hidden sm:flex shrink-0 items-center">
                 <AudioRecorder
                   settings={settings}
                   onTranscribed={insertTranscription}
@@ -761,11 +790,11 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
               </div>
             </div>
 
-            {/* Translate Button */}
+            {/* Translate Button (Desktop only inline) */}
             <button
               type="submit"
               disabled={!canSubmit}
-              className="px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
+              className="hidden sm:inline-flex px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
             >
               Translate ▶
             </button>

@@ -367,60 +367,12 @@ export default function Practice() {
         className="w-full h-[100dvh] sm:h-[88vh] flex flex-col max-w-4xl mx-auto -my-1 sm:my-0 fixed sm:static inset-0 z-20 bg-[var(--bg-main)] sm:bg-transparent overflow-hidden"
         style={viewportWidth < 640 ? { height: `${viewportHeight}px`, maxHeight: `${viewportHeight}px` } : undefined}
       >
-        {/* Practice Mode Selector Tabs */}
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-[#11121c] p-2 rounded-xl border border-gray-800 shrink-0">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <button
-              onClick={() => setPracticeType('translation')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                practiceType === 'translation'
-                  ? 'bg-purple-600 text-white shadow'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              🌐 Translation Practice
-            </button>
-            <button
-              onClick={() => setPracticeType('scenario')}
-              className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-                practiceType === 'scenario'
-                  ? 'bg-purple-600 text-white shadow'
-                  : 'text-gray-400 hover:text-white'
-              }`}
-            >
-              💬 Scenario Q&A
-            </button>
-          </div>
-
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <button
-              onClick={() => setTranslationSubMode('seamless')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                translationSubMode === 'seamless'
-                  ? 'bg-purple-900/80 text-purple-200 border border-purple-600'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-            >
-              ✨ Seamless AI
-            </button>
-            <button
-              onClick={() => setTranslationSubMode('prompt')}
-              className={`px-2.5 sm:px-3 py-1.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                translationSubMode === 'prompt'
-                  ? 'bg-purple-900/80 text-purple-200 border border-purple-600'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-            >
-              📋 Copy Prompt #5
-            </button>
-          </div>
-        </div>
-
-        <div className="flex-1 min-h-0 flex flex-col pt-1.5 sm:pt-2">
+        <div className="flex-1 min-h-0 flex flex-col">
           <TranslationPracticeSession
             allCards={improvements}
             settings={settings}
             onFinish={(roundPayload, practicedCards) => startRating(practicedCards, roundPayload)}
+            onExit={() => setTranslationSubMode('prompt')}
           />
         </div>
       </div>

@@ -330,8 +330,13 @@ describe('TranslationStorySession Component', () => {
   });
 
   it('supports expanding and collapsing mobile action controls with vertical buttons', async () => {
-    renderSession();
+    const { container } = renderSession();
     await waitForPassage();
+
+    // Check top header is hidden on mobile (hidden sm:flex)
+    const header = container.querySelector('.border-b');
+    expect(header.className).toContain('hidden');
+    expect(header.className).toContain('sm:flex');
 
     // Mobile actions panel is collapsed by default
     expect(screen.queryByTestId('mobile-actions-panel')).not.toBeInTheDocument();
@@ -342,6 +347,7 @@ describe('TranslationStorySession Component', () => {
     fireEvent.click(toggleBtn);
     const panel = screen.getByTestId('mobile-actions-panel');
     expect(panel).toBeInTheDocument();
+    expect(within(panel).getByTestId('mobile-story-translate-button')).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: /Tune Story Flavor/i })).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: /Next Round/i })).toBeInTheDocument();
     expect(within(panel).getByRole('button', { name: /Finish Story/i })).toBeInTheDocument();
@@ -349,6 +355,27 @@ describe('TranslationStorySession Component', () => {
     // Tap close to collapse
     fireEvent.click(screen.getByTestId('close-mobile-actions'));
     expect(screen.queryByTestId('mobile-actions-panel')).not.toBeInTheDocument();
+  });
+
+  it('submits story translation via mobile actions HUD translate button', async () => {
+    renderSession();
+    await waitForPassage();
+
+    const textarea = screen.getByPlaceholderText(/Type or speak your English translation/i);
+    fireEvent.change(textarea, { target: { value: 'Yesterday I invited a friend over.' } });
+
+    // Open mobile actions panel
+    fireEvent.click(screen.getByTestId('toggle-mobile-actions'));
+    const mobileTranslateBtn = screen.getByTestId('mobile-story-translate-button');
+    expect(mobileTranslateBtn).toBeInTheDocument();
+
+    fireEvent.click(mobileTranslateBtn);
+
+    // Panel closes and evaluation completes
+    expect(screen.queryByTestId('mobile-actions-panel')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('story-feedback')).toBeInTheDocument();
+    });
   });
 
   it('renders full-width composer with text-base font and resets scroll on focus', async () => {
@@ -367,7 +394,6 @@ describe('TranslationStorySession Component', () => {
     // Russian passage is rendered and visible in upper pane
     expect(screen.getByText(new RegExp(PASSAGE_1))).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Translate ▶/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Simulate dictation/i })).toBeInTheDocument();
     expect(screen.getByTestId('toggle-mobile-actions')).toBeInTheDocument();
     scrollToSpy.mockRestore();
   });

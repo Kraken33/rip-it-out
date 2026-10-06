@@ -103,11 +103,10 @@ describe('TranslationPracticeSession Component', () => {
       </MemoryRouter>
     );
 
-    expect(screen.getByText(/Russian Translation Practice/i)).toBeInTheDocument();
     expect(screen.getByText(/Round 1/i)).toBeInTheDocument();
     expect(screen.queryByText(/Round 1 of/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Next Round/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Finish Practice/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Finish & Rate Recall →/i })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
@@ -184,7 +183,7 @@ describe('TranslationPracticeSession Component', () => {
     submitTranslation('Second translation here.');
     await waitFor(() => expect(screen.getAllByTestId('translation-verdict')).toHaveLength(2));
 
-    fireEvent.click(screen.getByRole('button', { name: /Finish Practice/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Finish & Rate Recall/i }));
 
     expect(onFinishMock).toHaveBeenCalledTimes(1);
     const [orderedRounds, practiced] = onFinishMock.mock.calls[0];
@@ -220,7 +219,7 @@ describe('TranslationPracticeSession Component', () => {
       expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
     });
 
-    const finishBtn = screen.getByRole('button', { name: /Finish Practice/i });
+    const finishBtn = screen.getByRole('button', { name: /Finish & Rate Recall/i });
     fireEvent.click(finishBtn);
 
     expect(onFinishMock).toHaveBeenCalledWith([], []);
@@ -316,11 +315,24 @@ describe('TranslationPracticeSession Component', () => {
     expect(mocks.evaluateTranslationRound).toHaveBeenCalledTimes(1);
   });
 
-  it('still renders the passage with construction badges while the verdict renders as a card', async () => {
+  it('renders interactive construction tags that reveal target construction on click', async () => {
     renderSession();
     await waitForPassage();
     expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
-    expect(screen.getByText('(invite over)')).toBeInTheDocument();
+    // Static inline label is NOT rendered by default
+    expect(screen.queryByText('(invite over)')).not.toBeInTheDocument();
+
+    // Click/tap the interactive construction
+    const constrBtn = screen.getByRole('button', { name: /пригласил друга в гости/i });
+    expect(constrBtn).toBeInTheDocument();
+    fireEvent.click(constrBtn);
+
+    // Target tooltip is revealed
+    expect(screen.getByTestId('construction-tooltip')).toHaveTextContent('invite over');
+
+    // Click again toggles it off
+    fireEvent.click(constrBtn);
+    expect(screen.queryByTestId('construction-tooltip')).not.toBeInTheDocument();
 
     submitTranslation('Yesterday I invited a friend over and we caught up.');
 
@@ -427,7 +439,7 @@ describe('TranslationPracticeSession Component', () => {
     expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(1);
   });
 
-  it('renders responsive mobile container, header, and toolbar controls', async () => {
+  it('renders responsive mobile container, streamlined header, and toolbar controls without chip bar', async () => {
     const { container } = renderSession();
     await waitForPassage();
 
@@ -436,15 +448,18 @@ describe('TranslationPracticeSession Component', () => {
     expect(outerContainer.className).toContain('h-[calc(100dvh-5.5rem)]');
     expect(outerContainer.className).toContain('sm:h-[82vh]');
 
-    // Check round targets chip container is horizontally scrollable
-    const targetBar = screen.getByText(/Round Targets:/i).parentElement;
-    expect(targetBar.className).toContain('overflow-x-auto');
+    // Check round targets chip container is NOT present
+    expect(screen.queryByText(/Round Targets:/i)).not.toBeInTheDocument();
 
-    // Check Translate submit button is present and responsive
-    const translateBtn = screen.getByRole('button', { name: /Translate/i });
-    expect(translateBtn).toBeInTheDocument();
-    expect(translateBtn.className).toContain('w-full');
-    expect(translateBtn.className).toContain('sm:w-auto');
+    // Check top header is hidden on mobile (hidden sm:flex)
+    const header = container.querySelector('.border-b');
+    expect(header.className).toContain('hidden');
+    expect(header.className).toContain('sm:flex');
+
+    // Check desktop translate button is hidden on mobile
+    const desktopTranslateBtn = screen.getByRole('button', { name: /Translate ▶/i });
+    expect(desktopTranslateBtn.className).toContain('hidden');
+    expect(desktopTranslateBtn.className).toContain('sm:inline-flex');
   });
 
   it('renders full-width composer with text-base font and resets scroll on focus', async () => {
@@ -461,18 +476,39 @@ describe('TranslationPracticeSession Component', () => {
     expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
 
     expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Translate/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Simulate dictation/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Translate ▶/i })).toBeInTheDocument();
     expect(screen.getByTestId('toggle-mobile-practice-actions')).toBeInTheDocument();
 
     // Tap toggle to open mobile actions panel
     fireEvent.click(screen.getByTestId('toggle-mobile-practice-actions'));
     expect(screen.getByTestId('mobile-practice-actions-panel')).toBeInTheDocument();
+    expect(screen.getByTestId('mobile-practice-translate-button')).toBeInTheDocument();
 
     // Tap close
     fireEvent.click(screen.getByTestId('close-mobile-practice-actions'));
     expect(screen.queryByTestId('mobile-practice-actions-panel')).not.toBeInTheDocument();
 
     scrollToSpy.mockRestore();
+  });
+
+  it('submits translation via mobile actions HUD translate button', async () => {
+    renderSession();
+    await waitForPassage();
+
+    const textarea = getTextarea();
+    fireEvent.change(textarea, { target: { value: 'I invited a friend over.' } });
+
+    // Open mobile actions panel
+    fireEvent.click(screen.getByTestId('toggle-mobile-practice-actions'));
+    const mobileTranslateBtn = screen.getByTestId('mobile-practice-translate-button');
+    expect(mobileTranslateBtn).toBeInTheDocument();
+
+    fireEvent.click(mobileTranslateBtn);
+
+    // Panel closes and evaluation is triggered
+    expect(screen.queryByTestId('mobile-practice-actions-panel')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByTestId('translation-verdict')).toBeInTheDocument();
+    });
   });
 });
