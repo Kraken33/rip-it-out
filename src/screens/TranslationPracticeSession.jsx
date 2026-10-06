@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { generateTranslationRoundPassage, evaluateTranslationRound } from '../services/aiService';
 import { parseTranslationVerdict } from '../prompts';
 import { parseTaggedPassage } from '../textAnnotator';
 import AudioRecorder from '../components/AudioRecorder';
+import { scrollToElementBottom, useVisualViewport } from '../hooks/useVisualViewport';
 
 // Cap the auto-grown input so the round's Russian passage keeps its room.
 const MAX_INPUT_HEIGHT = 200;
@@ -217,15 +218,21 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
     roundsRef.current = rounds;
   }, [rounds]);
 
-  const currentRoundCards = rounds[currentRoundIndex]?.cards || [];
+  const scrollToActivePassage = useCallback(() => {
+    scrollToElementBottom(messagesEndRef.current);
+  }, []);
+
+  useVisualViewport({
+    onKeyboardOpen: scrollToActivePassage,
+  });
 
   useEffect(() => {
     messagesRef.current = messages;
   }, [messages]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, roundLoading, evaluating]);
+    scrollToActivePassage();
+  }, [messages, roundLoading, evaluating, scrollToActivePassage]);
 
   // Grow the text area with its content, up to the cap.
   useEffect(() => {
@@ -712,9 +719,7 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onFocus={() => {
-                if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
-                  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
-                }
+                scrollToActivePassage();
               }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {

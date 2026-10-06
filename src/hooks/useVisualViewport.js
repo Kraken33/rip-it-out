@@ -1,11 +1,68 @@
 import { useState, useEffect, useCallback } from 'react';
 
 /**
+ * Helper to smoothly align a target element into view, firing immediately
+ * and with small delays to accommodate mobile virtual keyboard slide-up animations.
+ *
+ * @param {HTMLElement|React.RefObject} targetRefOrEl - Target element or ref to scroll into view
+ * @param {Object} [options]
+ * @param {string} [options.behavior='smooth'] - Scroll behavior ('smooth' or 'instant'/'auto')
+ * @param {string} [options.block='end'] - Vertical alignment ('end', 'center', 'start')
+ * @param {number[]} [options.delays=[0, 120, 260]] - Delay timings in ms
+ * @returns {Function} Cleanup function to cancel pending timers
+ */
+export function scrollToElementBottom(
+  targetRefOrEl,
+  { behavior = 'smooth', block = 'end', delays = [0, 120, 260] } = {}
+) {
+  const getEl = () =>
+    targetRefOrEl && 'current' in targetRefOrEl ? targetRefOrEl.current : targetRefOrEl;
+
+  if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+    window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+  }
+
+  const timers = [];
+
+  delays.forEach((delay) => {
+    if (delay === 0) {
+      const el = getEl();
+      if (el) {
+        if (typeof el.scrollIntoView === 'function') {
+          el.scrollIntoView({ behavior, block });
+        } else if (el.parentElement) {
+          el.parentElement.scrollTop = el.parentElement.scrollHeight;
+        }
+      }
+    } else {
+      const timer = setTimeout(() => {
+        if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+          window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+        }
+        const el = getEl();
+        if (el) {
+          if (typeof el.scrollIntoView === 'function') {
+            el.scrollIntoView({ behavior, block });
+          } else if (el.parentElement) {
+            el.parentElement.scrollTop = el.parentElement.scrollHeight;
+          }
+        }
+      }, delay);
+      timers.push(timer);
+    }
+  });
+
+  return () => {
+    timers.forEach((t) => clearTimeout(t));
+  };
+}
+
+/**
  * Hook to track window.visualViewport height and width dynamically,
  * detecting when the mobile software keyboard opens and shrinks the viewport,
  * providing instant scroll reset and optional body scroll locking to prevent browser auto-scroll on input focus.
  */
-export function useVisualViewport({ lockBodyScroll = false } = {}) {
+export function useVisualViewport({ lockBodyScroll = false, onKeyboardOpen } = {}) {
   const getDimensions = () => {
     if (typeof window === 'undefined') {
       return { viewportHeight: 800, viewportWidth: 375, isKeyboardOpen: false };
@@ -29,6 +86,10 @@ export function useVisualViewport({ lockBodyScroll = false } = {}) {
     if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
     }
+  }, []);
+
+  const scrollToBottom = useCallback((targetRefOrEl, options) => {
+    return scrollToElementBottom(targetRefOrEl, options);
   }, []);
 
   // Preemptive body scroll lock on mobile
@@ -63,7 +124,13 @@ export function useVisualViewport({ lockBodyScroll = false } = {}) {
 
     const handleResize = () => {
       const current = getDimensions();
-      setViewport(current);
+      setViewport((prev) => {
+        if (!prev.isKeyboardOpen && current.isKeyboardOpen && typeof onKeyboardOpen === 'function') {
+          onKeyboardOpen();
+        }
+        return current;
+      });
+
       if (current.isKeyboardOpen && typeof window.scrollTo === 'function' && window.scrollY !== 0) {
         window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       }
@@ -92,12 +159,14 @@ export function useVisualViewport({ lockBodyScroll = false } = {}) {
       }
       window.removeEventListener('scroll', handleWindowScroll);
     };
-  }, []);
+  }, [onKeyboardOpen]);
 
   return {
     ...viewport,
     resetScroll,
+    scrollToBottom,
   };
 }
 
 export default useVisualViewport;
+

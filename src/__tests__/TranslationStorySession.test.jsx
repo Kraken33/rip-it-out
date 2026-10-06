@@ -397,6 +397,20 @@ describe('TranslationStorySession Component', () => {
     expect(screen.getByTestId('toggle-mobile-actions')).toBeInTheDocument();
     scrollToSpy.mockRestore();
   });
+
+  it('triggers auto-scroll to active passage when translation textarea is focused', async () => {
+    const scrollIntoViewSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoViewSpy;
+
+    renderSession();
+    await waitForPassage(PASSAGE_1);
+
+    const textarea = screen.getByPlaceholderText(/Type or speak your English translation/i);
+    fireEvent.focus(textarea);
+
+    expect(scrollIntoViewSpy).toHaveBeenCalled();
+  });
 });
+
 
 

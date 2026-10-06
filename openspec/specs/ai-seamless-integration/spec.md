@@ -81,7 +81,7 @@ The system SHALL allow users to listen to spoken pronunciation of constructions 
 - **AND** stream or play the audio directly in the browser
 
 ### Requirement: Multi-line Message Input for Seamless Sessions
-The system SHALL provide a multi-line text area for typing chat messages in a Seamless AI session, so that long or multi-sentence answers can be comfortably read and edited before sending.
+The system SHALL provide a multi-line text area for typing chat messages in a Seamless AI session, so that long or multi-sentence answers can be comfortably read and edited before sending, and SHALL automatically scroll the chat thread to the latest assistant message upon input focus and virtual keyboard opening.
 
 #### Scenario: User types a multi-line answer
 - **GIVEN** the user is in an active Seamless AI session
@@ -100,6 +100,12 @@ The system SHALL provide a multi-line text area for typing chat messages in a Se
 - **WHEN** a voice recording is transcribed
 - **THEN** the transcription MUST be inserted into the text area content
 - **AND** previously typed text MUST be preserved
+
+#### Scenario: Auto-scrolling chat thread on input focus
+- **GIVEN** an active Seamless AI session with multiple prior messages
+- **WHEN** the user focuses the chat message input textarea
+- **THEN** the chat thread container automatically scrolls to bring the latest message turn into view above the input dock.
+
 
 ### Requirement: Sentence Context Tracking for Improvements
 The system SHALL capture and store the full sentence or message context (`context`) alongside each improvement registered to the study list.

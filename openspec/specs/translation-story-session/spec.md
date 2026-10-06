@@ -88,13 +88,18 @@ The system SHALL persist a finished translation-story session to the configured 
 
 ### Requirement: Mobile viewport keyboard-attached composer and collapsible action menu
 
-The system SHALL provide a mobile-responsive story translation interface that pins the translation composer dock directly above the software keyboard within dynamic visual viewport bounds (`window.visualViewport.height`), prevents iOS Safari automatic focus zoom by ensuring a minimum 16px font size on mobile viewports, keeps the active Russian story passage continuously visible and readable in the upper pane during active translation, locks document body scrolling and suppresses browser auto-scroll animations instantaneously on input focus, suppresses the top session header on mobile screens (< 640px), and consolidates all session actions and metadata under a collapsible Actions HUD to preserve maximum space for simultaneous reading and typing.
+The system SHALL provide a mobile-responsive story translation interface that pins the translation composer dock directly above the software keyboard within dynamic visual viewport bounds (`window.visualViewport.height`), prevents iOS Safari automatic focus zoom by ensuring a minimum 16px font size on mobile viewports, keeps the active Russian story passage continuously visible and readable in the upper pane during active translation, automatically scrolls the message thread to the active round's Russian passage upon translation textarea focus and upon virtual keyboard opening/viewport resize, locks document body scrolling and suppresses browser auto-scroll animations instantaneously on input focus, suppresses the top session header on mobile screens (< 640px), and consolidates all session actions and metadata under a collapsible Actions HUD to preserve maximum space for simultaneous reading and typing.
 
 #### Scenario: Mobile input composer remains attached above software keyboard
 - **WHEN** the user opens or focuses the translation text area on a mobile viewport and the software keyboard appears
 - **THEN** the session container height dynamically adjusts to match `window.visualViewport.height`
 - **AND** the document body scrolling is locked and focus auto-scroll is suppressed instantaneously (`preventScroll: true` / instant position lock), preventing sluggish scrolling delays and layout stutter
 - **AND** the composer dock remains attached directly above the software keyboard and bottom safe area without jumping, and the translation textarea occupies full width.
+
+#### Scenario: Auto-scrolling to active story passage on input focus and keyboard opening
+- **WHEN** the user focuses the translation input text area or the virtual keyboard opens in a translation story session
+- **THEN** the message scroll container automatically scrolls to display the active round's Russian story passage directly above the composer dock
+- **AND** the active passage remains visible in the shrunken viewport instead of showing earlier dialogue history.
 
 #### Scenario: Mobile top header suppression and minimal composer bar
 - **WHEN** the story translation session is viewed on a mobile viewport (< 640px)

@@ -511,4 +511,18 @@ describe('TranslationPracticeSession Component', () => {
       expect(screen.getByTestId('translation-verdict')).toBeInTheDocument();
     });
   });
+
+  it('triggers auto-scroll to active practice passage when translation textarea is focused', async () => {
+    const scrollIntoViewSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoViewSpy;
+
+    renderSession();
+    await waitForPassage();
+
+    const textarea = getTextarea();
+    fireEvent.focus(textarea);
+
+    expect(scrollIntoViewSpy).toHaveBeenCalled();
+  });
 });
+

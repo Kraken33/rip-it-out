@@ -147,13 +147,18 @@ The system SHALL evaluate each submitted English translation against the Russian
 - **THEN** the system still hands all cards encountered so far to the manual SRS recall rating interface, unaffected by the verdict evaluation.
 
 ### Requirement: Mobile-Responsive Translation Session Layout and Controls
-The system SHALL provide an adaptive, touch-friendly, and decluttered layout for the Russian Translation Practice session that accommodates small mobile viewports without clipping content, causing horizontal overflow, or trapping focus, SHALL maintain simultaneous visibility of the active Russian passage and the translation input when the software keyboard is active, and SHALL suppress the top session header on mobile devices while consolidating all session controls and status within a collapsible Actions HUD.
+The system SHALL provide an adaptive, touch-friendly, and decluttered layout for the Russian Translation Practice session that accommodates small mobile viewports without clipping content, causing horizontal overflow, or trapping focus, SHALL maintain simultaneous visibility of the active Russian passage and the translation input when the software keyboard is active, SHALL automatically scroll the message container to the active Russian passage upon input focus and virtual keyboard opening/viewport resize, and SHALL suppress the top session header on mobile devices while consolidating all session controls and status within a collapsible Actions HUD.
 
 #### Scenario: Mobile viewport adaptive height and scrolling
 - **WHEN** the translation practice session is viewed on a mobile device or narrow screen (<640px wide) with software keyboard open
 - **THEN** the session container adapts dynamically to `window.visualViewport.height` without overflowing screen boundaries or causing window jumping
 - **AND** the document body scroll is locked and focus scrolling is suppressed instantaneously (`preventScroll: true` / instant zero-scroll lock), eliminating sluggish scroll-back delays when opening the software keyboard
 - **AND** the active Russian passage remains continuously visible and readable in the upper viewport while the learner is typing.
+
+#### Scenario: Auto-scrolling to active practice passage on focus and keyboard opening
+- **WHEN** the user focuses the translation input text area or the virtual keyboard opens in a translation practice session
+- **THEN** the message thread container automatically scrolls to bring the current round's Russian passage into view above the composer dock
+- **AND** the active passage remains visible in the shrunken viewport instead of showing earlier rounds.
 
 #### Scenario: Mobile top header suppression and ultra-compact dock
 - **WHEN** the translation practice session is rendered on a mobile device or screen width below 640px
@@ -174,4 +179,5 @@ The system SHALL provide an adaptive, touch-friendly, and decluttered layout for
 - **WHEN** the translation practice session is rendered on a touch screen / mobile viewport
 - **THEN** desktop-specific keyboard shortcut hints are replaced or hidden to maximize vertical space
 - **AND** the translation textarea and submit controls render with minimum 16px font size (`text-base`) to prevent iOS zoom while remaining responsive and accessible when the virtual keyboard is active.
+
 

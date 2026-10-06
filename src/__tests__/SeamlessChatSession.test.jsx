@@ -182,6 +182,22 @@ describe('SeamlessChatSession Component', () => {
       expect(onFinishMock).toHaveBeenCalledWith('I readed chapter 3 yesterday.\nIt was very interesting book.');
     });
   });
+
+  it('triggers auto-scroll to latest message when textarea is focused', async () => {
+    const scrollIntoViewSpy = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoViewSpy;
+
+    render(
+      <MemoryRouter>
+        <SeamlessChatSession session={dummySession} settings={dummySettings} />
+      </MemoryRouter>
+    );
+
+    const textarea = screen.getByPlaceholderText(/Speak above or type your answer/i);
+    fireEvent.focus(textarea);
+
+    expect(scrollIntoViewSpy).toHaveBeenCalled();
+  });
 });
 
 describe('SeamlessChatViewerModal Component', () => {

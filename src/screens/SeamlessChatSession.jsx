@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { updateSession, logActivity, addSessionText } from '../store';
 import { streamSeamlessChatCompletion } from '../services/aiService';
 import AudioRecorder from '../components/AudioRecorder';
 import ConstructionExtractor from '../components/ConstructionExtractor';
+import { scrollToElementBottom, useVisualViewport } from '../hooks/useVisualViewport';
 
 export default function SeamlessChatSession({ session: initialSession, settings, onFinish }) {
   const [session] = useState(initialSession);
@@ -14,9 +15,17 @@ export default function SeamlessChatSession({ session: initialSession, settings,
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
 
+  const scrollToLatest = useCallback(() => {
+    scrollToElementBottom(messagesEndRef.current);
+  }, []);
+
+  useVisualViewport({
+    onKeyboardOpen: scrollToLatest,
+  });
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    scrollToLatest();
+  }, [messages, scrollToLatest]);
 
   // Auto-grow the message textarea up to its max height (max-h-40)
   useEffect(() => {
@@ -222,6 +231,9 @@ export default function SeamlessChatSession({ session: initialSession, settings,
               ref={inputRef}
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
+              onFocus={() => {
+                scrollToLatest();
+              }}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
                   e.preventDefault();

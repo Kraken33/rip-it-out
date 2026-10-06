@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useVisualViewport } from '../hooks/useVisualViewport';
+import { useVisualViewport, scrollToElementBottom } from '../hooks/useVisualViewport';
 
 describe('useVisualViewport', () => {
   const originalVisualViewport = window.visualViewport;
@@ -8,10 +8,12 @@ describe('useVisualViewport', () => {
   const originalScrollTo = window.scrollTo;
 
   beforeEach(() => {
+    vi.useFakeTimers();
     window.scrollTo = vi.fn();
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     window.visualViewport = originalVisualViewport;
     window.innerHeight = originalInnerHeight;
     window.scrollTo = originalScrollTo;
@@ -29,6 +31,7 @@ describe('useVisualViewport', () => {
     expect(result.current.viewportWidth).toBe(375);
     expect(result.current.isKeyboardOpen).toBe(false);
     expect(typeof result.current.resetScroll).toBe('function');
+    expect(typeof result.current.scrollToBottom).toBe('function');
   });
 
   it('reads dimensions and detects keyboard when visualViewport is present', () => {
@@ -45,7 +48,8 @@ describe('useVisualViewport', () => {
       }),
     };
 
-    const { result } = renderHook(() => useVisualViewport());
+    const onKeyboardOpen = vi.fn();
+    const { result } = renderHook(() => useVisualViewport({ onKeyboardOpen }));
 
     expect(result.current.viewportHeight).toBe(450);
     expect(result.current.viewportWidth).toBe(375);
@@ -65,6 +69,15 @@ describe('useVisualViewport', () => {
 
     expect(result.current.viewportHeight).toBe(800);
     expect(result.current.isKeyboardOpen).toBe(false);
+
+    // Simulate keyboard opening again
+    act(() => {
+      window.visualViewport.height = 400;
+      if (listeners['resize']) listeners['resize']();
+    });
+
+    expect(result.current.isKeyboardOpen).toBe(true);
+    expect(onKeyboardOpen).toHaveBeenCalled();
   });
 
   it('preemptively locks document body scroll when lockBodyScroll is true and restores on unmount', () => {
@@ -82,4 +95,28 @@ describe('useVisualViewport', () => {
     expect(document.body.style.overflow).toBe(initialOverflow);
     expect(document.body.style.position).toBe(initialPosition);
   });
+
+  it('scrollToElementBottom scrolls target immediately and on subsequent delays', () => {
+    const mockScrollIntoView = vi.fn();
+    const mockEl = { scrollIntoView: mockScrollIntoView };
+
+    const cleanup = scrollToElementBottom(mockEl, { delays: [0, 100, 200] });
+
+    expect(mockScrollIntoView).toHaveBeenCalledTimes(1);
+    expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: 'smooth', block: 'end' });
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(mockScrollIntoView).toHaveBeenCalledTimes(2);
+
+    act(() => {
+      vi.advanceTimersByTime(100);
+    });
+    expect(mockScrollIntoView).toHaveBeenCalledTimes(3);
+
+    cleanup();
+  });
 });
+
