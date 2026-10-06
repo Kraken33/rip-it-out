@@ -9,6 +9,9 @@ export default defineConfig({
     outDir: 'docs',
     emptyOutDir: true,
   },
+  server: {
+    allowedHosts: true,
+  },
   plugins: [tailwindcss(), react()],
   test: {
     globals: true,

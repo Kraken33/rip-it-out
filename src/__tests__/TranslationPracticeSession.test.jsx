@@ -446,4 +446,33 @@ describe('TranslationPracticeSession Component', () => {
     expect(translateBtn.className).toContain('w-full');
     expect(translateBtn.className).toContain('sm:w-auto');
   });
+
+  it('renders full-width composer with text-base font and resets scroll on focus', async () => {
+    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    renderSession();
+    await waitForPassage();
+
+    const textarea = getTextarea();
+    expect(textarea).toHaveClass('text-base');
+    expect(textarea).toHaveClass('w-full');
+
+    // Focus triggers instant window.scrollTo
+    fireEvent.focus(textarea);
+    expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+
+    expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Translate/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Simulate dictation/i })).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-mobile-practice-actions')).toBeInTheDocument();
+
+    // Tap toggle to open mobile actions panel
+    fireEvent.click(screen.getByTestId('toggle-mobile-practice-actions'));
+    expect(screen.getByTestId('mobile-practice-actions-panel')).toBeInTheDocument();
+
+    // Tap close
+    fireEvent.click(screen.getByTestId('close-mobile-practice-actions'));
+    expect(screen.queryByTestId('mobile-practice-actions-panel')).not.toBeInTheDocument();
+
+    scrollToSpy.mockRestore();
+  });
 });

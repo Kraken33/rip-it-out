@@ -350,6 +350,27 @@ describe('TranslationStorySession Component', () => {
     fireEvent.click(screen.getByTestId('close-mobile-actions'));
     expect(screen.queryByTestId('mobile-actions-panel')).not.toBeInTheDocument();
   });
+
+  it('renders full-width composer with text-base font and resets scroll on focus', async () => {
+    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+    renderSession();
+    await waitForPassage(PASSAGE_1);
+
+    const textarea = screen.getByPlaceholderText(/Type or speak your English translation/i);
+    expect(textarea).toHaveClass('text-base');
+    expect(textarea).toHaveClass('w-full');
+
+    // Focus triggers instant window.scrollTo
+    fireEvent.focus(textarea);
+    expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+
+    // Russian passage is rendered and visible in upper pane
+    expect(screen.getByText(new RegExp(PASSAGE_1))).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Translate ▶/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Simulate dictation/i })).toBeInTheDocument();
+    expect(screen.getByTestId('toggle-mobile-actions')).toBeInTheDocument();
+    scrollToSpy.mockRestore();
+  });
 });
 
 

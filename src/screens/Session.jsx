@@ -22,6 +22,7 @@ import AudioRecorder from '../components/AudioRecorder';
 import AudioPlayerButton from '../components/AudioPlayerButton';
 import SeamlessChatSession from './SeamlessChatSession';
 import TranslationStorySession, { aggregateStoryConstructions } from './TranslationStorySession';
+import { useVisualViewport } from '../hooks/useVisualViewport';
 
 const SOURCE_TYPES = [
   { id: 'video', label: 'Video', icon: '▶️' },
@@ -383,13 +384,21 @@ export default function Session() {
     return generateExportPrompt();
   }, []);
 
+  const isTranslationActive = step === 2 && activity === 'translation';
+  const { viewportHeight, viewportWidth } = useVisualViewport({ lockBodyScroll: isTranslationActive });
+
   return (
     <div
       className={`w-full ${
         step === 2 && activity === 'translation'
-          ? 'h-[100dvh] sm:h-[88vh] flex flex-col max-w-4xl mx-auto -my-1 sm:my-0'
+          ? 'h-[100dvh] sm:h-[88vh] flex flex-col max-w-4xl mx-auto -my-1 sm:my-0 fixed sm:static inset-0 z-20 bg-[var(--bg-main)] sm:bg-transparent overflow-hidden'
           : 'space-y-6 animate-fade-in max-w-2xl mx-auto py-2'
       }`}
+      style={
+        step === 2 && activity === 'translation' && viewportWidth < 640
+          ? { height: `${viewportHeight}px`, maxHeight: `${viewportHeight}px` }
+          : undefined
+      }
     >
       {!(step === 2 && activity === 'translation') && (
         <div className="space-y-4">

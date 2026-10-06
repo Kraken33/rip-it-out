@@ -165,6 +165,7 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
   const [roundLoading, setRoundLoading] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const messagesEndRef = useRef(null);
   const messagesRef = useRef([]);
   const inputRef = useRef(null);
@@ -436,19 +437,19 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
   };
 
   return (
-    <div className="w-full flex flex-col h-[calc(100dvh-5.5rem)] sm:h-[82vh] min-h-[480px] glass-panel rounded-2xl overflow-hidden border border-[var(--border-color)] animate-fade-in">
+    <div className="w-full flex flex-col h-[calc(100dvh-5.5rem)] sm:h-[82vh] min-h-0 glass-panel rounded-2xl overflow-hidden border border-[var(--border-color)] animate-fade-in">
       {/* Session Header */}
-      <div className="px-3.5 sm:px-5 py-2.5 sm:py-3.5 border-b border-[var(--border-color)] bg-[var(--bg-card)] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 sm:gap-4">
-        <div className="w-full sm:w-auto">
+      <div className="px-3.5 sm:px-5 py-2 sm:py-3 border-b border-[var(--border-color)] bg-[var(--bg-card)] flex items-center justify-between gap-2 shrink-0">
+        <div>
           <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-            <h1 className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-1.5">
+            <h1 className="text-xs sm:text-base md:text-lg font-bold text-white flex items-center gap-1.5">
               <span>🌐 Russian Translation Practice</span>
             </h1>
-            <span className="text-[11px] sm:text-xs px-2 sm:px-2.5 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/50 shrink-0">
+            <span className="text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/50 shrink-0">
               Round {currentRoundIndex + 1} · {distinctCardCount(rounds.slice(0, currentRoundIndex + 1))} practiced
             </span>
           </div>
-          <p className="text-[11px] sm:text-xs text-gray-400 font-medium line-clamp-1 sm:line-clamp-none mt-0.5">
+          <p className="hidden sm:block text-[11px] sm:text-xs text-gray-400 font-medium mt-0.5">
             Read Russian text with highlighted constructions and translate it into English!
           </p>
         </div>
@@ -457,14 +458,14 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
           id="btn-finish-translation-practice"
           onClick={handleFinishSession}
           disabled={evaluating}
-          className="hidden sm:inline-flex px-3.5 py-1.5 sm:px-4 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 shrink-0"
+          className="px-2.5 sm:px-4 py-1 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 shrink-0"
         >
           Finish & Rate Recall →
         </button>
       </div>
 
       {/* Target Constructions Chip Bar */}
-      <div className="px-3.5 sm:px-5 py-2 bg-[#0a0b12] border-b border-gray-800 flex items-center gap-1.5 sm:gap-2 overflow-x-auto text-xs">
+      <div className="px-3.5 sm:px-5 py-2 bg-[#0a0b12] border-b border-gray-800 flex items-center gap-1.5 sm:gap-2 overflow-x-auto text-xs shrink-0">
         <span className="text-gray-400 font-bold shrink-0 text-[11px] sm:text-xs">Round Targets:</span>
         {currentRoundCards.length > 0 ? (
           currentRoundCards.map((c, i) => (
@@ -483,13 +484,13 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
       </div>
 
       {/* Messages Thread */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#0d0e15]/50">
+      <div className="flex-1 min-h-0 overflow-y-auto p-3.5 sm:p-4 space-y-4 bg-[#0d0e15]/50">
         {messages.map((m) => {
           if (m.role === 'assistant') {
             if (m.verdict) {
               return (
-                <div key={m.id} className="flex gap-3 items-start max-w-[90%]">
-                  <div className="w-8 h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
+                <div key={m.id} className="flex gap-2.5 items-start max-w-[95%] sm:max-w-[90%]">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
                     🤖
                   </div>
                   <VerdictCard verdict={m.verdict} />
@@ -499,11 +500,11 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
 
             if (m.pending) {
               return (
-                <div key={m.id} className="flex gap-3 items-start max-w-[90%]">
-                  <div className="w-8 h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
+                <div key={m.id} className="flex gap-2.5 items-start max-w-[95%] sm:max-w-[90%]">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
                     🤖
                   </div>
-                  <div className="glass-panel p-4 rounded-2xl rounded-tl-sm border border-purple-500/20 w-full">
+                  <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm border border-purple-500/20 w-full">
                     <p
                       data-testid="evaluating-indicator"
                       className="text-sm text-gray-400 font-medium animate-pulse"
@@ -517,11 +518,11 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
 
             if (m.unparsed) {
               return (
-                <div key={m.id} className="flex gap-3 items-start max-w-[90%]">
-                  <div className="w-8 h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
+                <div key={m.id} className="flex gap-2.5 items-start max-w-[95%] sm:max-w-[90%]">
+                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
                     🤖
                   </div>
-                  <div className="glass-panel p-4 rounded-2xl rounded-tl-sm border border-amber-500/30 w-full space-y-2">
+                  <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm border border-amber-500/30 w-full space-y-2">
                     <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">
                       {m.rawText || 'The evaluation response was empty.'}
                     </p>
@@ -544,11 +545,11 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
             }
 
             return (
-              <div key={m.id} className="flex gap-3 items-start max-w-[90%]">
-                <div className="w-8 h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
+              <div key={m.id} className="flex gap-2.5 items-start max-w-[95%] sm:max-w-[90%]">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-purple-600/30 text-purple-400 border border-purple-500/40 flex items-center justify-center font-bold text-xs shrink-0 mt-1">
                   🤖
                 </div>
-                <div className="glass-panel p-4 rounded-2xl rounded-tl-sm text-sm text-gray-200 leading-relaxed space-y-2 border border-purple-500/20 w-full">
+                <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm text-sm sm:text-base text-gray-200 leading-relaxed space-y-2 border border-purple-500/20 w-full max-h-[45vh] overflow-y-auto">
                   <p className="whitespace-pre-wrap">
                     {m.content ? renderTaggedMessage(m.content) : 'Generating passage...'}
                   </p>
@@ -558,8 +559,8 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
           }
 
           return (
-            <div key={m.id} className="flex flex-col items-end gap-1.5 ml-auto max-w-[90%]">
-              <div className="glass-panel p-4 rounded-2xl rounded-tr-sm text-sm leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
+            <div key={m.id} className="flex flex-col items-end gap-1.5 ml-auto max-w-[95%] sm:max-w-[90%]">
+              <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tr-sm text-sm sm:text-base leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
                 <p className="whitespace-pre-wrap">{m.content}</p>
               </div>
             </div>
@@ -575,63 +576,153 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
         </div>
       )}
 
-      {/* Navigation & Controls Footer */}
-      <div className="p-2.5 sm:p-3.5 border-t border-[var(--border-color)] bg-[var(--bg-card)] space-y-2.5 sm:space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <AudioRecorder
-            settings={settings}
-            onTranscribed={insertTranscription}
-            onError={(err) => setErrorMsg(err)}
-          />
-
-          <div className="flex gap-2 items-center ml-auto">
+      {/* Mobile Collapsible Actions Modal / Stack */}
+      {mobileActionsOpen && (
+        <div
+          data-testid="mobile-practice-actions-panel"
+          className="sm:hidden absolute top-12 left-2 right-2 z-50 flex flex-col gap-2 p-3 rounded-xl bg-[#10111c] border border-purple-500/40 shadow-2xl animate-fade-in"
+        >
+          <div className="flex items-center justify-between pb-1.5 border-b border-gray-800/80">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+              Session Actions
+            </span>
             <button
-              onClick={handleNextRound}
-              disabled={evaluating || roundLoading}
-              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50 shrink-0"
+              type="button"
+              data-testid="close-mobile-practice-actions"
+              onClick={() => setMobileActionsOpen(false)}
+              className="text-gray-400 hover:text-white text-xs font-bold px-2 py-0.5"
             >
-              Next Round →
-            </button>
-            <button
-              onClick={handleFinishSession}
-              disabled={evaluating}
-              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 shrink-0"
-            >
-              Finish Practice ✓
+              ✕ Close
             </button>
           </div>
-        </div>
 
+          {/* Speak / Dictate */}
+          <div className="w-full flex justify-center py-1 bg-[#161726] rounded-xl border border-gray-800">
+            <AudioRecorder
+              settings={settings}
+              onTranscribed={(text) => {
+                insertTranscription(text);
+                setMobileActionsOpen(false);
+              }}
+              onError={(err) => setErrorMsg(err)}
+            />
+          </div>
+
+          {/* Next Round */}
+          <button
+            type="button"
+            onClick={() => {
+              handleNextRound();
+              setMobileActionsOpen(false);
+            }}
+            disabled={evaluating || roundLoading}
+            className="w-full py-2.5 px-3 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            <span>➡️</span>
+            <span>Next Round</span>
+          </button>
+
+          {/* Finish Practice */}
+          <button
+            type="button"
+            onClick={() => {
+              handleFinishSession();
+              setMobileActionsOpen(false);
+            }}
+            disabled={evaluating}
+            className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            <span>✓</span>
+            <span>Finish Practice</span>
+          </button>
+        </div>
+      )}
+
+      {/* Navigation & Controls Footer (Full-Width Textarea Dock + Actions Bar) */}
+      <div className="p-2 sm:p-3 border-t border-[var(--border-color)] bg-[var(--bg-card)] shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))] space-y-1.5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSendTranslation();
           }}
-          className="space-y-2"
+          className="space-y-1.5 sm:space-y-2"
         >
-          <textarea
-            ref={inputRef}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                handleSendTranslation();
-              }
-            }}
-            placeholder="Type or speak your English translation..."
-            rows={3}
-            disabled={evaluating}
-            className="w-full min-h-[64px] sm:min-h-[76px] max-h-[160px] sm:max-h-[200px] bg-[#0e0f17] border border-gray-800 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-y"
-          />
-          <div className="flex items-center justify-between gap-2">
-            <span className="hidden sm:inline text-[10px] text-gray-500 font-medium">
-              Enter adds a new line · Ctrl/⌘ + Enter translates
-            </span>
+          {/* Desktop shortcut hint */}
+          <div className="hidden sm:flex justify-between items-center text-[10px] text-gray-500 font-medium">
+            <span>Enter adds a new line · Ctrl/⌘ + Enter translates</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleNextRound}
+                disabled={evaluating || roundLoading}
+                className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-lg border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
+              >
+                Next Round →
+              </button>
+              <button
+                type="button"
+                onClick={handleFinishSession}
+                disabled={evaluating}
+                className="px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-lg shadow transition cursor-pointer disabled:opacity-50"
+              >
+                Finish Practice ✓
+              </button>
+            </div>
+          </div>
+
+          {/* Full-Width Translation Input Textarea */}
+          <div className="w-full">
+            <textarea
+              ref={inputRef}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onFocus={() => {
+                if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+                  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleSendTranslation();
+                }
+              }}
+              placeholder="Type or speak your English translation..."
+              rows={3}
+              disabled={evaluating}
+              className="w-full min-h-[46px] sm:min-h-[54px] max-h-[110px] sm:max-h-[140px] bg-[#0e0f17] border border-gray-800 rounded-xl px-3.5 sm:px-4 py-2 sm:py-2.5 text-base sm:text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-none disabled:opacity-60"
+            />
+          </div>
+
+          {/* Controls Bar Under Textarea */}
+          <div className="flex items-center justify-between gap-2 w-full">
+            <div className="flex items-center gap-1.5">
+              {/* Mobile Actions Drawer Toggle */}
+              <button
+                type="button"
+                data-testid="toggle-mobile-practice-actions"
+                onClick={() => setMobileActionsOpen(!mobileActionsOpen)}
+                className="py-1 px-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold border border-gray-700/70 flex items-center gap-1 transition cursor-pointer"
+              >
+                <span>⚡</span>
+                <span className="text-[11px] text-purple-300 font-bold">Actions {mobileActionsOpen ? '▼' : '▲'}</span>
+              </button>
+
+              {/* Audio Recorder Button */}
+              <div className="shrink-0 flex items-center">
+                <AudioRecorder
+                  settings={settings}
+                  onTranscribed={insertTranscription}
+                  onError={(err) => setErrorMsg(err)}
+                />
+              </div>
+            </div>
+
+            {/* Translate Button */}
             <button
               type="submit"
               disabled={!inputText.trim() || evaluating}
-              className="w-full sm:w-auto px-4 sm:px-5 py-2 sm:py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
+              className="w-full sm:w-auto px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
             >
               Translate ▶
             </button>

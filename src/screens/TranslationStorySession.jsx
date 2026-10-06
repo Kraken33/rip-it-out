@@ -311,12 +311,146 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
   );
 
   return (
-    <div className="flex flex-col h-full min-h-0">
+    <div className="flex flex-col h-full min-h-0 relative">
+      {/* Session Top Header */}
+      <div className="px-3 sm:px-4 py-2 sm:py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-card)] flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1">
+            <span>📖</span>
+            <span>Round {roundIndex + 1}</span>
+          </span>
+          {currentRound?.varietySample?.vibeLabel && (
+            <span
+              data-testid="story-header-vibe-badge"
+              className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full"
+            >
+              {currentRound.varietySample.vibeLabel}
+            </span>
+          )}
+        </div>
+
+        {/* Header Action Controls */}
+        <div className="flex items-center gap-1.5">
+          {/* Story Flavor Matrix Toggle (Desktop) */}
+          <button
+            type="button"
+            onClick={() => setMatrixOpen(!matrixOpen)}
+            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition cursor-pointer ${
+              matrixOpen
+                ? 'bg-purple-900/50 text-purple-200 border-purple-500'
+                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
+            }`}
+          >
+            <span>✨</span>
+            <span>Flavor</span>
+          </button>
+
+          {/* Desktop Next Round */}
+          <button
+            type="button"
+            onClick={handleNextRound}
+            disabled={evaluating || passageLoading || !currentRound?.translation}
+            className="hidden sm:inline-flex px-3.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
+          >
+            Next Round →
+          </button>
+
+          {/* Desktop Finish Story */}
+          <button
+            type="button"
+            onClick={handleFinish}
+            disabled={evaluating || passageLoading}
+            className="hidden sm:inline-flex px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50"
+          >
+            Finish Story ✓
+          </button>
+        </div>
+      </div>
+
+      {/* Mobile Collapsible Actions Modal / Stack */}
+      {mobileActionsOpen && (
+        <div
+          data-testid="mobile-actions-panel"
+          className="sm:hidden absolute top-11 left-2 right-2 z-50 flex flex-col gap-2 p-3 rounded-xl bg-[#10111c] border border-purple-500/40 shadow-2xl animate-fade-in"
+        >
+          <div className="flex items-center justify-between pb-1.5 border-b border-gray-800/80">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+              Session Actions
+            </span>
+            <button
+              type="button"
+              data-testid="close-mobile-actions"
+              onClick={() => setMobileActionsOpen(false)}
+              className="text-gray-400 hover:text-white text-xs font-bold px-2 py-0.5"
+            >
+              ✕ Close
+            </button>
+          </div>
+
+          {/* Speak / Dictate */}
+          <div className="w-full flex justify-center py-1 bg-[#161726] rounded-xl border border-gray-800">
+            <AudioRecorder
+              settings={settings}
+              onTranscribed={(text) => {
+                insertTranscription(text);
+                setMobileActionsOpen(false);
+              }}
+              onError={(err) => setErrorMsg(err)}
+            />
+          </div>
+
+          {/* Story Flavor Matrix */}
+          <button
+            type="button"
+            onClick={() => {
+              setMatrixOpen(!matrixOpen);
+              setMobileActionsOpen(false);
+            }}
+            className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl border transition cursor-pointer flex items-center justify-center gap-1.5 ${
+              matrixOpen
+                ? 'bg-purple-900/50 text-purple-200 border-purple-500'
+                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
+            }`}
+          >
+            <span>✨</span>
+            <span>Tune Story Flavor</span>
+          </button>
+
+          {/* Next Round */}
+          <button
+            type="button"
+            onClick={() => {
+              handleNextRound();
+              setMobileActionsOpen(false);
+            }}
+            disabled={evaluating || passageLoading || !currentRound?.translation}
+            className="w-full py-2.5 px-3 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            <span>➡️</span>
+            <span>Next Round</span>
+          </button>
+
+          {/* Finish Story */}
+          <button
+            type="button"
+            onClick={() => {
+              handleFinish();
+              setMobileActionsOpen(false);
+            }}
+            disabled={evaluating || passageLoading}
+            className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+          >
+            <span>✓</span>
+            <span>Finish Story</span>
+          </button>
+        </div>
+      )}
+
       {/* Round thread */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-4">
         {rounds.map((round, idx) => (
           <div key={round.id} className="space-y-3">
-            <div className="flex flex-col items-start gap-1.5 max-w-[90%] w-full">
+            <div className="flex flex-col items-start gap-1.5 max-w-[95%] sm:max-w-[90%] w-full">
               <div className="flex items-center justify-between gap-2 w-full px-1">
                 <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
                   Round {idx + 1} · Story passage
@@ -337,7 +471,7 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
                 passage={round.passage}
                 className="w-full"
               >
-                <div className="glass-panel p-4 rounded-2xl rounded-tl-sm text-sm leading-relaxed border border-purple-500/20 text-white w-full">
+                <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm text-sm sm:text-base leading-relaxed border border-purple-500/20 text-white w-full max-h-[45vh] overflow-y-auto">
                   <p className="whitespace-pre-wrap">📖 {round.passage}</p>
                 </div>
               </ConstructionExtractor>
@@ -565,170 +699,73 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
         </div>
       )}
 
-      {/* Navigation & Controls Footer */}
-      <div className="p-2.5 sm:p-3.5 border-t border-[var(--border-color)] bg-[var(--bg-card)] space-y-2.5 sm:space-y-3 shrink-0 pb-[max(0.625rem,env(safe-area-inset-bottom))]">
-        {/* Mobile Collapsible Actions Trigger (Collapsed) */}
-        {!mobileActionsOpen && (
-          <div className="sm:hidden flex items-center justify-between">
-            <button
-              type="button"
-              data-testid="toggle-mobile-actions"
-              onClick={() => setMobileActionsOpen(true)}
-              className="w-full py-2 px-3.5 rounded-xl bg-gray-800/90 hover:bg-gray-700 text-gray-300 text-xs font-semibold border border-gray-700/70 flex items-center justify-between transition cursor-pointer active:scale-[0.99]"
-            >
-              <span className="flex items-center gap-1.5">
-                <span>⚡</span>
-                <span>Actions (Speak, Flavor, Next, Finish)</span>
-              </span>
-              <span className="text-[11px] text-purple-300 font-bold">▲ Expand</span>
-            </button>
-          </div>
-        )}
-
-        {/* Mobile Collapsible Actions Stack (Expanded - Vertical Full-Width Buttons) */}
-        {mobileActionsOpen && (
-          <div
-            data-testid="mobile-actions-panel"
-            className="sm:hidden flex flex-col gap-2 w-full p-2.5 rounded-xl bg-[#10111c] border border-purple-500/30 animate-fade-in"
-          >
-            <div className="flex items-center justify-between pb-1.5 border-b border-gray-800/80">
-              <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">
-                Session Actions
-              </span>
-              <button
-                type="button"
-                data-testid="close-mobile-actions"
-                onClick={() => setMobileActionsOpen(false)}
-                className="text-gray-400 hover:text-white text-xs font-bold px-2 py-0.5"
-              >
-                ✕ Close ▼
-              </button>
-            </div>
-
-            {/* Speak / Dictate */}
-            <div className="w-full flex justify-center py-1 bg-[#161726] rounded-xl border border-gray-800">
-              <AudioRecorder
-                settings={settings}
-                onTranscribed={insertTranscription}
-                onError={(err) => setErrorMsg(err)}
-              />
-            </div>
-
-            {/* Story Flavor Matrix */}
-            <button
-              type="button"
-              onClick={() => {
-                setMatrixOpen(!matrixOpen);
-                setMobileActionsOpen(false);
-              }}
-              className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl border transition cursor-pointer flex items-center justify-center gap-1.5 ${
-                matrixOpen
-                  ? 'bg-purple-900/50 text-purple-200 border-purple-500'
-                  : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
-              }`}
-            >
-              <span>✨</span>
-              <span>Tune Story Flavor</span>
-            </button>
-
-            {/* Next Round */}
-            <button
-              type="button"
-              onClick={() => {
-                handleNextRound();
-                setMobileActionsOpen(false);
-              }}
-              disabled={evaluating || passageLoading || !currentRound?.translation}
-              className="w-full py-2.5 px-3 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-            >
-              <span>➡️</span>
-              <span>Next Round</span>
-            </button>
-
-            {/* Finish Story */}
-            <button
-              type="button"
-              onClick={() => {
-                handleFinish();
-                setMobileActionsOpen(false);
-              }}
-              disabled={evaluating || passageLoading}
-              className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-            >
-              <span>✓</span>
-              <span>Finish Story</span>
-            </button>
-          </div>
-        )}
-
-        {/* Desktop Controls (Horizontal Bar) */}
-        <div className="hidden sm:flex justify-between items-center">
-          <AudioRecorder
-            settings={settings}
-            onTranscribed={insertTranscription}
-            onError={(err) => setErrorMsg(err)}
-          />
-
-          <div className="flex gap-2 items-center">
-            <button
-              type="button"
-              onClick={() => setMatrixOpen(!matrixOpen)}
-              className={`px-3 py-2 text-xs font-bold rounded-xl border transition cursor-pointer flex items-center gap-1.5 ${
-                matrixOpen
-                  ? 'bg-purple-900/50 text-purple-200 border-purple-500'
-                  : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
-              }`}
-            >
-              <span>✨</span>
-              <span>Flavor</span>
-            </button>
-            <button
-              onClick={handleNextRound}
-              disabled={evaluating || passageLoading || !currentRound?.translation}
-              className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
-            >
-              Next Round →
-            </button>
-            <button
-              onClick={handleFinish}
-              disabled={evaluating || passageLoading}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50"
-            >
-              Finish Story ✓
-            </button>
-          </div>
-        </div>
-
+      {/* Navigation & Controls Footer (Full-Width Textarea Dock + Actions Bar) */}
+      <div className="p-2 sm:p-3 border-t border-[var(--border-color)] bg-[var(--bg-card)] shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))] space-y-1.5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
             handleSubmitTranslation();
           }}
-          className="space-y-2"
+          className="space-y-1.5 sm:space-y-2"
         >
-          <textarea
-            ref={inputRef}
-            value={inputText}
-            onChange={(e) => setInputText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                e.preventDefault();
-                handleSubmitTranslation();
-              }
-            }}
-            placeholder="Type or speak your English translation..."
-            rows={2}
-            disabled={evaluating || passageLoading || !currentRound?.passage || translationLocked}
-            className="w-full min-h-[56px] sm:min-h-[76px] max-h-[140px] sm:max-h-[200px] bg-[#0e0f17] border border-gray-800 rounded-xl px-3.5 sm:px-4 py-2 sm:py-2.5 text-base sm:text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-none sm:resize-y disabled:opacity-60"
-          />
-          <div className="flex items-center justify-between gap-2">
-            <span className="hidden sm:inline text-[10px] text-gray-500 font-medium">
-              Enter adds a new line · Ctrl/⌘ + Enter translates
-            </span>
+          {/* Desktop shortcut text */}
+          <div className="hidden sm:flex justify-between items-center text-[10px] text-gray-500 font-medium">
+            <span>Enter adds a new line · Ctrl/⌘ + Enter translates</span>
+          </div>
+
+          {/* Full-Width Translation Input Textarea */}
+          <div className="w-full">
+            <textarea
+              ref={inputRef}
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onFocus={() => {
+                if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+                  window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  e.preventDefault();
+                  handleSubmitTranslation();
+                }
+              }}
+              placeholder="Type or speak your English translation..."
+              rows={2}
+              disabled={evaluating || passageLoading || !currentRound?.passage || translationLocked}
+              className="w-full min-h-[46px] sm:min-h-[54px] max-h-[110px] sm:max-h-[140px] bg-[#0e0f17] border border-gray-800 rounded-xl px-3.5 sm:px-4 py-2 sm:py-2.5 text-base sm:text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-none disabled:opacity-60"
+            />
+          </div>
+
+          {/* Controls Bar Under Textarea */}
+          <div className="flex items-center justify-between gap-2 w-full">
+            <div className="flex items-center gap-1.5">
+              {/* Mobile Actions Drawer Toggle */}
+              <button
+                type="button"
+                data-testid="toggle-mobile-actions"
+                onClick={() => setMobileActionsOpen(!mobileActionsOpen)}
+                className="py-1 px-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold border border-gray-700/70 flex items-center gap-1 transition cursor-pointer"
+              >
+                <span>⚡</span>
+                <span className="text-[11px] text-purple-300 font-bold">Actions {mobileActionsOpen ? '▼' : '▲'}</span>
+              </button>
+
+              {/* Audio Recorder Button */}
+              <div className="shrink-0 flex items-center">
+                <AudioRecorder
+                  settings={settings}
+                  onTranscribed={insertTranscription}
+                  onError={(err) => setErrorMsg(err)}
+                />
+              </div>
+            </div>
+
+            {/* Translate Button */}
             <button
               type="submit"
               disabled={!canSubmit}
-              className="w-full sm:w-auto px-5 py-2 sm:py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
+              className="px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
             >
               Translate ▶
             </button>
