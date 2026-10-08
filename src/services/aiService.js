@@ -386,33 +386,75 @@ Constraints: Level: ${settings.level || 'intermediate'}. Formality: ${settings.f
 }
 
 /**
+ * Generate ONE natural Russian sentence for a single target construction.
+ * Pure natural Russian text without brackets, clues, or message history.
+ *
+ * @param {Object} card Target construction item (construction, improved)
+ * @param {Object} settings User configuration settings (level, formality, openaiApiKey, openaiModel)
+ * @returns {Promise<string>} Clean Russian sentence text
+ */
+export async function generateTranslationSentence(card = {}, settings = {}) {
+  const construction = (card?.construction || card?.improved || '').trim();
+  const explanation = (card?.explanation || '').trim();
+  const nuanceHint = explanation ? ` (Pattern nuance: ${explanation})` : '';
+
+  const systemMessage = `You are a Russian language tutor helping an English learner practice natural spoken constructions.
+Write EXACTLY ONE natural, conversational sentence in RUSSIAN (на русском языке) where a native speaker would naturally use this English construction when translating into English: "${construction}"${nuanceHint}.
+
+Rules:
+- Write ONLY the Russian sentence. No English words, no bracket tags, no clues, no extra commentary.
+- The sentence must sound natural and conversational in everyday spoken Russian.
+- Level: ${settings.level || 'intermediate'}. Formality: ${settings.formality || 'casual'}.`;
+
+  const formattedMessages = [
+    { role: 'system', content: systemMessage },
+    { role: 'user', content: 'Write the Russian sentence now.' },
+  ];
+
+  const reply = await requestOpenAIChat(settings, {
+    messages: formattedMessages,
+    temperature: 0.7,
+    maxTokens: 500,
+  });
+
+  const cleaned = (reply || '').trim();
+  if (!cleaned) {
+    throw new Error(
+      'The AI model ran out of tokens before producing output. Try a different OpenAI model in Settings.'
+    );
+  }
+  return cleaned;
+}
+
+/**
  * Evaluate the learner's English translation for the current round.
  * Returns the raw model reply; interpret it with parseTranslationVerdict.
  *
- * @param {Array} roundCards Target construction items for the current round
- * @param {string} passageText The Russian passage the learner translated
+ * @param {Array|Object} roundCards Target construction item(s) for the current round
+ * @param {string} passageText The Russian sentence or passage the learner translated
  * @param {string} userTranslation The learner's English translation
  * @param {Object} settings User configuration settings
  * @returns {Promise<string>} Raw verdict JSON text
  */
 export async function evaluateTranslationRound(roundCards = [], passageText = '', userTranslation = '', settings = {}) {
-  const phraseList = roundCards
+  const cards = Array.isArray(roundCards) ? roundCards : [roundCards].filter(Boolean);
+  const phraseList = cards
     .map((c, i) => `${i + 1}. Construction: "${c.construction || c.improved}"`)
     .join('\n');
 
   const systemMessage = `You are an English speaking coach grading a Russian-to-English translation exercise.
 
-The learner was given this Russian passage:
+The learner was given this Russian sentence:
 "${passageText}"
 
-The target constructions for this round are:
+The target construction(s) for this round:
 ${phraseList}
 
 Rules:
-1. Compare the learner's English translation against the Russian passage above, and grade ONLY the learner's usage of the target constructions — not whether a different construction would sound more idiomatic.
+1. Compare the learner's English translation against the Russian sentence above, and grade ONLY the learner's usage of the target constructions — not whether a different construction would sound more idiomatic.
 2. Report EVERY target construction exactly once in "constructions":
    - "used": true when the learner attempted that construction, false when it is absent from their translation.
-   - "quality": "natural" when the learner used that target construction grammatically and appropriately for the passage's meaning — even if a different construction would be more idiomatic; "awkward" only when their usage of THAT construction is actually wrong or misused; null when "used" is false.
+   - "quality": "natural" when the learner used that target construction grammatically and appropriately for the sentence's meaning — even if a different construction would be more idiomatic; "awkward" only when their usage of THAT target construction itself is actually wrong or misused; null when "used" is false. IMPORTANT: Grammar errors, typos, or awkwardness in OTHER parts of the sentence MUST NOT cause the target construction's quality to be marked as "awkward".
    - When a target lists alternatives separated by "/", using any ONE of the alternatives correctly counts as using the construction.
    - "mine": the learner's own phrase for that construction, or null when they did not use it.
    - "better": the SAME target construction used correctly (required when "quality" is "awkward" or "used" is false). NEVER propose replacing the target construction with a different construction or phrasing.
@@ -436,7 +478,7 @@ Constraints: Level: ${settings.level || 'intermediate'}. Write the summary, the 
 
   const formattedMessages = [
     { role: 'system', content: systemMessage },
-    { role: 'user', content: `Here is my English translation of the passage:\n\n"${userTranslation}"` },
+    { role: 'user', content: `Here is my English translation of the sentence:\n\n"${userTranslation}"` },
   ];
 
   const rawContent = await requestOpenAIChat(settings, {

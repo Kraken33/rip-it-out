@@ -5,13 +5,13 @@ import { MemoryRouter } from 'react-router-dom';
 import TranslationPracticeSession from '../screens/TranslationPracticeSession';
 
 const mocks = vi.hoisted(() => ({
-  generateTranslationRoundPassage: vi.fn(),
+  generateTranslationSentence: vi.fn(),
   evaluateTranslationRound: vi.fn(),
   dictation: { transcription: 'invited him over' },
 }));
 
 vi.mock('../services/aiService', () => ({
-  generateTranslationRoundPassage: mocks.generateTranslationRoundPassage,
+  generateTranslationSentence: mocks.generateTranslationSentence,
   evaluateTranslationRound: mocks.evaluateTranslationRound,
   transcribeAudio: vi.fn().mockResolvedValue('I invited a friend over'),
 }));
@@ -24,29 +24,37 @@ vi.mock('../components/AudioRecorder', () => ({
   ),
 }));
 
-const PASSAGE = 'Вчера я [[пригласил друга в гости|invite over]] и мы [[поболтали|catch up]].';
+const SENTENCE = 'Вчера я пригласил друга в гости.';
 
 const buildVerdict = (constructions, { summary = 'ok', rewriteNeeded = false, rewrite = '' } = {}) =>
   JSON.stringify({ verdict: { summary, rewrite_needed: rewriteNeeded, rewrite, constructions } });
 
 const NATURAL_VERDICT = buildVerdict([
-  { target: 'invite over', used: true, quality: 'natural', mine: 'invited a friend over', better: 'invited a friend over', note: 'SHOULD NOT RENDER' },
-  { target: 'plan on', used: true, quality: 'natural', mine: 'plan on going', better: 'plan on going', note: null },
-  { target: 'turn down', used: true, quality: 'natural', mine: 'turned it down', better: 'turned it down', note: null },
-  { target: 'catch up', used: true, quality: 'natural', mine: 'caught up', better: 'caught up', note: null },
+  {
+    target: 'invite over',
+    used: true,
+    quality: 'natural',
+    mine: 'invited a friend over',
+    better: 'invited a friend over',
+    note: 'SHOULD NOT RENDER',
+  },
 ]);
 
 const PROBLEM_VERDICT = buildVerdict(
   [
-    { target: 'invite over', used: true, quality: 'awkward', mine: 'invited a friend to my house', better: 'invited a friend over', note: '"over" carries the target.' },
-    { target: 'plan on', used: true, quality: 'natural', mine: 'plan on going', better: 'plan on going', note: 'SHOULD NOT RENDER' },
-    { target: 'turn down', used: true, quality: 'natural', mine: 'turned it down', better: 'turned it down', note: null },
-    { target: 'catch up', used: false, quality: null, mine: null, better: 'We should catch up soon.', note: 'target missing' },
+    {
+      target: 'invite over',
+      used: true,
+      quality: 'awkward',
+      mine: 'invited a friend to my house',
+      better: 'invited a friend over',
+      note: '"over" carries the target.',
+    },
   ],
   {
-    summary: 'Close — two targets need work.',
+    summary: 'Close — target needs work.',
     rewriteNeeded: true,
-    rewrite: 'Yesterday I invited a friend over so we could catch up.',
+    rewrite: 'Yesterday I invited a friend over.',
   }
 );
 
@@ -59,19 +67,12 @@ describe('TranslationPracticeSession Component', () => {
     { improvementId: 'c5', construction: 'look forward to', improved: 'looking forward to it' },
   ];
 
-  const eightCards = [
-    ...dummyCards,
-    { improvementId: 'c6', construction: 'get around to', improved: 'got around to it' },
-    { improvementId: 'c7', construction: 'come up with', improved: 'came up with an idea' },
-    { improvementId: 'c8', construction: 'run into', improved: 'ran into him' },
-  ];
-
   const dummySettings = { openaiApiKey: 'sk_test' };
 
   const getTextarea = () => screen.getByPlaceholderText(/Type or speak your English translation/i);
 
-  const waitForPassage = () =>
-    waitFor(() => expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument());
+  const waitForSentence = (text = /пригласил друга в гости/i) =>
+    waitFor(() => expect(screen.getByText(text)).toBeInTheDocument());
 
   const renderSession = (cards = dummyCards) =>
     render(
@@ -89,14 +90,14 @@ describe('TranslationPracticeSession Component', () => {
     screen.getByText((_, el) => el?.tagName === 'P' && el.textContent === text);
 
   beforeEach(() => {
-    mocks.generateTranslationRoundPassage.mockReset();
+    mocks.generateTranslationSentence.mockReset();
     mocks.evaluateTranslationRound.mockReset();
-    mocks.generateTranslationRoundPassage.mockResolvedValue(PASSAGE);
+    mocks.generateTranslationSentence.mockResolvedValue(SENTENCE);
     mocks.evaluateTranslationRound.mockResolvedValue(NATURAL_VERDICT);
     mocks.dictation.transcription = 'invited him over';
   });
 
-  it('renders translation practice header and initial tagged Russian passage', async () => {
+  it('renders translation practice header and initial Russian sentence', async () => {
     render(
       <MemoryRouter>
         <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} />
@@ -109,20 +110,14 @@ describe('TranslationPracticeSession Component', () => {
     expect(screen.getByRole('button', { name: /Finish & Rate Recall →/i })).toBeInTheDocument();
 
     await waitFor(() => {
-      expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
+      expect(screen.getByText(SENTENCE)).toBeInTheDocument();
     });
   });
 
-  it('advances candidate pool across rounds via Next Round', async () => {
-    mocks.generateTranslationRoundPassage
-      .mockResolvedValueOnce({
-        picked: ['invite over', 'plan on'],
-        passage: 'Вчера я [[пригласил друга в гости|invite over]] и мы [[планировали|plan on]].',
-      })
-      .mockResolvedValueOnce({
-        picked: ['turn down', 'catch up'],
-        passage: 'Он [[отказался|turn down]], но мы [[поболтали|catch up]].',
-      });
+  it('advances to next card in queue automatically when translation is natural', async () => {
+    mocks.generateTranslationSentence
+      .mockResolvedValueOnce('Вчера я пригласил друга в гости.')
+      .mockResolvedValueOnce('Я планирую пойти в театр.');
 
     render(
       <MemoryRouter>
@@ -130,57 +125,106 @@ describe('TranslationPracticeSession Component', () => {
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument());
-    // Round 1 receives the full pool of available cards (5 cards)
-    expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(1);
-    expect(mocks.generateTranslationRoundPassage.mock.calls[0][0].map((c) => c.construction)).toEqual([
-      'invite over',
-      'plan on',
-      'turn down',
-      'catch up',
-      'look forward to',
-    ]);
+    await waitForSentence();
+    expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(1);
+    expect(mocks.generateTranslationSentence).toHaveBeenCalledWith(dummyCards[0], dummySettings);
 
-    submitTranslation('Yesterday I invited a friend over and we plan on meeting.');
+    submitTranslation('Yesterday I invited a friend over.');
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /Next Round/i }));
-    await waitFor(() => expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(2));
-    // Round 2 receives the reduced candidate pool (3 remaining cards: turn down, catch up, look forward to)
-    expect(mocks.generateTranslationRoundPassage.mock.calls[1][0].map((c) => c.construction)).toEqual([
-      'turn down',
-      'catch up',
-      'look forward to',
-    ]);
+    // Immediately advances and calls generateTranslationSentence for the second card (plan on)
+    await waitFor(() => expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(2));
+    expect(mocks.generateTranslationSentence).toHaveBeenLastCalledWith(dummyCards[1], dummySettings);
     expect(screen.getByText(/Round 2/i)).toBeInTheDocument();
-    expect(screen.queryByText(/of \d/i)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Я планирую пойти в театр.')).toBeInTheDocument());
+  });
+
+  it('retries same construction with fresh sentence when translation is awkward or missed', async () => {
+    mocks.generateTranslationSentence
+      .mockResolvedValueOnce('Вчера я пригласил друга в гости.')
+      .mockResolvedValueOnce('Почему бы не позвать коллегу на обед?');
+    mocks.evaluateTranslationRound.mockResolvedValueOnce(PROBLEM_VERDICT);
+
+    render(
+      <MemoryRouter>
+        <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} />
+      </MemoryRouter>
+    );
+
+    await waitForSentence();
+    expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(1);
+
+    submitTranslation('Yesterday I invited a friend to my house.');
+    await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
+
+    // Immediately generates a fresh sentence for the SAME card (dummyCards[0])
+    await waitFor(() => expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(2));
+    expect(mocks.generateTranslationSentence).toHaveBeenLastCalledWith(dummyCards[0], dummySettings);
+    expect(screen.getByText(/Round 2/i)).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText('Почему бы не позвать коллегу на обед?')).toBeInTheDocument()
+    );
+  });
+
+  it('advances to next card via manual Next Round button', async () => {
+    mocks.generateTranslationSentence
+      .mockResolvedValueOnce('Вчера я пригласил друга в гости.')
+      .mockResolvedValueOnce('Я планирую пойти в театр.');
+
+    render(
+      <MemoryRouter>
+        <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} />
+      </MemoryRouter>
+    );
+
+    await waitForSentence();
+    expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /Next Round/i }));
+
+    await waitFor(() => expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(2));
+    expect(mocks.generateTranslationSentence).toHaveBeenLastCalledWith(dummyCards[1], dummySettings);
+    expect(screen.getByText(/Round 2/i)).toBeInTheDocument();
   });
 
   it('passes ordered per-round payload and distinct practiced cards to onFinish', async () => {
-    mocks.generateTranslationRoundPassage
-      .mockResolvedValueOnce({
-        picked: ['invite over', 'plan on'],
-        passage: 'Вчера я [[пригласил друга в гости|invite over]] и мы [[планировали|plan on]].',
-      })
-      .mockResolvedValueOnce({
-        picked: ['turn down', 'catch up'],
-        passage: 'Он [[отказался|turn down]], но мы [[поболтали|catch up]].',
-      });
+    mocks.generateTranslationSentence
+      .mockResolvedValueOnce('Вчера я пригласил друга в гости.')
+      .mockResolvedValueOnce('Я планирую пойти в театр.');
+
+    mocks.evaluateTranslationRound
+      .mockResolvedValueOnce(NATURAL_VERDICT)
+      .mockResolvedValueOnce(
+        buildVerdict([
+          {
+            target: 'plan on',
+            used: true,
+            quality: 'natural',
+            mine: 'I plan on going to the theater',
+            better: '',
+            note: null,
+          },
+        ])
+      );
 
     const onFinishMock = vi.fn();
     render(
       <MemoryRouter>
-        <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} onFinish={onFinishMock} />
+        <TranslationPracticeSession
+          allCards={dummyCards}
+          settings={dummySettings}
+          onFinish={onFinishMock}
+        />
       </MemoryRouter>
     );
 
-    await waitFor(() => expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument());
-    submitTranslation('First translation here.');
+    await waitForSentence();
+    submitTranslation('Yesterday I invited a friend over.');
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /Next Round/i }));
-    await waitFor(() => expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(2));
-    submitTranslation('Second translation here.');
+    // Second round automatically loaded
+    await waitFor(() => expect(screen.getByText('Я планирую пойти в театр.')).toBeInTheDocument());
+    submitTranslation('I plan on going to the theater.');
     await waitFor(() => expect(screen.getAllByTestId('translation-verdict')).toHaveLength(2));
 
     fireEvent.click(screen.getByRole('button', { name: /Finish & Rate Recall/i }));
@@ -190,34 +234,31 @@ describe('TranslationPracticeSession Component', () => {
     expect(orderedRounds).toHaveLength(2);
     expect(orderedRounds[0]).toMatchObject({
       roundIndex: 0,
-      translationText: 'First translation here.',
+      translationText: 'Yesterday I invited a friend over.',
     });
-    expect(orderedRounds[0].passageText).toContain('пригласил друга в гости');
-    expect(orderedRounds[0].cards.map((c) => c.construction)).toEqual(['invite over', 'plan on']);
+    expect(orderedRounds[0].passageText).toBe('Вчера я пригласил друга в гости.');
+    expect(orderedRounds[0].cards.map((c) => c.construction)).toEqual(['invite over']);
     expect(orderedRounds[1]).toMatchObject({
       roundIndex: 1,
-      translationText: 'Second translation here.',
+      translationText: 'I plan on going to the theater.',
     });
-    expect(orderedRounds[1].cards.map((c) => c.construction)).toEqual(['turn down', 'catch up']);
-    expect(practiced.map((c) => c.construction)).toEqual([
-      'invite over',
-      'plan on',
-      'turn down',
-      'catch up',
-    ]);
+    expect(orderedRounds[1].cards.map((c) => c.construction)).toEqual(['plan on']);
+    expect(practiced.map((c) => c.construction)).toEqual(['invite over', 'plan on']);
   });
 
   it('calls onFinish with empty payload when Finish Practice is clicked with no rounds', async () => {
     const onFinishMock = vi.fn();
     render(
       <MemoryRouter>
-        <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} onFinish={onFinishMock} />
+        <TranslationPracticeSession
+          allCards={dummyCards}
+          settings={dummySettings}
+          onFinish={onFinishMock}
+        />
       </MemoryRouter>
     );
 
-    await waitFor(() => {
-      expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
-    });
+    await waitForSentence();
 
     const finishBtn = screen.getByRole('button', { name: /Finish & Rate Recall/i });
     fireEvent.click(finishBtn);
@@ -225,9 +266,29 @@ describe('TranslationPracticeSession Component', () => {
     expect(onFinishMock).toHaveBeenCalledWith([], []);
   });
 
+  it('calls generateTranslationSentence statelessly with 1 card and zero conversation history', async () => {
+    renderSession();
+    await waitForSentence();
+
+    expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(1);
+    expect(mocks.generateTranslationSentence).toHaveBeenCalledWith(dummyCards[0], dummySettings);
+    // Verifies no history was passed
+    expect(mocks.generateTranslationSentence.mock.calls[0].length).toBe(2);
+  });
+
+  it('renders natural Russian sentence directly without bracket annotations or spoiler tooltips', async () => {
+    renderSession();
+    await waitForSentence();
+
+    expect(screen.getByText(SENTENCE)).toBeInTheDocument();
+    // No interactive spoiler buttons or tooltips
+    expect(screen.queryByTestId('interactive-construction')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('construction-tooltip')).not.toBeInTheDocument();
+  });
+
   it('offers a multi-line text area for the translation instead of a one-row input', async () => {
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
     const textarea = getTextarea();
     expect(textarea.tagName).toBe('TEXTAREA');
@@ -236,7 +297,7 @@ describe('TranslationPracticeSession Component', () => {
 
   it('keeps the line breaks of a passage-length translation in the submitted message', async () => {
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
     const translation = 'Yesterday I invited a friend over.\nThen we caught up for an hour.';
     submitTranslation(translation);
@@ -247,7 +308,7 @@ describe('TranslationPracticeSession Component', () => {
 
   it('does not translate on a plain Enter but does on Ctrl/Cmd+Enter', async () => {
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
     const textarea = getTextarea();
     fireEvent.change(textarea, { target: { value: 'Yesterday I invited a friend over.' } });
@@ -263,7 +324,7 @@ describe('TranslationPracticeSession Component', () => {
 
   it('inserts dictated speech at the caret and submits both parts', async () => {
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
     const textarea = getTextarea();
     fireEvent.change(textarea, { target: { value: 'Yesterday I home' } });
@@ -280,7 +341,7 @@ describe('TranslationPracticeSession Component', () => {
 
   it('neither sends nor clears a whitespace-only translation', async () => {
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
     const textarea = getTextarea();
     fireEvent.change(textarea, { target: { value: '   ' } });
@@ -301,7 +362,7 @@ describe('TranslationPracticeSession Component', () => {
     );
 
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
     submitTranslation('Yesterday I invited a friend over.');
 
     expect(findUserBubble('Yesterday I invited a friend over.')).toBeInTheDocument();
@@ -315,51 +376,16 @@ describe('TranslationPracticeSession Component', () => {
     expect(mocks.evaluateTranslationRound).toHaveBeenCalledTimes(1);
   });
 
-  it('renders interactive construction tags that reveal target construction on click', async () => {
-    renderSession();
-    await waitForPassage();
-    expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
-    // Static inline label is NOT rendered by default
-    expect(screen.queryByText('(invite over)')).not.toBeInTheDocument();
-
-    // Click/tap the interactive construction
-    const constrBtn = screen.getByRole('button', { name: /пригласил друга в гости/i });
-    expect(constrBtn).toBeInTheDocument();
-    fireEvent.click(constrBtn);
-
-    // Target tooltip is revealed
-    expect(screen.getByTestId('construction-tooltip')).toHaveTextContent('invite over');
-
-    // Click again toggles it off
-    fireEvent.click(constrBtn);
-    expect(screen.queryByTestId('construction-tooltip')).not.toBeInTheDocument();
-
-    submitTranslation('Yesterday I invited a friend over and we caught up.');
-
-    await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
-    expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
-  });
-
   it('renders one coverage badge per round target and no rewrite when everything is natural', async () => {
     renderSession();
-    await waitForPassage();
-    submitTranslation('Yesterday I invited a friend over, planned on staying and caught up.');
+    await waitForSentence();
+    submitTranslation('Yesterday I invited a friend over.');
 
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
     const badges = screen.getAllByTestId('verdict-target');
-    expect(badges.map((b) => b.getAttribute('data-state'))).toEqual([
-      'natural',
-      'natural',
-      'natural',
-      'natural',
-    ]);
-    expect(badges.map((b) => b.textContent.replace('✓', ''))).toEqual([
-      'invite over',
-      'plan on',
-      'turn down',
-      'catch up',
-    ]);
+    expect(badges.map((b) => b.getAttribute('data-state'))).toEqual(['natural']);
+    expect(badges.map((b) => b.textContent.replace('✓', ''))).toEqual(['invite over']);
 
     expect(screen.queryByText(/Natural version of your sentence/i)).not.toBeInTheDocument();
     expect(screen.queryByText('SHOULD NOT RENDER')).not.toBeInTheDocument();
@@ -369,25 +395,18 @@ describe('TranslationPracticeSession Component', () => {
     mocks.evaluateTranslationRound.mockResolvedValueOnce(PROBLEM_VERDICT);
 
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
     submitTranslation('Yesterday I invited a friend to my house.');
 
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
     expect(screen.getAllByTestId('verdict-target').map((b) => b.getAttribute('data-state'))).toEqual([
       'awkward',
-      'natural',
-      'natural',
-      'missing',
     ]);
 
     expect(screen.getByText(/Natural version of your sentence/i)).toBeInTheDocument();
-    expect(
-      screen.getByText('Yesterday I invited a friend over so we could catch up.')
-    ).toBeInTheDocument();
+    expect(screen.getByText('Yesterday I invited a friend over.')).toBeInTheDocument();
     expect(screen.getByText('"over" carries the target.')).toBeInTheDocument();
-    expect(screen.getByText('target missing')).toBeInTheDocument();
-    expect(screen.getByText('We should catch up soon.')).toBeInTheDocument();
     expect(screen.queryByText('SHOULD NOT RENDER')).not.toBeInTheDocument();
   });
 
@@ -395,7 +414,7 @@ describe('TranslationPracticeSession Component', () => {
     mocks.evaluateTranslationRound.mockResolvedValueOnce('Your translation reads naturally to me.');
 
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
     submitTranslation('Yesterday I invited a friend over.');
 
     await waitFor(() =>
@@ -410,23 +429,7 @@ describe('TranslationPracticeSession Component', () => {
     expect(mocks.evaluateTranslationRound).toHaveBeenCalledTimes(2);
   });
 
-  it('sends verdict-free history to the next round passage request', async () => {
-    renderSession(eightCards);
-    await waitForPassage();
-    submitTranslation('Yesterday I invited a friend over.');
-
-    await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
-
-    fireEvent.click(screen.getByRole('button', { name: /Next Round/i }));
-    await waitFor(() => expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(2));
-
-    const history = mocks.generateTranslationRoundPassage.mock.calls[1][2];
-    expect(history.length).toBeGreaterThan(0);
-    expect(history.every((m) => Object.keys(m).sort().join(',') === 'content,role')).toBe(true);
-    expect(JSON.stringify(history)).not.toContain('verdict');
-  });
-
-  it('requests the round passage once under StrictMode', async () => {
+  it('requests the round sentence once under StrictMode', async () => {
     render(
       <StrictMode>
         <MemoryRouter>
@@ -435,28 +438,24 @@ describe('TranslationPracticeSession Component', () => {
       </StrictMode>
     );
 
-    await waitForPassage();
-    expect(mocks.generateTranslationRoundPassage).toHaveBeenCalledTimes(1);
+    await waitForSentence();
+    expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(1);
   });
 
   it('renders responsive mobile container, streamlined header, and toolbar controls without chip bar', async () => {
     const { container } = renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
-    // Check container has dynamic dvh and sm:h-[82vh] classes
     const outerContainer = container.querySelector('.glass-panel');
     expect(outerContainer.className).toContain('h-[calc(100dvh-5.5rem)]');
     expect(outerContainer.className).toContain('sm:h-[82vh]');
 
-    // Check round targets chip container is NOT present
     expect(screen.queryByText(/Round Targets:/i)).not.toBeInTheDocument();
 
-    // Check top header is hidden on mobile (hidden sm:flex)
     const header = container.querySelector('.border-b');
     expect(header.className).toContain('hidden');
     expect(header.className).toContain('sm:flex');
 
-    // Check desktop translate button is hidden on mobile
     const desktopTranslateBtn = screen.getByRole('button', { name: /Translate ▶/i });
     expect(desktopTranslateBtn.className).toContain('hidden');
     expect(desktopTranslateBtn.className).toContain('sm:inline-flex');
@@ -465,26 +464,23 @@ describe('TranslationPracticeSession Component', () => {
   it('renders full-width composer with text-base font and resets scroll on focus', async () => {
     const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
     const textarea = getTextarea();
     expect(textarea).toHaveClass('text-base');
     expect(textarea).toHaveClass('w-full');
 
-    // Focus triggers instant window.scrollTo
     fireEvent.focus(textarea);
     expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
 
-    expect(screen.getByText('пригласил друга в гости')).toBeInTheDocument();
+    expect(screen.getByText(SENTENCE)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Translate ▶/i })).toBeInTheDocument();
     expect(screen.getByTestId('toggle-mobile-practice-actions')).toBeInTheDocument();
 
-    // Tap toggle to open mobile actions panel
     fireEvent.click(screen.getByTestId('toggle-mobile-practice-actions'));
     expect(screen.getByTestId('mobile-practice-actions-panel')).toBeInTheDocument();
     expect(screen.getByTestId('mobile-practice-translate-button')).toBeInTheDocument();
 
-    // Tap close
     fireEvent.click(screen.getByTestId('close-mobile-practice-actions'));
     expect(screen.queryByTestId('mobile-practice-actions-panel')).not.toBeInTheDocument();
 
@@ -493,36 +489,48 @@ describe('TranslationPracticeSession Component', () => {
 
   it('submits translation via mobile actions HUD translate button', async () => {
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
     const textarea = getTextarea();
     fireEvent.change(textarea, { target: { value: 'I invited a friend over.' } });
 
-    // Open mobile actions panel
     fireEvent.click(screen.getByTestId('toggle-mobile-practice-actions'));
     const mobileTranslateBtn = screen.getByTestId('mobile-practice-translate-button');
     expect(mobileTranslateBtn).toBeInTheDocument();
 
     fireEvent.click(mobileTranslateBtn);
 
-    // Panel closes and evaluation is triggered
     expect(screen.queryByTestId('mobile-practice-actions-panel')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(screen.getByTestId('translation-verdict')).toBeInTheDocument();
     });
   });
 
-  it('triggers auto-scroll to active practice passage when translation textarea is focused', async () => {
+  it('triggers auto-scroll to active practice sentence when translation textarea is focused', async () => {
     const scrollIntoViewSpy = vi.fn();
     Element.prototype.scrollIntoView = scrollIntoViewSpy;
 
     renderSession();
-    await waitForPassage();
+    await waitForSentence();
 
     const textarea = getTextarea();
     fireEvent.focus(textarea);
 
     expect(scrollIntoViewSpy).toHaveBeenCalled();
   });
-});
 
+  it('displays completion banner and disables input when all cards in queue are passed', async () => {
+    const singleCard = [dummyCards[0]];
+    renderSession(singleCard);
+    await waitForSentence();
+
+    submitTranslation('Yesterday I invited a friend over.');
+    await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
+
+    await waitFor(() => {
+      expect(screen.getByTestId('session-completed-banner')).toBeInTheDocument();
+    });
+    expect(screen.getByText(/All target constructions practiced!/i)).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/Session complete/i)).toBeDisabled();
+  });
+});

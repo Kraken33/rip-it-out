@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, parseRoundPassagePayload, evaluateTranslationRound, generateTranslationStoryPassage, evaluateTranslationStory, extractConstruction, OPENAI_MODEL_OPTIONS } from '../services/aiService';
+import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, generateTranslationSentence, parseRoundPassagePayload, evaluateTranslationRound, generateTranslationStoryPassage, evaluateTranslationStory, extractConstruction, OPENAI_MODEL_OPTIONS } from '../services/aiService';
 
 describe('AI Service Layer', () => {
   beforeEach(() => {
@@ -477,6 +477,81 @@ describe('AI Service Layer', () => {
     });
   });
 
+  describe('generateTranslationSentence', () => {
+    it('throws error when no API key is set', async () => {
+      await expect(generateTranslationSentence({ construction: 'invite over' }, {})).rejects.toThrow(
+        'No API Key configured'
+      );
+    });
+
+    it('requests a pure Russian sentence without bracket tags, history, or example sentences', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Он пригласил меня в гости на чай.' } }],
+        }),
+      });
+
+      const sentence = await generateTranslationSentence(
+        { construction: 'invite over', improved: 'He invited me over' },
+        { openaiApiKey: 'sk_123' }
+      );
+
+      expect(sentence).toBe('Он пригласил меня в гости на чай.');
+
+      const [url, options] = fetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+
+      expect(url).toBe('https://api.openai.com/v1/chat/completions');
+      expect(body.temperature).toBe(0.7);
+      expect(body.max_tokens).toBe(500);
+      expect(body.messages).toHaveLength(2);
+      expect(body.messages[0].content).toContain('invite over');
+      expect(body.messages[0].content).toContain('Write ONLY the Russian sentence');
+      expect(body.messages[0].content).not.toContain('Candidate pool');
+      expect(body.messages[0].content).not.toContain('Example:');
+      expect(body.messages[0].content).not.toContain('Pattern nuance:');
+    });
+
+    it('includes pattern nuance hint when explanation is provided', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Позови соседей на чай.' } }],
+        }),
+      });
+
+      const sentence = await generateTranslationSentence(
+        {
+          construction: 'invite over',
+          improved: 'He invited me over',
+          explanation: 'asking someone to visit your home',
+        },
+        { openaiApiKey: 'sk_123' }
+      );
+
+      expect(sentence).toBe('Позови соседей на чай.');
+
+      const [, options] = fetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+
+      expect(body.messages[0].content).toContain('Pattern nuance: asking someone to visit your home');
+      expect(body.messages[0].content).not.toContain('Example:');
+      expect(body.messages[0].content).not.toContain('He invited me over');
+    });
+
+    it('rejects when the model returns an empty sentence', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '' } }] }),
+      });
+
+      await expect(
+        generateTranslationSentence({ construction: 'invite over' }, { openaiApiKey: 'sk_123' })
+      ).rejects.toThrow('ran out of tokens');
+    });
+  });
+
   describe('evaluateTranslationRound', () => {
     const roundCards = [{ construction: 'invite over', improved: 'I invited him over' }];
     const settings = { openaiApiKey: 'sk_123' };
@@ -516,6 +591,9 @@ describe('AI Service Layer', () => {
       expect(systemPrompt).toContain(
         'preserving every correctly used target construction as-is'
       );
+      expect(systemPrompt).toContain(
+        'Grammar errors, typos, or awkwardness in OTHER parts of the sentence MUST NOT cause the target construction\'s quality to be marked as "awkward"'
+      );
       expect(body.temperature).toBe(0.3);
       expect(body.max_tokens).toBe(8000);
       expect(body.messages[1].content).toContain('Yesterday I invited a friend to my house.');
@@ -542,6 +620,24 @@ describe('AI Service Layer', () => {
       await expect(
         evaluateTranslationRound(roundCards, 'passage', 'translation', settings)
       ).rejects.toThrow('Rate limit reached');
+    });
+
+    it('handles a single card object passed directly instead of an array', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ choices: [{ message: { content: '{"verdict":{}}' } }] }),
+      });
+
+      await evaluateTranslationRound(
+        { construction: 'put off', improved: 'put off the meeting' },
+        'Мы отложили встречу.',
+        'We put off the meeting.',
+        settings
+      );
+
+      const body = JSON.parse(fetch.mock.calls[0][1].body);
+      expect(body.messages[0].content).toContain('put off');
+      expect(body.messages[1].content).toContain('We put off the meeting.');
     });
   });
 

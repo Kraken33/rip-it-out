@@ -1,7 +1,7 @@
 # Russian Practice Specification
 
 ## Purpose
-Prompt external LLMs with 5 Russian scenario questions for practicing English constructions.
+Prompt external LLMs with Russian scenario questions and single-sentence translation exercises for practicing English constructions.
 
 ## Requirements
 
@@ -14,58 +14,46 @@ The system SHALL generate prompt structures for Russian language practice using 
 
 #### Scenario: Prompt Generation for Multi-Round Translation
 - **WHEN** user selects prompt-based translation practice mode with 20 upcoming cards
-- **THEN** Prompt #5 is generated instructing the LLM to run an unlimited-round exercise in Russian, embedding exactly 2 target constructions per round with visual bracket tags `[[Russian phrase|target construction]]`, awaiting English translation after each round, then offering Next Round or Finish on learner request.
+- **THEN** Prompt #5 is generated instructing the LLM to run a single-sentence translation exercise in Russian, embedding exactly 1 target construction per round without spoiler tags or inline English answers, awaiting English translation after each round, repeating the target construction ONLY if the target construction itself was omitted or used incorrectly, and providing feedback while advancing to the next construction whenever the target construction was used correctly (even when unrelated errors exist elsewhere in the translation).
 
 ### Requirement: Multi-Round Russian Translation Practice
-The system SHALL practice top upcoming or due SRS cards in unlimited on-demand rounds of exactly 2 constructions each. When zero cards are due today, the system SHALL select the top 20 upcoming ("coming soon") cards sorted by scheduled review date so multi-round practice mode is always available. In seamless translation mode, the system SHALL provide a candidate pool of unpracticed constructions to the LLM, which SHALL select 2 constructions that fit together naturally and return a structured JSON response containing the picked constructions and the tagged Russian passage, after which the picked constructions SHALL be removed from the candidate pool for subsequent rounds.
+The system SHALL practice top upcoming or due SRS cards in stateless on-demand rounds of exactly 1 construction each. When zero cards are due today, the system SHALL select the top 20 upcoming ("coming soon") cards sorted by scheduled review date so practice mode is always available. In seamless translation mode, the system SHALL send the active construction and its conceptual nuance explanation to the LLM without concrete narrative sentence examples and without prior conversation history, receive a single natural Russian sentence with zero bracket tags or English clues, accept the learner's translation, and immediately evaluate and branch to the next round.
 
 #### Scenario: Batching SRS cards for translation rounds
 - **WHEN** user launches Translation Practice Mode
-- **THEN** the system selects the top 20 due cards (or top 20 upcoming cards when zero cards are due today) sorted by schedule and presents them for practice.
+- **THEN** the system selects the top 20 due cards (or top 20 upcoming cards when zero cards are due today) sorted by schedule and presents them for single-sentence practice.
 
 #### Scenario: Fallback Practice When Zero Cards Are Due
 - **WHEN** user launches Practice Mode (Scenario Q&A or Translation Practice) when zero cards are due today but cards exist in the vault
-- **THEN** the system fetches up to 20 upcoming ("coming soon") cards sorted by scheduled review date and initializes the practice candidate pool.
+- **THEN** the system fetches up to 20 upcoming ("coming soon") cards sorted by scheduled review date and initializes the practice candidate queue.
 
 #### Scenario: Unlimited two-construction rounds
 - **WHEN** the user practices in seamless translation mode
-- **THEN** each round embeds exactly 2 target constructions selected by the LLM from the unpracticed pool, the round count is not pre-computed, and after each evaluated translation the user may request Next Round (a fresh 2-construction passage) or Finish Practice at any time.
+- **THEN** each round embeds exactly 1 target construction in a single Russian sentence without clues, the round count is not pre-computed, and after each evaluated translation the system branches immediately to retry or advance.
 
 #### Scenario: Dynamic construction pool selection by the LLM
-- **WHEN** a translation round passage is requested in seamless translation mode
-- **THEN** the system sends the current pool of unpracticed candidate constructions to the LLM
-- **AND** the LLM selects 2 constructions from the pool that naturally complement each other, generates a short Russian passage embedding them with `[[Russian phrase|target construction]]` tags, and returns a structured JSON response containing the picked constructions and the passage.
+- **WHEN** a translation round sentence is requested in seamless translation mode
+- **THEN** the system sends the target construction and its conceptual nuance explanation (without embedding concrete narrative sentence examples) to the LLM without attaching prior message history
+- **AND** the LLM generates a single natural, conversational Russian sentence without bracket tags, clues, or English annotations.
 
 #### Scenario: Pool reduction per round
-- **WHEN** a translation round completes and the user requests Next Round
-- **THEN** the 2 constructions picked for that round are removed from the candidate pool
-- **AND** the next round's generation request is sent with the updated candidate pool, preventing reuse of those constructions and avoiding conversation history leakage.
+- **WHEN** a translation round completes and the learner's translation naturally used the target construction
+- **THEN** that construction is marked passed and removed from the active queue, and the next round begins immediately with the next unpracticed construction.
 
 #### Scenario: Construction queue beyond available cards
-- **WHEN** the user requests a round when fewer than 2 unpracticed constructions remain in the candidate pool
-- **THEN** the candidate pool is repopulated starting from the least-recently-practiced constructions in the session, never repeating a construction until every queued construction has been practiced once.
-
-### Requirement: Construction Highlighting and Parsing
-The system SHALL parse and render target construction annotations in generated Russian passages as interactive highlighted spans that reveal the English target construction on-demand when clicked or tapped, rather than permanently occupying inline text space.
-
-#### Scenario: Rendering highlighted constructions in Russian text
-- **WHEN** a Russian passage containing tagged constructions `[[Russian phrase|target construction]]` is received or generated
-- **THEN** the UI highlights the Russian phrase visually as an interactive element.
-
-#### Scenario: Revealing target construction on demand
-- **WHEN** the user clicks or taps on an interactive highlighted Russian phrase
-- **THEN** the UI reveals the corresponding target English construction via an interactive popover or badge tooltip.
+- **WHEN** the learner misses a target construction or requests further rounds
+- **THEN** a missed construction remains active for an immediate retry with a fresh sentence, and once all queued constructions are passed, the session completes.
 
 ### Requirement: Dual Mode Execution (Seamless and Prompt-based)
 The system SHALL support both in-app Seamless AI sessions and copy/paste Prompt-based sessions for Russian-to-English translation practice.
 
 #### Scenario: In-app Seamless AI translation session
 - **WHEN** user runs Translation Practice in Seamless AI mode
-- **THEN** the app presents Russian passages with highlighted constructions, accepts a multi-line typed or dictated English translation of the passage, returns a per-round evaluation verdict for that translation, and offers Next Round (2 fresh constructions) or Finish Practice controls after each round.
+- **THEN** the app presents a single natural Russian sentence for the active target construction without clue annotations, accepts typed or dictated English translation, immediately returns an evaluation verdict, and branches directly into the next round.
 
 #### Scenario: External LLM Prompt-based translation session
 - **WHEN** user runs Translation Practice in Prompt-based mode
-- **THEN** the app generates Prompt #5 for copying into ChatGPT/Claude web interfaces.
+- **THEN** the app generates Prompt #5 for copying into ChatGPT/Claude web interfaces with 1-construction single-sentence instructions.
 
 ### Requirement: Transition to Manual SRS Recall Rating
 The system SHALL present the SRS recall rating for the same cards that were practiced once translation practice completes.
@@ -89,11 +77,11 @@ The system SHALL present the SRS recall rating for the same cards that were prac
 - **THEN** the system presents the manual SRS rating interface allowing the user to score recall for every distinct construction practiced in the session, and the saved translation session artefact remains available independent of the rating outcome.
 
 ### Requirement: Multi-Line Translation Input
-The system SHALL provide a multi-line translation input in which a passage-length English answer can be written and reviewed in full before submission, and SHALL submit only on an explicit action rather than on a plain newline.
+The system SHALL provide a multi-line translation input in which an English answer can be written and reviewed in full before submission, and SHALL submit only on an explicit action rather than on a plain newline.
 
 #### Scenario: Writing and reviewing a passage-length translation
 - **WHEN** the user types a translation containing several sentences and line breaks
-- **THEN** the input displays the text across multiple visible lines without horizontal scrolling, preserves the line breaks verbatim, and can be resized by the user or grows with the content up to a maximum height that keeps the round's Russian passage visible.
+- **THEN** the input displays the text across multiple visible lines without horizontal scrolling, preserves the line breaks verbatim, and can be resized by the user or grows with the content up to a maximum height that keeps the round's Russian sentence visible.
 
 #### Scenario: Pressing Enter inside the translation input
 - **WHEN** the user presses Enter while the translation input has focus
@@ -108,15 +96,19 @@ The system SHALL provide a multi-line translation input in which a passage-lengt
 - **THEN** the system MUST NOT send an evaluation request and MUST retain the translation text.
 
 ### Requirement: Translation Verdict Evaluation
-The system SHALL evaluate each submitted English translation against the Russian passage and the round's target constructions, and SHALL report the outcome per target construction together with a corrected version of the learner's own translation. The evaluation SHALL grade only whether the learner used each target construction correctly — not whether a different construction would have been more idiomatic.
+The system SHALL evaluate each submitted English translation against the Russian sentence and the round's single target construction, and SHALL report the outcome together with a corrected version of the learner's own translation. The evaluation SHALL grade whether the learner used the target construction correctly and naturally.
 
 #### Scenario: Evaluation covers every target of the round
-- **WHEN** the user submits a translation for a round whose passage embeds N target constructions
-- **THEN** the evaluation reports exactly one outcome per target construction, each classified as used naturally, used awkwardly, or not used at all, and every target classified as awkward or not used also carries the learner's own phrase where one exists and a corrected example using that same target construction.
+- **WHEN** the user submits a translation for a round testing the active target construction
+- **THEN** the evaluation reports whether that target construction was used naturally, awkwardly, or not at all, providing notes and a corrected version when warranted.
 
 #### Scenario: Correct usage of the target construction is accepted
-- **WHEN** the learner used a target construction grammatically and appropriately for the passage's meaning
-- **THEN** the evaluation MUST classify that target as used naturally, even when a different construction would be more idiomatic, and MUST NOT propose replacing the target construction with a different one.
+- **WHEN** the learner used the target construction grammatically and appropriately for the sentence's meaning
+- **THEN** the evaluation classifies that target as used naturally and confirms successful recall, even when the translation contains unrelated errors, typos, or grammatical flaws in other parts of the sentence.
+
+#### Scenario: Unrelated sentence errors do not trigger construction repetition
+- **WHEN** the submitted translation contains errors, typos, or awkward phrasing outside the target construction while the target construction itself was used grammatically and appropriately
+- **THEN** the evaluation classifies the target construction as used naturally (`quality: "natural"`), includes a corrected version of the learner's own sentence in the rewrite without marking the construction awkward, and does NOT trigger a repetition of that target construction in the session.
 
 #### Scenario: Slash-separated alternatives in a target
 - **WHEN** a target construction lists alternatives separated by "/" (for example "be actively looking / be actively job hunting")
@@ -124,27 +116,27 @@ The system SHALL evaluate each submitted English translation against the Russian
 
 #### Scenario: Corrections keep the target construction
 - **WHEN** a target is classified as awkward or not used and the evaluation provides a corrected example for it
-- **THEN** the corrected example MUST use that same target construction (or one of its slash-separated alternatives) correctly, and MUST NOT substitute a different construction.
+- **THEN** the corrected example MUST use that same target construction (or one of its slash-separated alternatives) correctly.
 
 #### Scenario: Corrected version of the learner's own translation
-- **WHEN** the submitted translation has at least one target classified as awkward or not used
-- **THEN** the evaluation presents a rewritten version of the learner's own translation that preserves the learner's meaning and wording, keeps every correctly used target construction as-is, fixes only the actual errors, and uses the missing or misused targets naturally, together with short notes explaining what changed.
+- **WHEN** the submitted translation has the target classified as awkward or not used
+- **THEN** the evaluation presents a rewritten natural version of the learner's own translation demonstrating the target construction.
 
 #### Scenario: Rewrite withheld when the translation is already natural
-- **WHEN** the submitted translation is already natural and every target construction is used correctly
-- **THEN** the evaluation MUST report success, MUST NOT present a rewritten version, and MUST NOT invent corrections for correct sentences.
+- **WHEN** the submitted translation is already natural and the target construction is used correctly
+- **THEN** the evaluation reports success and does not invent unnecessary rewrites.
 
 #### Scenario: Evaluation shown as a round verdict
 - **WHEN** an evaluation result is available for the current round
-- **THEN** the round thread displays it as a verdict containing an overall summary, the per-target coverage, the corrected version when one is warranted, and notes only for the targets classified as awkward or not used.
+- **THEN** the round thread displays it as a verdict containing an overall summary, coverage status, and the natural version when warranted.
 
 #### Scenario: Evaluation result cannot be interpreted
-- **WHEN** the evaluation response does not conform to the expected verdict structure, including a response that was cut off before it completed
-- **THEN** the system MUST still display the response text in the round thread as plain feedback, MUST indicate that structured evaluation was unavailable, and MUST offer a way to retry the evaluation without discarding the learner's submitted translation.
+- **WHEN** the evaluation response does not conform to the expected verdict structure
+- **THEN** the system displays the response text as plain feedback and offers a way to retry the evaluation.
 
 #### Scenario: Reaching the existing SRS rating step
-- **WHEN** the last round is completed or the user ends the session
-- **THEN** the system still hands all cards encountered so far to the manual SRS recall rating interface, unaffected by the verdict evaluation.
+- **WHEN** the practice session is finished or the user ends the session
+- **THEN** the system transitions all practiced cards to the manual SRS recall rating interface.
 
 ### Requirement: Mobile-Responsive Translation Session Layout and Controls
 The system SHALL provide an adaptive, touch-friendly, and decluttered layout for the Russian Translation Practice session that accommodates small mobile viewports without clipping content, causing horizontal overflow, or trapping focus, SHALL maintain simultaneous visibility of the active Russian passage and the translation input when the software keyboard is active, SHALL automatically scroll the message container to the active Russian passage upon input focus and virtual keyboard opening/viewport resize, and SHALL suppress the top session header on mobile devices while consolidating all session controls and status within a collapsible Actions HUD.
@@ -179,5 +171,3 @@ The system SHALL provide an adaptive, touch-friendly, and decluttered layout for
 - **WHEN** the translation practice session is rendered on a touch screen / mobile viewport
 - **THEN** desktop-specific keyboard shortcut hints are replaced or hidden to maximize vertical space
 - **AND** the translation textarea and submit controls render with minimum 16px font size (`text-base`) to prevent iOS zoom while remaining responsive and accessible when the virtual keyboard is active.
-
-

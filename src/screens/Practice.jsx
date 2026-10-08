@@ -439,7 +439,7 @@ export default function Practice() {
               Russian Translation Practice (Prompt #5)
             </h1>
             <p className="text-xs text-gray-400 leading-relaxed">
-              Copy Prompt #5 to your LLM (ChatGPT, Claude, Gemini). The LLM will generate Russian passages with 2 highlighted target constructions per round, for as many rounds as you want. Translate them to English!
+              Copy Prompt #5 to your LLM (ChatGPT, Claude, Gemini). The LLM will generate a single Russian sentence for 1 target construction per round, for as many rounds as you want. Translate it to English!
             </p>
           </header>
 

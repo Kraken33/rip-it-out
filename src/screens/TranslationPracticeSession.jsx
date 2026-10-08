@@ -1,66 +1,22 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { generateTranslationRoundPassage, evaluateTranslationRound } from '../services/aiService';
+import { generateTranslationSentence, evaluateTranslationRound } from '../services/aiService';
 import { parseTranslationVerdict } from '../prompts';
-import { parseTaggedPassage } from '../textAnnotator';
 import AudioRecorder from '../components/AudioRecorder';
 import { scrollToElementBottom, useVisualViewport } from '../hooks/useVisualViewport';
 
-// Cap the auto-grown input so the round's Russian passage keeps its room.
+// Cap the auto-grown input so the round's Russian sentence keeps its room.
 const MAX_INPUT_HEIGHT = 200;
 
-/**
- * Interactive tagged construction span that reveals the target construction on click/tap.
- */
-function InteractiveConstructionTag({ text, target }) {
-  const [isOpen, setIsOpen] = useState(false);
-
-  return (
-    <span className="relative inline-block my-0.5 mx-0.5 align-baseline">
-      <button
-        type="button"
-        data-testid="interactive-construction"
-        onClick={() => setIsOpen((prev) => !prev)}
-        title={target ? `Target: ${target} (tap to toggle)` : 'Target construction'}
-        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs sm:text-sm font-semibold transition-all cursor-pointer border ${
-          isOpen
-            ? 'bg-purple-800 text-purple-100 border-purple-400 shadow-md ring-1 ring-purple-400/50'
-            : 'bg-purple-900/60 hover:bg-purple-800/80 text-purple-200 border-purple-500/50 underline decoration-purple-400/50 decoration-dotted underline-offset-2'
-        }`}
-      >
-        <span>{text}</span>
-        <span className="text-[10px] text-purple-300 opacity-80">{isOpen ? '▲' : '💡'}</span>
-      </button>
-      {isOpen && target && (
-        <span
-          data-testid="construction-tooltip"
-          className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1.5 z-30 px-2.5 py-1 rounded-lg bg-[#141522] border border-purple-500/70 text-purple-200 text-xs font-semibold shadow-xl whitespace-nowrap flex items-center gap-1.5 animate-fade-in"
-        >
-          <span className="text-purple-400 font-bold">🎯</span>
-          <span>{target}</span>
-        </span>
-      )}
-    </span>
-  );
-}
+export const ITEMS_PER_ROUND = 1;
 
 /**
- * Only passages and learner translations belong in the passage-writing history:
- * replaying verdict JSON would prime the model to answer in JSON instead of prose.
- */
-function buildPassageHistory(items) {
-  return items
-    .filter((m) => !m.verdict && !m.unparsed)
-    .filter((m) => typeof m.content === 'string' && m.content.trim())
-    .map((m) => ({ role: m.role, content: m.content }));
-}
-
-/**
- * Per-round verdict: coverage badge per target construction, the overall
+ * Per-round verdict: coverage badge for the target construction, the overall
  * summary, the rewritten sentence when one is warranted, and notes only for
- * the targets that were used awkwardly or not used at all.
+ * targets that were used awkwardly or not used at all.
  */
 function VerdictCard({ verdict }) {
-  const problems = verdict.constructions.filter((c) => !c.used || c.quality === 'awkward');
+  const constructions = verdict?.constructions || [];
+  const problems = constructions.filter((c) => !c.used || c.quality === 'awkward');
 
   const stateOf = (c) => (!c.used ? 'missing' : c.quality === 'awkward' ? 'awkward' : 'natural');
 
@@ -78,11 +34,11 @@ function VerdictCard({ verdict }) {
       className="glass-panel p-4 rounded-2xl rounded-tl-sm border border-purple-500/20 w-full space-y-3"
     >
       <p className="text-sm text-gray-100 font-semibold">
-        {verdict.summary || 'Evaluation complete.'}
+        {verdict?.summary || 'Evaluation complete.'}
       </p>
 
       <div className="flex flex-wrap gap-1.5">
-        {verdict.constructions.map((c) => {
+        {constructions.map((c) => {
           const state = stateOf(c);
           return (
             <span
@@ -99,7 +55,7 @@ function VerdictCard({ verdict }) {
         })}
       </div>
 
-      {verdict.rewriteNeeded && verdict.rewrite && (
+      {verdict?.rewriteNeeded && verdict?.rewrite && (
         <div className="rounded-xl bg-emerald-950/30 border border-emerald-700/40 p-3 space-y-1">
           <p className="text-[10px] uppercase tracking-wider text-emerald-400 font-bold">
             Natural version of your sentence
@@ -128,95 +84,64 @@ function VerdictCard({ verdict }) {
   );
 }
 
-export const ITEMS_PER_ROUND = 2;
-
-/**
- * Match the LLM's picked constructions back to card objects from the candidate pool.
- * Falls back to candidate cards from the pool if fewer than 2 matched.
- */
-export function matchPickedCards(pickedStrings = [], pool = [], passage = '') {
-  const matched = [];
-  const matchedKeys = new Set();
-  const candidatePool = Array.isArray(pool) && pool.length > 0 ? pool : [];
-
-  let targets = Array.isArray(pickedStrings) ? [...pickedStrings] : [];
-  if (targets.length === 0 && passage) {
-    const bracketMatches = [...passage.matchAll(/\[\[(.*?)\|(.*?)\]\]/g)];
-    targets = bracketMatches.map((m) => m[2].trim()).filter(Boolean);
-  }
-
-  for (const p of targets) {
-    const pNorm = String(p).trim().toLowerCase();
-    if (!pNorm) continue;
-    const found = candidatePool.find((c) => {
-      const key = c.id ?? c.improvementId ?? c.construction;
-      if (matchedKeys.has(key)) return false;
-      const constrNorm = String(c.construction || c.improved || '').trim().toLowerCase();
-      const impNorm = String(c.improved || '').trim().toLowerCase();
-      return (
-        constrNorm === pNorm ||
-        impNorm === pNorm ||
-        (constrNorm && constrNorm.includes(pNorm)) ||
-        (pNorm && pNorm.includes(constrNorm))
-      );
-    });
-    if (found) {
-      matched.push(found);
-      matchedKeys.add(found.id ?? found.improvementId ?? found.construction);
-    }
-  }
-
-  for (const c of candidatePool) {
-    if (matched.length >= 2) break;
-    const key = c.id ?? c.improvementId ?? c.construction;
-    if (!matchedKeys.has(key)) {
-      matched.push(c);
-      matchedKeys.add(key);
-    }
-  }
-
-  return matched;
-}
-
 function distinctCardCount(rounds) {
   const seen = new Set();
-  rounds.forEach((r) =>
-    (r.cards || []).forEach((c) => seen.add(c.id ?? c.improvementId ?? c.construction))
+  (rounds || []).forEach((r) =>
+    (r?.cards || []).forEach((c) => {
+      if (c) seen.add(c.id ?? c.improvementId ?? c.construction);
+    })
   );
   return seen.size;
 }
 
-export default function TranslationPracticeSession({ allCards = [], settings = {}, onFinish, onExit }) {
-  const [availableCards, setAvailableCards] = useState(() => [...allCards]);
-  const availableCardsRef = useRef(allCards);
+export default function TranslationPracticeSession({
+  allCards = [],
+  settings = {},
+  onFinish,
+  onExit,
+}) {
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+  const activeCardIndexRef = useRef(0);
   useEffect(() => {
-    availableCardsRef.current = availableCards;
-  }, [availableCards]);
+    activeCardIndexRef.current = activeCardIndex;
+  }, [activeCardIndex]);
 
-  // Unlimited on-demand rounds of exactly 2 constructions each (no pre-computed count).
-  const [rounds, setRounds] = useState(() => [{ cards: [] }]);
   const [currentRoundIndex, setCurrentRoundIndex] = useState(0);
+  const currentRoundIndexRef = useRef(0);
+  useEffect(() => {
+    currentRoundIndexRef.current = currentRoundIndex;
+  }, [currentRoundIndex]);
+
+  // On-demand rounds of 1 target construction each
+  const [rounds, setRounds] = useState(() => [{ cards: allCards[0] ? [allCards[0]] : [] }]);
+  const roundsRef = useRef(rounds);
+  useEffect(() => {
+    roundsRef.current = rounds;
+  }, [rounds]);
+
   const [messages, setMessages] = useState([]);
+  const messagesRef = useRef(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
   const [inputText, setInputText] = useState('');
   const [roundLoading, setRoundLoading] = useState(false);
   const [evaluating, setEvaluating] = useState(false);
+  const [isCompleted, setIsCompleted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+
   const messagesEndRef = useRef(null);
-  const messagesRef = useRef([]);
   const inputRef = useRef(null);
   const requestedRoundsRef = useRef(new Set());
-
-  const roundsRef = useRef([]);
   const submittedRoundsRef = useRef([]);
+
   const messageSeqRef = useRef(0);
   const nextMessageId = (prefix) => {
     messageSeqRef.current += 1;
     return `${prefix}_${messageSeqRef.current}`;
   };
-  useEffect(() => {
-    roundsRef.current = rounds;
-  }, [rounds]);
 
   const scrollToActivePassage = useCallback(() => {
     scrollToElementBottom(messagesEndRef.current);
@@ -225,10 +150,6 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
   useVisualViewport({
     onKeyboardOpen: scrollToActivePassage,
   });
-
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
 
   useEffect(() => {
     scrollToActivePassage();
@@ -242,10 +163,10 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
     el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
   }, [inputText]);
 
-  // Trigger passage generation when the round changes or starts.
-  // The ref keeps StrictMode's double effect invocation from issuing two requests.
-  useEffect(() => {
-    async function loadRoundPassage(roundIndex) {
+  // Load a single natural Russian sentence for the round's target construction
+  const loadRoundSentence = useCallback(
+    async (roundIndex, cardToPractice) => {
+      if (!cardToPractice) return;
       setRoundLoading(true);
       setErrorMsg('');
 
@@ -256,52 +177,43 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
       ]);
 
       try {
-        const pool =
-          availableCardsRef.current.length >= 2
-            ? availableCardsRef.current
-            : allCards.length > 0
-            ? allCards
-            : [];
+        const reply = await generateTranslationSentence(cardToPractice, settings);
+        const sentence =
+          typeof reply === 'object' && reply !== null
+            ? reply.sentence || reply.passage || ''
+            : String(reply || '');
 
-        const reply = await generateTranslationRoundPassage(
-          pool,
-          settings,
-          buildPassageHistory(messagesRef.current)
-        );
-
-        const passage = typeof reply === 'object' && reply?.passage ? reply.passage : String(reply || '');
-        const rawPicked = typeof reply === 'object' && Array.isArray(reply?.picked) ? reply.picked : [];
-
-        const pickedCards = matchPickedCards(rawPicked, pool, passage);
-
-        setRounds((prev) =>
-          prev.map((r, i) => (i === roundIndex ? { ...r, cards: pickedCards } : r))
-        );
-
-        const pickedKeys = new Set(pickedCards.map((c) => c.id ?? c.improvementId ?? c.construction));
-        setAvailableCards((prev) => {
-          const next = prev.filter((c) => !pickedKeys.has(c.id ?? c.improvementId ?? c.construction));
-          return next.length >= 2 ? next : allCards.filter((c) => !pickedKeys.has(c.id ?? c.improvementId ?? c.construction));
+        setRounds((prev) => {
+          const next = [...prev];
+          while (next.length <= roundIndex) {
+            next.push({ cards: [] });
+          }
+          next[roundIndex] = { ...next[roundIndex], cards: [cardToPractice] };
+          return next;
         });
 
-        setMessages((prev) => prev.map((m) => (m.id === assistantMsgId ? { ...m, content: passage } : m)));
+        setMessages((prev) =>
+          prev.map((m) => (m.id === assistantMsgId ? { ...m, content: sentence } : m))
+        );
       } catch (err) {
-        // Allow a later attempt for this round instead of caching the failure.
         requestedRoundsRef.current.delete(roundIndex);
         setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
-        setErrorMsg(err.message || 'Failed to load round passage from AI.');
+        setErrorMsg(err.message || 'Failed to load sentence from AI.');
       } finally {
         setRoundLoading(false);
       }
-    }
+    },
+    [settings]
+  );
 
+  // Initial round generation
+  useEffect(() => {
     if (!allCards || allCards.length === 0) return;
-    if (requestedRoundsRef.current.has(currentRoundIndex)) return;
-    requestedRoundsRef.current.add(currentRoundIndex);
+    if (requestedRoundsRef.current.has(0)) return;
+    requestedRoundsRef.current.add(0);
 
-    loadRoundPassage(currentRoundIndex);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentRoundIndex]);
+    loadRoundSentence(0, allCards[0]);
+  }, [allCards, loadRoundSentence]);
 
   const currentPassageText =
     [...messages]
@@ -315,20 +227,32 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
           m.content.trim()
       )?.content || '';
 
-  const requestVerdict = async (verdictMsgId, roundIndex, userMsgId, passageText, translationText) => {
+  const requestVerdict = async (
+    verdictMsgId,
+    roundIndex,
+    sentenceText,
+    translationText,
+    roundCard
+  ) => {
     setEvaluating(true);
     setErrorMsg('');
 
     try {
-      const roundCards = roundsRef.current[roundIndex]?.cards || currentRoundCards;
-      const raw = await evaluateTranslationRound(roundCards, passageText, translationText, settings);
+      const raw = await evaluateTranslationRound([roundCard], sentenceText, translationText, settings);
       const parsed = parseTranslationVerdict(raw);
 
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== verdictMsgId) return m;
           if (parsed.success) {
-            return { ...m, pending: false, verdict: parsed.verdict, unparsed: false, rawText: '', retry: null };
+            return {
+              ...m,
+              pending: false,
+              verdict: parsed.verdict,
+              unparsed: false,
+              rawText: '',
+              retry: null,
+            };
           }
           return {
             ...m,
@@ -336,24 +260,56 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
             verdict: null,
             unparsed: true,
             rawText: raw.trim(),
-            retry: { passageText, translation: translationText },
+            retry: { sentenceText, translation: translationText, roundCard, roundIndex },
           };
         })
       );
 
-      const submittedCards = roundsRef.current[roundIndex]?.cards || currentRoundCards;
       submittedRoundsRef.current = submittedRoundsRef.current.filter(
         (r) => r.roundIndex !== roundIndex
       );
       submittedRoundsRef.current.push({
         roundIndex,
-        cards: submittedCards,
-        passageText,
+        cards: [roundCard],
+        passageText: sentenceText,
         translationText,
         evaluatedAt: new Date().toISOString(),
         verdict: parsed.success ? parsed.verdict : null,
         rawFeedback: parsed.success ? '' : raw.trim(),
       });
+
+      if (parsed.success) {
+        const constructions = parsed.verdict?.constructions || [];
+        const isNatural =
+          constructions.length > 0 &&
+          constructions.every((c) => Boolean(c.used) && c.quality === 'natural');
+
+        if (isNatural) {
+          // Natural: advance card in queue
+          const nextCardIndex = activeCardIndexRef.current + 1;
+          activeCardIndexRef.current = nextCardIndex;
+          setActiveCardIndex(nextCardIndex);
+
+          if (nextCardIndex < allCards.length) {
+            const nextCard = allCards[nextCardIndex];
+            const nextRoundIndex = currentRoundIndexRef.current + 1;
+            currentRoundIndexRef.current = nextRoundIndex;
+            setCurrentRoundIndex(nextRoundIndex);
+            requestedRoundsRef.current.add(nextRoundIndex);
+            loadRoundSentence(nextRoundIndex, nextCard);
+          } else {
+            setIsCompleted(true);
+          }
+        } else {
+          // Missed / awkward: retry same construction with immediate fresh sentence
+          const sameCard = roundCard || allCards[activeCardIndexRef.current];
+          const nextRoundIndex = currentRoundIndexRef.current + 1;
+          currentRoundIndexRef.current = nextRoundIndex;
+          setCurrentRoundIndex(nextRoundIndex);
+          requestedRoundsRef.current.add(nextRoundIndex);
+          loadRoundSentence(nextRoundIndex, sameCard);
+        }
+      }
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== verdictMsgId));
       setErrorMsg(err.message || 'Failed to evaluate the translation.');
@@ -364,10 +320,12 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
 
   const handleSendTranslation = () => {
     const text = inputText.trim();
-    if (!text || evaluating || roundLoading) return;
+    if (!text || evaluating || roundLoading || isCompleted) return;
 
-    const roundIndex = currentRoundIndex;
-    const passageText = currentPassageText;
+    const roundIndex = currentRoundIndexRef.current;
+    const sentenceText = currentPassageText;
+    const roundCard =
+      roundsRef.current[roundIndex]?.cards?.[0] || allCards[activeCardIndexRef.current];
     const verdictMsgId = nextMessageId('asst_verdict');
     const userMsgId = nextMessageId('user');
 
@@ -390,7 +348,7 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
       },
     ]);
 
-    requestVerdict(verdictMsgId, roundIndex, userMsgId, passageText, text);
+    requestVerdict(verdictMsgId, roundIndex, sentenceText, text, roundCard);
   };
 
   const handleRetryEvaluation = (msg) => {
@@ -399,14 +357,11 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
     setMessages((prev) =>
       prev.map((m) => (m.id === msg.id ? { ...m, pending: true, unparsed: false, rawText: '' } : m))
     );
-    const roundIndex = submittedRoundsRef.current.find(
-      (r) => r.translationText === msg.retry.translation && r.passageText === msg.retry.passageText
-    )?.roundIndex ?? currentRoundIndex;
-    requestVerdict(msg.id, roundIndex, null, msg.retry.passageText, msg.retry.translation);
+    const { sentenceText, translation, roundCard, roundIndex } = msg.retry;
+    requestVerdict(msg.id, roundIndex, sentenceText, translation, roundCard);
   };
 
-  // Dictation lands where the caret is, so a spoken sentence can be dropped into
-  // a half-written translation instead of only ever appending at the end.
+  // Dictation lands where the caret is
   const insertTranscription = (transcription) => {
     if (!transcription) return;
     const el = inputRef.current;
@@ -423,13 +378,20 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
   };
 
   const handleNextRound = () => {
-    if (evaluating || roundLoading) return;
-    const nextIndex = currentRoundIndex + 1;
-    setRounds((prev) => {
-      if (nextIndex < prev.length) return prev;
-      return [...prev, { cards: [] }];
-    });
-    setCurrentRoundIndex(nextIndex);
+    if (evaluating || roundLoading || isCompleted) return;
+    const nextCardIndex = activeCardIndexRef.current + 1;
+    if (nextCardIndex < allCards.length) {
+      activeCardIndexRef.current = nextCardIndex;
+      setActiveCardIndex(nextCardIndex);
+      const nextCard = allCards[nextCardIndex];
+      const nextRoundIndex = currentRoundIndexRef.current + 1;
+      currentRoundIndexRef.current = nextRoundIndex;
+      setCurrentRoundIndex(nextRoundIndex);
+      requestedRoundsRef.current.add(nextRoundIndex);
+      loadRoundSentence(nextRoundIndex, nextCard);
+    } else {
+      setIsCompleted(true);
+    }
   };
 
   const handleFinishSession = () => {
@@ -442,33 +404,13 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
     orderedRounds.forEach((r) =>
       (r.cards || []).forEach((c) => {
         const key = c.id ?? c.improvementId ?? c.construction;
-        if (!seen.has(key)) {
+        if (key && !seen.has(key)) {
           seen.add(key);
           practicedImprovements.push(c);
         }
       })
     );
     onFinish(orderedRounds, practicedImprovements);
-  };
-
-  const renderTaggedMessage = (content) => {
-    const segments = parseTaggedPassage(content);
-    return (
-      <span>
-        {segments.map((seg, idx) => {
-          if (seg.isHighlight) {
-            return (
-              <InteractiveConstructionTag
-                key={idx}
-                text={seg.text}
-                target={seg.target}
-              />
-            );
-          }
-          return <span key={idx}>{seg.text}</span>;
-        })}
-      </span>
-    );
   };
 
   return (
@@ -500,7 +442,12 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
           <button
             type="button"
             onClick={handleNextRound}
-            disabled={evaluating || roundLoading}
+            disabled={
+              evaluating ||
+              roundLoading ||
+              isCompleted ||
+              activeCardIndex >= allCards.length - 1
+            }
             className="hidden sm:inline-flex px-3.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
           >
             Next Round →
@@ -574,22 +521,45 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
             return (
               <div key={m.id} className="w-full">
                 <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm text-sm sm:text-base text-gray-200 leading-relaxed space-y-2 border border-purple-500/20 w-full max-h-[45vh] overflow-y-auto">
-                  <p className="whitespace-pre-wrap">
-                    {m.content ? renderTaggedMessage(m.content) : 'Generating passage...'}
-                  </p>
+                  <p className="whitespace-pre-wrap">{m.content || 'Generating sentence...'}</p>
                 </div>
               </div>
             );
           }
 
           return (
-            <div key={m.id} className="flex flex-col items-end gap-1.5 ml-auto max-w-[95%] sm:max-w-[90%]">
+            <div
+              key={m.id}
+              className="flex flex-col items-end gap-1.5 ml-auto max-w-[95%] sm:max-w-[90%]"
+            >
               <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tr-sm text-sm sm:text-base leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
                 <p className="whitespace-pre-wrap">{m.content}</p>
               </div>
             </div>
           );
         })}
+
+        {isCompleted && (
+          <div
+            data-testid="session-completed-banner"
+            className="glass-panel p-4 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 text-center space-y-2"
+          >
+            <p className="text-base font-bold text-emerald-300">
+              🎉 All target constructions practiced!
+            </p>
+            <p className="text-xs text-gray-300">
+              You've completed all constructions in this session. Ready to rate your recall?
+            </p>
+            <button
+              type="button"
+              onClick={handleFinishSession}
+              className="mt-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer"
+            >
+              Finish & Rate Recall →
+            </button>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
@@ -643,11 +613,11 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
             type="button"
             data-testid="mobile-practice-translate-button"
             onClick={() => {
-              if (!inputText.trim() || evaluating) return;
+              if (!inputText.trim() || evaluating || isCompleted) return;
               setMobileActionsOpen(false);
               handleSendTranslation();
             }}
-            disabled={!inputText.trim() || evaluating}
+            disabled={!inputText.trim() || evaluating || isCompleted}
             className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
             <span>▶</span>
@@ -661,7 +631,12 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
               handleNextRound();
               setMobileActionsOpen(false);
             }}
-            disabled={evaluating || roundLoading}
+            disabled={
+              evaluating ||
+              roundLoading ||
+              isCompleted ||
+              activeCardIndex >= allCards.length - 1
+            }
             className="w-full py-2.5 px-3 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
             <span>➡️</span>
@@ -727,9 +702,13 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
                   handleSendTranslation();
                 }
               }}
-              placeholder="Type or speak your English translation..."
+              placeholder={
+                isCompleted
+                  ? 'Session complete! Click Finish & Rate Recall above.'
+                  : 'Type or speak your English translation...'
+              }
               rows={3}
-              disabled={evaluating}
+              disabled={evaluating || isCompleted}
               className="w-full min-h-[46px] sm:min-h-[54px] max-h-[110px] sm:max-h-[140px] bg-[#0e0f17] border border-gray-800 rounded-xl px-3.5 sm:px-4 py-2 sm:py-2.5 text-base sm:text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-none disabled:opacity-60"
             />
           </div>
@@ -763,7 +742,7 @@ export default function TranslationPracticeSession({ allCards = [], settings = {
             {/* Translate Button (Desktop only inline) */}
             <button
               type="submit"
-              disabled={!inputText.trim() || evaluating}
+              disabled={!inputText.trim() || evaluating || isCompleted}
               className="hidden sm:inline-flex px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
             >
               Translate ▶

@@ -131,38 +131,29 @@ Keep sentences short (under 15 words), casual, and varied in topic.`;
 }
 
 /**
- * Prompt #5 — Unlimited Two-per-Round Translation Practice Prompt
- * Instructs LLM to generate Russian passages with tagged target constructions,
- * exactly 2 per round, continuing until the learner asks to finish.
+ * Prompt #5 — Single-Sentence Translation Practice Prompt
+ * Instructs LLM to generate 1 natural Russian sentence per round for 1 target
+ * construction, with zero clue tags or spoiler brackets, evaluating the translation
+ * and branching immediately.
  */
 export function generateTranslationPracticePrompt(improvements, settings) {
   const phraseList = improvements
-    .map(
-      (imp, i) =>
-        `${i + 1}. Construction: "${imp.construction || imp.improved}"
-   Example / Usage: "${imp.improved}"`
-    )
-    .join('\n\n');
+    .map((imp, i) => `${i + 1}. "${imp.construction || imp.improved}"`)
+    .join('\n');
 
-  return `You are an English speaking coach and translation trainer.
-
-I am practicing the following ${improvements.length} English constructions today:
+  return `I am practicing these ${improvements.length} English constructions today:
 
 ${phraseList}
 
 Your task:
-1. Practice these constructions in unlimited short rounds with exactly 2 target constructions per round (take the next 2 unpracticed constructions each round; only reuse a construction after every construction has been practiced once).
-2. For ROUND 1, write a short, natural passage in RUSSIAN (на русском языке). In the passage, embed the round's 2 target constructions translated into natural Russian.
-3. CRITICAL FORMATTING: Wrap each targeted Russian phrase using double brackets like this: [[Russian phrase|Target English Construction]] (e.g. [[пригласил друга в гости|invite over]]).
-4. Stop and wait for my ENGLISH translation of the passage.
-5. After I translate into English, evaluate how accurately and naturally I used the target constructions, offer quick feedback, then ask whether I want NEXT ROUND (a fresh passage with the next 2 constructions) or to FINISH practice. Continue with as many rounds as I request — there is no fixed round limit.
+1. Practice 1 construction per round. For ROUND 1, write EXACTLY ONE natural conversational sentence in RUSSIAN (на русском языке) where this construction would naturally be used.
+2. Write ONLY the Russian sentence without bracket tags, clues, or English translations.
+3. Wait for my English translation.
+4. Evaluate my English translation:
+   - REPEAT RULE: Repeat the target construction ONLY if the target construction itself was omitted or used incorrectly (e.g. wrong preposition/particle of the pattern, wrong verb form governed by the pattern, or ungrammatical use of the construction itself). In that case, explain the natural phrasing and give a fresh Russian sentence for the same construction to try again.
+   - ADVANCE RULE: If the target construction itself was used correctly, consider the round PASSED and give 1 Russian sentence for the NEXT construction. If there were errors in other parts of the sentence (e.g. unrelated typos, tenses in other clauses, or general grammar outside the construction), briefly point them out in your feedback, but DO NOT repeat the construction.
 
-Constraints:
-- Russian passages must sound natural and conversational.
-- Target level: ${settings?.level || 'intermediate'}
-- Focus area: Spoken English translation accuracy.
-
-Please start with ROUND 1 now (give the Russian passage with tagged constructions and ask me to translate it to English):`;
+Start with ROUND 1 now (give the Russian sentence):`;
 }
 
 // ── JSON Extraction Helpers ────────────────────────────────────────
