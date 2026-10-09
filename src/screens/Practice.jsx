@@ -20,7 +20,13 @@ export default function Practice() {
   const [step, setStep] = useState('loading');
   const [practiceType, setPracticeType] = useState('translation'); // 'translation' | 'scenario'
   const [translationSubMode, setTranslationSubMode] = useState('seamless'); // 'seamless' | 'prompt'
-  const isTranslationActive = practiceType === 'translation' && translationSubMode === 'seamless';
+  const isTranslationActive =
+    practiceType === 'translation' &&
+    translationSubMode === 'seamless' &&
+    step !== 'loading' &&
+    step !== 'empty' &&
+    step !== 'complete' &&
+    step !== 'rating';
   const { viewportHeight, viewportWidth } = useVisualViewport({ lockBodyScroll: isTranslationActive });
   const [selectedCards, setSelectedCards] = useState([]);
   const [improvements, setImprovements] = useState([]);

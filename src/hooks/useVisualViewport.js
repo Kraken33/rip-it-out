@@ -131,13 +131,13 @@ export function useVisualViewport({ lockBodyScroll = false, onKeyboardOpen } = {
         return current;
       });
 
-      if (current.isKeyboardOpen && typeof window.scrollTo === 'function' && window.scrollY !== 0) {
+      if (lockBodyScroll && current.isKeyboardOpen && typeof window.scrollTo === 'function' && window.scrollY !== 0) {
         window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       }
     };
 
     const handleWindowScroll = () => {
-      if (typeof window.scrollTo === 'function' && (window.scrollY > 0 || (vv && vv.offsetTop > 0))) {
+      if (lockBodyScroll && typeof window.scrollTo === 'function' && (window.scrollY > 0 || (vv && vv.offsetTop > 0))) {
         window.scrollTo({ top: 0, left: 0, behavior: 'instant' });
       }
     };
@@ -148,7 +148,10 @@ export function useVisualViewport({ lockBodyScroll = false, onKeyboardOpen } = {
     } else {
       window.addEventListener('resize', handleResize);
     }
-    window.addEventListener('scroll', handleWindowScroll);
+
+    if (lockBodyScroll) {
+      window.addEventListener('scroll', handleWindowScroll);
+    }
 
     return () => {
       if (vv) {
@@ -157,9 +160,11 @@ export function useVisualViewport({ lockBodyScroll = false, onKeyboardOpen } = {
       } else {
         window.removeEventListener('resize', handleResize);
       }
-      window.removeEventListener('scroll', handleWindowScroll);
+      if (lockBodyScroll) {
+        window.removeEventListener('scroll', handleWindowScroll);
+      }
     };
-  }, [onKeyboardOpen]);
+  }, [lockBodyScroll, onKeyboardOpen]);
 
   return {
     ...viewport,

@@ -96,6 +96,54 @@ describe('useVisualViewport', () => {
     expect(document.body.style.position).toBe(initialPosition);
   });
 
+  it('does NOT intercept or reset window scroll when lockBodyScroll is false', () => {
+    Object.defineProperty(window, 'scrollY', { value: 250, writable: true, configurable: true });
+    renderHook(() => useVisualViewport({ lockBodyScroll: false }));
+
+    act(() => {
+      window.dispatchEvent(new Event('scroll'));
+    });
+
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('resets window scroll to top on window scroll when lockBodyScroll is true', () => {
+    Object.defineProperty(window, 'scrollY', { value: 150, writable: true, configurable: true });
+    renderHook(() => useVisualViewport({ lockBodyScroll: true }));
+
+    act(() => {
+      window.dispatchEvent(new Event('scroll'));
+    });
+
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
+  });
+
+  it('does not reset window scroll on keyboard resize when lockBodyScroll is false', () => {
+    const listeners = {};
+    window.innerHeight = 800;
+    Object.defineProperty(window, 'scrollY', { value: 100, writable: true, configurable: true });
+    window.visualViewport = {
+      height: 800,
+      width: 375,
+      addEventListener: vi.fn((event, cb) => {
+        listeners[event] = cb;
+      }),
+      removeEventListener: vi.fn((event) => {
+        delete listeners[event];
+      }),
+    };
+
+    renderHook(() => useVisualViewport({ lockBodyScroll: false }));
+
+    // Simulate keyboard open
+    act(() => {
+      window.visualViewport.height = 400;
+      if (listeners['resize']) listeners['resize']();
+    });
+
+    expect(window.scrollTo).not.toHaveBeenCalled();
+  });
+
   it('scrollToElementBottom scrolls target immediately and on subsequent delays', () => {
     const mockScrollIntoView = vi.fn();
     const mockEl = { scrollIntoView: mockScrollIntoView };
