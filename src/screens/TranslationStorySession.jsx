@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { generateTranslationStoryPassage, evaluateTranslationStory } from '../services/aiService';
 import { parseStoryFeedback, VARIETY_MATRIX, VARIETY_PRESETS, sampleVarietyMatrix } from '../prompts';
-import AudioRecorder from '../components/AudioRecorder';
 import ConstructionExtractor from '../components/ConstructionExtractor';
-import { scrollToElementBottom, useVisualViewport } from '../hooks/useVisualViewport';
-
-// Cap the auto-grown input so the round's Russian passage keeps its room.
-const MAX_INPUT_HEIGHT = 200;
+import InteractiveSessionShell from '../components/InteractiveSessionShell';
+import { scrollToElementBottom } from '../hooks/useVisualViewport';
 
 /**
  * Flatten per-round candidate constructions into the session-wide import list:
@@ -111,7 +108,6 @@ function StoryFeedbackCard({ feedback, sessionId, settings, passage }) {
   );
 }
 
-
 export default function TranslationStorySession({ session = {}, settings = {}, onFinish }) {
   const [rounds, setRounds] = useState([]);
   const [roundIndex, setRoundIndex] = useState(0);
@@ -121,7 +117,6 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
   const [evaluating, setEvaluating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [matrixOpen, setMatrixOpen] = useState(false);
-  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const [selectedPreset, setSelectedPreset] = useState(null);
   const [varietyMatrix, setVarietyMatrix] = useState(
     session.varietyMatrix || { domain: 'auto', tone: 'auto', format: 'auto', catalyst: 'auto' }
@@ -137,10 +132,6 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
     scrollToElementBottom(messagesEndRef.current);
   }, []);
 
-  useVisualViewport({
-    onKeyboardOpen: scrollToActivePassage,
-  });
-
   useEffect(() => {
     roundsRef.current = rounds;
   }, [rounds]);
@@ -149,18 +140,9 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
     scrollToActivePassage();
   }, [rounds, passageLoading, evaluating, scrollToActivePassage]);
 
-  // Grow the text area with its content, up to the cap.
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(el.scrollHeight, MAX_INPUT_HEIGHT)}px`;
-  }, [inputText]);
-
   const currentRound = rounds[roundIndex] || null;
 
-  // Generate a new story passage whenever a fresh round begins. The ref keeps
-  // StrictMode's double effect invocation from issuing two requests.
+  // Generate a new story passage whenever a fresh round begins.
   useEffect(() => {
     async function loadStoryPassage(idx) {
       setPassageLoading(true);
@@ -184,7 +166,6 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
           },
         ]);
       } catch (err) {
-        // Allow a later attempt for this round instead of caching the failure.
         requestedRoundsRef.current.delete(idx);
         setErrorMsg(err.message || 'Failed to load story passage from AI.');
       } finally {
@@ -250,7 +231,6 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
         })
       );
     } catch (err) {
-      // Drop the submitted translation back into the input so the learner can resubmit.
       setRounds((prev) => prev.map((r, i) => (i === idx ? { ...r, translation: '' } : r)));
       setInputText(translation);
       setErrorMsg(err.message || 'Failed to evaluate the translation.');
@@ -279,23 +259,6 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
     setRetryTick((t) => t + 1);
   };
 
-  // Dictation lands where the caret is, so a spoken sentence can be dropped into
-  // a half-written translation instead of only ever appending at the end.
-  const insertTranscription = (transcription) => {
-    if (!transcription) return;
-    const el = inputRef.current;
-
-    setInputText((prev) => {
-      const start = typeof el?.selectionStart === 'number' ? el.selectionStart : prev.length;
-      const end = typeof el?.selectionEnd === 'number' ? el.selectionEnd : start;
-      const before = prev.slice(0, start);
-      const after = prev.slice(end);
-      const lead = before && !/\s$/.test(before) ? ' ' : '';
-      const trail = after && !/^\s/.test(after) ? ' ' : '';
-      return `${before}${lead}${transcription}${trail}${after}`;
-    });
-  };
-
   const handleNextRound = () => {
     if (evaluating || passageLoading) return;
     if (!currentRound?.translation) return;
@@ -319,128 +282,233 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
     currentRound?.translation || currentRound?.feedback || currentRound?.unparsed
   );
 
-  return (
-    <div className="flex flex-col h-full min-h-0 relative">
-      {/* Session Top Header */}
-      <div className="hidden sm:flex px-3 sm:px-4 py-2 sm:py-2.5 border-b border-[var(--border-color)] bg-[var(--bg-card)] items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1">
-            <span>📖</span>
-            <span>Round {roundIndex + 1}</span>
-          </span>
-          {currentRound?.varietySample?.vibeLabel && (
-            <span
-              data-testid="story-header-vibe-badge"
-              className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full"
-            >
-              {currentRound.varietySample.vibeLabel}
-            </span>
-          )}
-        </div>
+  const headerLeftContent = (
+    <div className="flex items-center gap-1.5 sm:gap-2">
+      <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1">
+        <span>📖</span>
+        <span>Round {roundIndex + 1}</span>
+      </span>
+      {currentRound?.varietySample?.vibeLabel && (
+        <span
+          data-testid="story-header-vibe-badge"
+          className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full"
+        >
+          {currentRound.varietySample.vibeLabel}
+        </span>
+      )}
+    </div>
+  );
 
-        {/* Header Action Controls */}
-        <div className="flex items-center gap-1.5">
-          {/* Story Flavor Matrix Toggle (Desktop) */}
-          <button
-            type="button"
-            onClick={() => setMatrixOpen(!matrixOpen)}
-            className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition cursor-pointer ${
-              matrixOpen
-                ? 'bg-purple-900/50 text-purple-200 border-purple-500'
-                : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
-            }`}
-          >
-            <span>✨</span>
-            <span>Flavor</span>
-          </button>
+  const headerRightContent = (
+    <div className="flex items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => setMatrixOpen(!matrixOpen)}
+        className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl border transition cursor-pointer ${
+          matrixOpen
+            ? 'bg-purple-900/50 text-purple-200 border-purple-500'
+            : 'bg-gray-800 hover:bg-gray-700 text-gray-300 border-gray-700'
+        }`}
+      >
+        <span>✨</span>
+        <span>Flavor</span>
+      </button>
 
-          {/* Desktop Next Round */}
-          <button
-            type="button"
-            onClick={handleNextRound}
-            disabled={evaluating || passageLoading || !currentRound?.translation}
-            className="hidden sm:inline-flex px-3.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
-          >
-            Next Round →
-          </button>
+      <button
+        type="button"
+        onClick={handleNextRound}
+        disabled={evaluating || passageLoading || !currentRound?.translation}
+        className="hidden sm:inline-flex px-3.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
+      >
+        Next Round →
+      </button>
 
-          {/* Desktop Finish Story */}
-          <button
-            type="button"
-            onClick={handleFinish}
-            disabled={evaluating || passageLoading}
-            className="hidden sm:inline-flex px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50"
-          >
-            Finish Story ✓
-          </button>
-        </div>
+      <button
+        type="button"
+        onClick={handleFinish}
+        disabled={evaluating || passageLoading}
+        className="hidden sm:inline-flex px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50"
+      >
+        Finish Story ✓
+      </button>
+    </div>
+  );
+
+  const mobileHeaderContent = (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs font-bold text-white flex items-center gap-1">
+        <span>📖</span>
+        <span>Round {roundIndex + 1}</span>
+      </span>
+      {currentRound?.varietySample?.vibeLabel && (
+        <span
+          data-testid="story-hud-vibe-badge"
+          className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full"
+        >
+          {currentRound.varietySample.vibeLabel}
+        </span>
+      )}
+    </div>
+  );
+
+  const varietyMatrixDrawer = matrixOpen && (
+    <div className="p-3.5 border-t border-[#27283d] bg-[#121320] space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+          <span>✨</span> Tune Story Flavor (Applies to next rounds)
+        </span>
+        <button
+          type="button"
+          onClick={() => setMatrixOpen(false)}
+          className="text-gray-400 hover:text-white text-xs font-bold cursor-pointer"
+        >
+          ✕ Close
+        </button>
       </div>
 
-      {/* Mobile Collapsible Actions Modal / Stack */}
-      {mobileActionsOpen && (
-        <div
-          data-testid="mobile-actions-panel"
-          className="sm:hidden absolute top-4 left-2 right-2 z-50 flex flex-col gap-2 p-3.5 rounded-xl bg-[#10111c] border border-purple-500/40 shadow-2xl animate-fade-in"
+      <div className="flex flex-wrap gap-1.5">
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedPreset(null);
+            setVarietyMatrix({ domain: 'auto', tone: 'auto', format: 'auto', catalyst: 'auto' });
+          }}
+          className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition cursor-pointer ${
+            !selectedPreset && Object.values(varietyMatrix).every((v) => v === 'auto')
+              ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+              : 'bg-[#1b1c2b] text-gray-300 border-[#27283d] hover:border-purple-500/50'
+          }`}
         >
-          <div className="flex items-center justify-between pb-2 border-b border-gray-800/80">
-            <div className="flex items-center gap-1.5">
-              <span className="text-xs font-bold text-white flex items-center gap-1">
-                <span>📖</span>
-                <span>Round {roundIndex + 1}</span>
-              </span>
-              {currentRound?.varietySample?.vibeLabel && (
-                <span
-                  data-testid="story-hud-vibe-badge"
-                  className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full"
-                >
-                  {currentRound.varietySample.vibeLabel}
-                </span>
-              )}
-            </div>
-            <button
-              type="button"
-              data-testid="close-mobile-actions"
-              onClick={() => setMobileActionsOpen(false)}
-              className="text-gray-400 hover:text-white text-xs font-bold px-2 py-0.5 cursor-pointer"
-            >
-              ✕ Close
-            </button>
-          </div>
-
-          {/* Speak / Dictate */}
-          <div className="w-full flex justify-center py-1 bg-[#161726] rounded-xl border border-gray-800">
-            <AudioRecorder
-              settings={settings}
-              onTranscribed={(text) => {
-                insertTranscription(text);
-                setMobileActionsOpen(false);
-              }}
-              onError={(err) => setErrorMsg(err)}
-            />
-          </div>
-
-          {/* Translate Button */}
+          🎲 Auto Variety
+        </button>
+        {VARIETY_PRESETS.map((preset) => (
           <button
+            key={preset.id}
             type="button"
-            data-testid="mobile-story-translate-button"
             onClick={() => {
-              if (!canSubmit) return;
-              setMobileActionsOpen(false);
-              handleSubmitTranslation();
+              setSelectedPreset(preset.id);
+              setVarietyMatrix({ ...preset.matrix });
             }}
-            disabled={!canSubmit}
-            className="w-full py-2.5 px-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+            className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition cursor-pointer ${
+              selectedPreset === preset.id
+                ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
+                : 'bg-[#1b1c2b] text-gray-300 border-[#27283d] hover:border-purple-500/50'
+            }`}
           >
-            <span>▶</span>
-            <span>Translate Translation</span>
+            {preset.emoji} {preset.label}
           </button>
+        ))}
+      </div>
 
-          {/* Story Flavor Matrix */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-1">
+        <div>
+          <label htmlFor="insession-matrix-domain" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+            Domain
+          </label>
+          <select
+            id="insession-matrix-domain"
+            value={varietyMatrix.domain}
+            onChange={(e) => {
+              setSelectedPreset(null);
+              setVarietyMatrix((prev) => ({ ...prev, domain: e.target.value }));
+            }}
+            className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+          >
+            <option value="auto">🎲 Auto Domain</option>
+            {VARIETY_MATRIX.domains.map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.emoji} {d.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="insession-matrix-tone" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+            Tone
+          </label>
+          <select
+            id="insession-matrix-tone"
+            value={varietyMatrix.tone}
+            onChange={(e) => {
+              setSelectedPreset(null);
+              setVarietyMatrix((prev) => ({ ...prev, tone: e.target.value }));
+            }}
+            className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+          >
+            <option value="auto">🎲 Auto Tone</option>
+            {VARIETY_MATRIX.tones.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.emoji} {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="insession-matrix-format" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+            Format
+          </label>
+          <select
+            id="insession-matrix-format"
+            value={varietyMatrix.format}
+            onChange={(e) => {
+              setSelectedPreset(null);
+              setVarietyMatrix((prev) => ({ ...prev, format: e.target.value }));
+            }}
+            className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+          >
+            <option value="auto">🎲 Auto Format</option>
+            {VARIETY_MATRIX.formats.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.emoji} {f.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label htmlFor="insession-matrix-catalyst" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
+            Catalyst
+          </label>
+          <select
+            id="insession-matrix-catalyst"
+            value={varietyMatrix.catalyst}
+            onChange={(e) => {
+              setSelectedPreset(null);
+              setVarietyMatrix((prev) => ({ ...prev, catalyst: e.target.value }));
+            }}
+            className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
+          >
+            <option value="auto">🎲 Auto Catalyst</option>
+            {VARIETY_MATRIX.catalysts.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.emoji} {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <InteractiveSessionShell
+      messagesEndRef={messagesEndRef}
+      onKeyboardOpen={scrollToActivePassage}
+      headerLeft={headerLeftContent}
+      headerRight={headerRightContent}
+      mobileHeaderContent={mobileHeaderContent}
+      mobileRoundLabel={`R${roundIndex + 1}`}
+      mobileSubmitLabel="Translate Translation"
+      mobileSubmitTestId="mobile-story-translate-button"
+      renderMobileActions={({ closeMenu }) => (
+        <>
           <button
             type="button"
             onClick={() => {
               setMatrixOpen(!matrixOpen);
-              setMobileActionsOpen(false);
+              closeMenu();
             }}
             className={`w-full py-2.5 px-3 text-xs font-bold rounded-xl border transition cursor-pointer flex items-center justify-center gap-1.5 ${
               matrixOpen
@@ -452,12 +520,11 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
             <span>Tune Story Flavor</span>
           </button>
 
-          {/* Next Round */}
           <button
             type="button"
             onClick={() => {
               handleNextRound();
-              setMobileActionsOpen(false);
+              closeMenu();
             }}
             disabled={evaluating || passageLoading || !currentRound?.translation}
             className="w-full py-2.5 px-3 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
@@ -466,12 +533,11 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
             <span>Next Round</span>
           </button>
 
-          {/* Finish Story */}
           <button
             type="button"
             onClick={() => {
               handleFinish();
-              setMobileActionsOpen(false);
+              closeMenu();
             }}
             disabled={evaluating || passageLoading}
             className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
@@ -479,335 +545,123 @@ export default function TranslationStorySession({ session = {}, settings = {}, o
             <span>✓</span>
             <span>Finish Story</span>
           </button>
-        </div>
+        </>
       )}
-
-      {/* Round thread */}
-      <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 space-y-4">
-        {rounds.map((round, idx) => (
-          <div key={round.id} className="space-y-3">
-            <div className="flex flex-col items-start gap-1.5 max-w-[95%] sm:max-w-[90%] w-full">
-              <div className="flex items-center justify-between gap-2 w-full px-1">
-                <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
-                  Round {idx + 1} · Story passage
+      drawer={varietyMatrixDrawer}
+      errorMsg={errorMsg}
+      renderErrorAction={
+        !currentRound &&
+        !passageLoading && (
+          <button
+            onClick={handleRetryPassage}
+            className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg transition cursor-pointer shrink-0"
+          >
+            Retry
+          </button>
+        )
+      }
+      inputRef={inputRef}
+      inputText={inputText}
+      onInputChange={setInputText}
+      onInputFocus={scrollToActivePassage}
+      onSubmit={handleSubmitTranslation}
+      canSubmit={canSubmit}
+      submitLabel="Translate ▶"
+      inputPlaceholder="Type or speak your English translation..."
+      shortcutHint="Enter adds a new line · Ctrl/⌘ + Enter translates"
+      inputDisabled={evaluating || passageLoading || !currentRound?.passage || translationLocked}
+      settings={settings}
+      onAudioError={(err) => setErrorMsg(err)}
+    >
+      {rounds.map((round, idx) => (
+        <div key={round.id} className="space-y-3">
+          <div className="flex flex-col items-start gap-1.5 max-w-[95%] sm:max-w-[90%] w-full">
+            <div className="flex items-center justify-between gap-2 w-full px-1">
+              <span className="text-[10px] uppercase tracking-wider text-gray-500 font-bold">
+                Round {idx + 1} · Story passage
+              </span>
+              {round.varietySample?.vibeLabel && (
+                <span
+                  data-testid="story-vibe-badge"
+                  className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2.5 py-0.5 rounded-full"
+                >
+                  {round.varietySample.vibeLabel}
                 </span>
-                {round.varietySample?.vibeLabel && (
-                  <span
-                    data-testid="story-vibe-badge"
-                    className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2.5 py-0.5 rounded-full"
-                  >
-                    {round.varietySample.vibeLabel}
-                  </span>
-                )}
-              </div>
-              <ConstructionExtractor
-                sessionId={session?.id}
-                settings={settings}
-                sourceText={round.passage}
-                passage={round.passage}
-                className="w-full"
-              >
-                <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm text-sm sm:text-base leading-relaxed border border-purple-500/20 text-white w-full max-h-[45vh] overflow-y-auto">
-                  <p className="whitespace-pre-wrap">📖 {round.passage}</p>
-                </div>
-              </ConstructionExtractor>
-              {idx === roundIndex && !round.translation && !evaluating && !passageLoading && (
-                <div className="flex justify-end w-full pt-0.5">
-                  <button
-                    type="button"
-                    onClick={handleRerollStory}
-                    className="px-2.5 py-1 text-[11px] font-bold text-gray-400 hover:text-purple-300 transition cursor-pointer flex items-center gap-1 hover:bg-purple-950/30 rounded-lg"
-                  >
-                    <span>🎲</span> Reroll Story
-                  </button>
-                </div>
               )}
             </div>
-
-            {round.translation && (
-              <div className="flex flex-col items-end gap-1.5 ml-auto max-w-[90%]">
-                <div className="glass-panel p-4 rounded-2xl rounded-tr-sm text-sm leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
-                  <p className="whitespace-pre-wrap">{round.translation}</p>
-                </div>
-              </div>
-            )}
-
-            {round.feedback && (
-              <StoryFeedbackCard
-                feedback={round.feedback}
-                sessionId={session?.id}
-                settings={settings}
-                passage={round.passage}
-              />
-            )}
-
-            {round.unparsed && (
-              <div className="glass-panel p-4 rounded-2xl rounded-tl-sm border border-amber-700/40 w-full space-y-2">
-                <p className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">
-                  Feedback (unparsed)
-                </p>
-                <p
-                  data-testid="story-raw-feedback"
-                  className="text-xs text-gray-300 whitespace-pre-wrap"
-                >
-                  {round.rawFeedback}
-                </p>
-                {idx === roundIndex && (
-                  <button
-                    onClick={handleRetryFeedback}
-                    disabled={evaluating}
-                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl transition cursor-pointer disabled:opacity-50"
-                  >
-                    Retry Evaluation
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        ))}
-
-        {passageLoading && (
-          <div className="flex flex-col items-start gap-1.5 max-w-[90%]">
-            <div className="glass-panel p-4 rounded-2xl rounded-tl-sm text-sm border border-purple-500/20 text-gray-400 italic w-full">
-              Writing your story...
-            </div>
-          </div>
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Error Callout */}
-      {errorMsg && (
-        <div className="px-4 py-2 bg-rose-500/10 border-t border-rose-500/30 text-rose-400 text-xs font-semibold flex items-center justify-between gap-2">
-          <span>⚠️ {errorMsg}</span>
-          {!currentRound && !passageLoading && (
-            <button
-              onClick={handleRetryPassage}
-              className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg transition cursor-pointer shrink-0"
+            <ConstructionExtractor
+              sessionId={session?.id}
+              settings={settings}
+              sourceText={round.passage}
+              passage={round.passage}
+              className="w-full"
             >
-              Retry
-            </button>
+              <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm text-sm sm:text-base leading-relaxed border border-purple-500/20 text-white w-full max-h-[45vh] overflow-y-auto">
+                <p className="whitespace-pre-wrap">📖 {round.passage}</p>
+              </div>
+            </ConstructionExtractor>
+            {idx === roundIndex && !round.translation && !evaluating && !passageLoading && (
+              <div className="flex justify-end w-full pt-0.5">
+                <button
+                  type="button"
+                  onClick={handleRerollStory}
+                  className="px-2.5 py-1 text-[11px] font-bold text-gray-400 hover:text-purple-300 transition cursor-pointer flex items-center gap-1 hover:bg-purple-950/30 rounded-lg"
+                >
+                  <span>🎲</span> Reroll Story
+                </button>
+              </div>
+            )}
+          </div>
+
+          {round.translation && (
+            <div className="flex flex-col items-end gap-1.5 ml-auto max-w-[90%]">
+              <div className="glass-panel p-4 rounded-2xl rounded-tr-sm text-sm leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
+                <p className="whitespace-pre-wrap">{round.translation}</p>
+              </div>
+            </div>
+          )}
+
+          {round.feedback && (
+            <StoryFeedbackCard
+              feedback={round.feedback}
+              sessionId={session?.id}
+              settings={settings}
+              passage={round.passage}
+            />
+          )}
+
+          {round.unparsed && (
+            <div className="glass-panel p-4 rounded-2xl rounded-tl-sm border border-amber-700/40 w-full space-y-2">
+              <p className="text-[10px] uppercase tracking-wider text-amber-400 font-bold">
+                Feedback (unparsed)
+              </p>
+              <p
+                data-testid="story-raw-feedback"
+                className="text-xs text-gray-300 whitespace-pre-wrap"
+              >
+                {round.rawFeedback}
+              </p>
+              {idx === roundIndex && (
+                <button
+                  onClick={handleRetryFeedback}
+                  disabled={evaluating}
+                  className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs rounded-xl transition cursor-pointer disabled:opacity-50"
+                >
+                  Retry Evaluation
+                </button>
+              )}
+            </div>
           )}
         </div>
-      )}
+      ))}
 
-      {/* In-Session Variety Matrix Drawer */}
-      {matrixOpen && (
-        <div className="p-3.5 border-t border-[#27283d] bg-[#121320] space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-              <span>✨</span> Tune Story Flavor (Applies to next rounds)
-            </span>
-            <button
-              type="button"
-              onClick={() => setMatrixOpen(false)}
-              className="text-gray-400 hover:text-white text-xs font-bold"
-            >
-              ✕ Close
-            </button>
-          </div>
-
-          {/* Quick Presets */}
-          <div className="flex flex-wrap gap-1.5">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedPreset(null);
-                setVarietyMatrix({ domain: 'auto', tone: 'auto', format: 'auto', catalyst: 'auto' });
-              }}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition cursor-pointer ${
-                !selectedPreset && Object.values(varietyMatrix).every((v) => v === 'auto')
-                  ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
-                  : 'bg-[#1b1c2b] text-gray-300 border-[#27283d] hover:border-purple-500/50'
-              }`}
-            >
-              🎲 Auto Variety
-            </button>
-            {VARIETY_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                onClick={() => {
-                  setSelectedPreset(preset.id);
-                  setVarietyMatrix({ ...preset.matrix });
-                }}
-                className={`px-2.5 py-1 text-xs font-semibold rounded-lg border transition cursor-pointer ${
-                  selectedPreset === preset.id
-                    ? 'bg-purple-600 text-white border-purple-500 shadow-sm'
-                    : 'bg-[#1b1c2b] text-gray-300 border-[#27283d] hover:border-purple-500/50'
-                }`}
-              >
-                {preset.emoji} {preset.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Granular Dials */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 pt-1">
-            <div>
-              <label htmlFor="insession-matrix-domain" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                Domain
-              </label>
-              <select
-                id="insession-matrix-domain"
-                value={varietyMatrix.domain}
-                onChange={(e) => {
-                  setSelectedPreset(null);
-                  setVarietyMatrix((prev) => ({ ...prev, domain: e.target.value }));
-                }}
-                className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
-              >
-                <option value="auto">🎲 Auto Domain</option>
-                {VARIETY_MATRIX.domains.map((d) => (
-                  <option key={d.id} value={d.id}>
-                    {d.emoji} {d.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="insession-matrix-tone" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                Tone
-              </label>
-              <select
-                id="insession-matrix-tone"
-                value={varietyMatrix.tone}
-                onChange={(e) => {
-                  setSelectedPreset(null);
-                  setVarietyMatrix((prev) => ({ ...prev, tone: e.target.value }));
-                }}
-                className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
-              >
-                <option value="auto">🎲 Auto Tone</option>
-                {VARIETY_MATRIX.tones.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.emoji} {t.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="insession-matrix-format" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                Format
-              </label>
-              <select
-                id="insession-matrix-format"
-                value={varietyMatrix.format}
-                onChange={(e) => {
-                  setSelectedPreset(null);
-                  setVarietyMatrix((prev) => ({ ...prev, format: e.target.value }));
-                }}
-                className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
-              >
-                <option value="auto">🎲 Auto Format</option>
-                {VARIETY_MATRIX.formats.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.emoji} {f.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label htmlFor="insession-matrix-catalyst" className="block text-[10px] font-bold text-gray-400 uppercase mb-1">
-                Catalyst
-              </label>
-              <select
-                id="insession-matrix-catalyst"
-                value={varietyMatrix.catalyst}
-                onChange={(e) => {
-                  setSelectedPreset(null);
-                  setVarietyMatrix((prev) => ({ ...prev, catalyst: e.target.value }));
-                }}
-                className="w-full bg-[#1b1c2b] border border-[#27283d] text-gray-200 text-xs rounded-lg px-2 py-1.5 focus:outline-none focus:border-purple-500 cursor-pointer"
-              >
-                <option value="auto">🎲 Auto Catalyst</option>
-                {VARIETY_MATRIX.catalysts.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.emoji} {c.label}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {passageLoading && (
+        <div className="flex flex-col items-start gap-1.5 max-w-[90%]">
+          <div className="glass-panel p-4 rounded-2xl rounded-tl-sm text-sm border border-purple-500/20 text-gray-400 italic w-full">
+            Writing your story...
           </div>
         </div>
       )}
-
-      {/* Navigation & Controls Footer (Full-Width Textarea Dock + Actions Bar) */}
-      <div className="p-2 sm:p-3 border-t border-[var(--border-color)] bg-[var(--bg-card)] shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))] space-y-1.5">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            handleSubmitTranslation();
-          }}
-          className="space-y-1.5 sm:space-y-2"
-        >
-          {/* Desktop shortcut text */}
-          <div className="hidden sm:flex justify-between items-center text-[10px] text-gray-500 font-medium">
-            <span>Enter adds a new line · Ctrl/⌘ + Enter translates</span>
-          </div>
-
-          {/* Full-Width Translation Input Textarea */}
-          <div className="w-full">
-            <textarea
-              ref={inputRef}
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onFocus={() => {
-                scrollToActivePassage();
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                  e.preventDefault();
-                  handleSubmitTranslation();
-                }
-              }}
-              placeholder="Type or speak your English translation..."
-              rows={2}
-              disabled={evaluating || passageLoading || !currentRound?.passage || translationLocked}
-              className="w-full min-h-[46px] sm:min-h-[54px] max-h-[110px] sm:max-h-[140px] bg-[#0e0f17] border border-gray-800 rounded-xl px-3.5 sm:px-4 py-2 sm:py-2.5 text-base sm:text-sm text-white focus:outline-none focus:border-purple-500 transition font-medium resize-none disabled:opacity-60"
-            />
-          </div>
-
-          {/* Controls Bar Under Textarea */}
-          <div className="flex items-center justify-between gap-2 w-full">
-            <div className="flex items-center gap-1.5">
-              {/* Mobile Actions Drawer Toggle */}
-              <button
-                type="button"
-                data-testid="toggle-mobile-actions"
-                onClick={() => setMobileActionsOpen(!mobileActionsOpen)}
-                className="py-1 px-2.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-gray-300 text-xs font-semibold border border-gray-700/70 flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <span>⚡</span>
-                <span className="text-[11px] text-purple-300 font-bold">
-                  Actions · R{roundIndex + 1} {mobileActionsOpen ? '▼' : '▲'}
-                </span>
-              </button>
-
-              {/* Audio Recorder Button (Desktop only inline) */}
-              <div className="hidden sm:flex shrink-0 items-center">
-                <AudioRecorder
-                  settings={settings}
-                  onTranscribed={insertTranscription}
-                  onError={(err) => setErrorMsg(err)}
-                />
-              </div>
-            </div>
-
-            {/* Translate Button (Desktop only inline) */}
-            <button
-              type="submit"
-              disabled={!canSubmit}
-              className="hidden sm:inline-flex px-4 sm:px-6 py-1.5 sm:py-2 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow cursor-pointer disabled:opacity-50 shrink-0 text-center"
-            >
-              Translate ▶
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    </InteractiveSessionShell>
   );
 }

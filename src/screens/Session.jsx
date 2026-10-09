@@ -384,23 +384,24 @@ export default function Session() {
     return generateExportPrompt();
   }, []);
 
-  const isTranslationActive = step === 2 && activity === 'translation';
-  const { viewportHeight, viewportWidth } = useVisualViewport({ lockBodyScroll: isTranslationActive });
+  const isInteractiveActive =
+    step === 2 && (activity === 'translation' || (activity === 'dialogue' && mode === 'seamless'));
+  const { viewportHeight, viewportWidth } = useVisualViewport({ lockBodyScroll: isInteractiveActive });
 
   return (
     <div
       className={`w-full ${
-        step === 2 && activity === 'translation'
+        isInteractiveActive
           ? 'h-[100dvh] sm:h-[88vh] flex flex-col max-w-4xl mx-auto -my-1 sm:my-0 fixed sm:static inset-0 z-20 bg-[var(--bg-main)] sm:bg-transparent overflow-hidden'
           : 'space-y-6 animate-fade-in max-w-2xl mx-auto py-2'
       }`}
       style={
-        step === 2 && activity === 'translation' && viewportWidth < 640
+        isInteractiveActive && viewportWidth < 640
           ? { height: `${viewportHeight}px`, maxHeight: `${viewportHeight}px` }
           : undefined
       }
     >
-      {!(step === 2 && activity === 'translation') && (
+      {!isInteractiveActive && (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
             <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight pt-1">New Practice Session</h1>
@@ -759,7 +760,9 @@ export default function Session() {
       )}
 
       {step === 2 && activity === 'dialogue' && mode === 'seamless' && (
-        <SeamlessChatSession session={session} settings={settings} onFinish={handleSeamlessFinish} />
+        <div className="flex-1 min-h-0 flex flex-col">
+          <SeamlessChatSession session={session} settings={settings} onFinish={handleSeamlessFinish} />
+        </div>
       )}
 
       {step === 2 && activity === 'dialogue' && mode === 'prompt' && (
