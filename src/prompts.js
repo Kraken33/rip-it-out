@@ -771,6 +771,9 @@ export function generateFrequencyDrillPrompt({ ru, en, previousDrills = [] }, se
   const formality = settings?.formality || 'casual spoken';
   const level = settings?.level || 'intermediate';
 
+  const cleanEn = (en || '').trim().replace(/[.!?]+$/, '');
+  const cleanRu = (ru || '').trim().replace(/[.!?]+$/, '');
+
   let prevContext = '';
   if (Array.isArray(previousDrills) && previousDrills.length > 0) {
     const list = previousDrills.map((d, i) => `${i + 1}. RU: "${d.ru}" | EN: "${d.en}"`).join('\n');
@@ -778,24 +781,25 @@ export function generateFrequencyDrillPrompt({ ru, en, previousDrills = [] }, se
   }
 
   return `You are an expert bilingual Russian-English language coach.
-The learner struggled with this sentence:
-Russian: "${ru}"
-English: "${en}"
+The learner is practicing this specific sentence pair:
+Target English: "${en}"
+Target Russian: "${ru}"
 
-Your task is to generate ONE new, natural practice sentence that strictly reinforces the EXACT core construction, phrasal verb, or grammatical pattern from this sentence in a natural spoken context, along with its accurate translation.
+Your task is to generate ONE new, natural spoken practice sentence that is a DIRECT contextual variation of this exact sentence, along with its accurate translation.
 
 Formality: ${formality}
 Learner level: ${level}
 ${prevContext}
-CRITICAL ANCHORING RULES:
-- You MUST preserve and test the exact core phrase, phrasal verb, or key idiom from the target sentence (e.g. if the sentence is "Eat up.", your variation MUST use "eat up" in the English translation; do NOT substitute synonyms like "finish" or "eat").
-- Do NOT drift into unrelated contexts that change the core vocabulary.
-- Keep the sentence concise (typically 3 to 10 words).
-- Focus on natural everyday spoken speech.
-- Respond ONLY with a valid JSON object in this exact format (no markdown code blocks, no extra commentary):
+STRICT KEYWORD & PATTERN LOCK (ZERO DRIFT):
+1. MANDATORY ENGLISH KEYWORD: The English translation MUST contain "${cleanEn}" (or its direct verbal root / inflection). You are STRICTLY FORBIDDEN from substituting colloquial synonyms or different verbs (e.g. if the target is "Join me", you CANNOT write "Come with me"; you MUST use the verb "join").
+2. MANDATORY RUSSIAN CORRESPONDENCE: The Russian sentence MUST use the direct Russian equivalent corresponding to "${cleanRu}". You CANNOT switch to an unrelated idiom (e.g. if the target is "Присоединяйтесь ко мне", do NOT write "Пойдёшь со мной").
+3. NATURAL CONTEXTUAL EXPANSION: Create a realistic slight variation by adding simple contextual slots (e.g., "Join me for coffee.", "Can you join me?", "Why don't you join me?"). If no natural expansion exists, return the exact sentence in a different conversational frame.
+4. Keep the sentence concise (typically 3 to 10 words).
+
+Respond ONLY with a valid JSON object in this exact format (no markdown code blocks, no extra commentary):
 {
   "ru": "new Russian sentence",
-  "en": "natural English translation",
+  "en": "natural English translation containing the mandatory keyword",
   "targetPattern": "short name of grammatical pattern or vocabulary slot being reinforced",
   "hint": "short helpful tip in English"
 }`;
@@ -840,31 +844,41 @@ export function parseFrequencyDrillSentence(text) {
 /**
  * Prompt to evaluate a learner's translation attempt for a drill sentence.
  *
- * @param {{ targetRu: string, targetEn: string, userAttempt: string, direction?: string }} params
+ * @param {{ targetRu: string, targetEn: string, userAttempt: string, direction?: string, originalCard?: { ru: string, en: string } }} params
  * @param {Object} [settings]
  * @returns {string}
  */
-export function evaluateFrequencyDrillPrompt({ targetRu, targetEn, userAttempt, direction = 'ru-en' }, settings = {}) {
+export function evaluateFrequencyDrillPrompt({ targetRu, targetEn, userAttempt, direction = 'ru-en', originalCard }, settings = {}) {
   const formality = settings?.formality || 'casual spoken';
   const targetLang = direction === 'en-ru' ? 'Russian' : 'English';
   const sourceLang = direction === 'en-ru' ? 'English' : 'Russian';
   const targetSentence = direction === 'en-ru' ? targetEn : targetRu;
   const referenceTranslation = direction === 'en-ru' ? targetRu : targetEn;
 
+  let originalCardContext = '';
+  if (originalCard && (originalCard.en || originalCard.ru)) {
+    originalCardContext = `
+ORIGINAL ROOT CARD BEING LEARNED:
+- English: "${originalCard.en || ''}"
+- Russian: "${originalCard.ru || ''}"
+NOTE: The learner is specifically practicing the vocabulary and phrasing of this root card. Under NO circumstances should you penalize or reject the learner's translation for using the vocabulary or construction from this root card! If the learner uses the root card's wording ("${originalCard.en}") accurately, you MUST accept it as valid and natural.
+`;
+  }
+
   return `You are an expert bilingual Russian-English language coach evaluating a learner's translation attempt.
 
 Target Sentence (${sourceLang}): "${targetSentence}"
 Reference Translation (${targetLang}): "${referenceTranslation}"
 Learner's translation attempt: "${userAttempt}"
-
+${originalCardContext}
 Formality: ${formality}
 Study direction: ${direction} (learner is translating from ${sourceLang} into ${targetLang})
 
 Analyze whether the learner's attempt accurately conveys the meaning in natural spoken ${targetLang}.
 
 CRITICAL EVALUATION RULES:
-- The learner is specifically practicing the target construction/sentence. Do NOT penalize the learner for using the target phrasal verb, idiom, or construction from the reference translation.
-- Accept valid natural phrasing variations, but verify the core meaning matches the target sentence.
+- The learner is specifically practicing the target construction/sentence. Do NOT penalize the learner for using the target phrasal verb, idiom, or construction from the reference translation or root card.
+- Accept valid natural phrasing variations, especially if they correctly use the target vocabulary.
 - Ignore minor punctuation, trailing periods, quotation marks, or casing differences.
 
 Respond ONLY with a valid JSON object in this exact format:

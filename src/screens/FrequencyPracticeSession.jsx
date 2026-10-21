@@ -199,6 +199,14 @@ export default function FrequencyPracticeSession() {
     setUserAttempt('');
   };
 
+  const triggerReverseDrill = () => {
+    setDrillPhase('reverse');
+    setDrillLoading(false);
+    setDrillError(null);
+    setEvaluation(null);
+    setUserAttempt('');
+  };
+
   const triggerVariationDrill = async (target, pastDrills) => {
     setDrillPhase('variation');
     setDrillLoading(true);
@@ -228,8 +236,13 @@ export default function FrequencyPracticeSession() {
     setDrillError(null);
 
     const isPhase1 = drillPhase === 'direct';
-    const targetRu = isPhase1 ? currentSentence?.ru : (drillSentence?.ru || currentSentence?.ru);
-    const targetEn = isPhase1 ? currentSentence?.en : (drillSentence?.en || currentSentence?.en);
+    const isReverse = drillPhase === 'reverse';
+    const activeDirection = isReverse
+      ? (direction === 'ru-en' ? 'en-ru' : 'ru-en')
+      : direction;
+
+    const targetRu = (isPhase1 || isReverse) ? currentSentence?.ru : (drillSentence?.ru || currentSentence?.ru);
+    const targetEn = (isPhase1 || isReverse) ? currentSentence?.en : (drillSentence?.en || currentSentence?.en);
 
     try {
       const result = await evaluateFrequencyMiniDrill(
@@ -237,7 +250,8 @@ export default function FrequencyPracticeSession() {
           targetRu,
           targetEn,
           userAttempt: userAttempt.trim(),
-          direction,
+          direction: activeDirection,
+          originalCard: currentSentence,
         },
         settings
       );
@@ -312,11 +326,18 @@ export default function FrequencyPracticeSession() {
 
   // Mini-drill computed values
   const isDirectDrill = drillPhase === 'direct';
-  const drillPromptText = isDirectDrill
-    ? (direction === 'ru-en' ? currentSentence?.ru : currentSentence?.en)
-    : (direction === 'ru-en' ? drillSentence?.ru : drillSentence?.en);
-  const targetLanguageLabel = direction === 'ru-en' ? 'English' : 'Russian';
-  const targetLangCode = direction === 'ru-en' ? 'en' : 'ru';
+  const isReverseDrill = drillPhase === 'reverse';
+  const activeDrillDirection = isReverseDrill
+    ? (direction === 'ru-en' ? 'en-ru' : 'ru-en')
+    : direction;
+
+  const drillPromptText = isDirectDrill || isReverseDrill
+    ? (activeDrillDirection === 'ru-en' ? currentSentence?.ru : currentSentence?.en)
+    : (activeDrillDirection === 'ru-en' ? drillSentence?.ru : drillSentence?.en);
+
+  const targetLanguageLabel = activeDrillDirection === 'ru-en' ? 'English' : 'Russian';
+  const sourceLanguageLabel = activeDrillDirection === 'ru-en' ? 'Russian' : 'English';
+  const targetLangCode = activeDrillDirection === 'ru-en' ? 'en' : 'ru';
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4 py-2 animate-fade-in" data-testid="frequency-practice-screen">
@@ -599,7 +620,9 @@ export default function FrequencyPracticeSession() {
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-purple-300">⚡ Interactive AI Mini-Drill</span>
               <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-purple-500/10 border border-purple-500/20 text-purple-300">
-                {isDirectDrill ? 'Phase 1: Direct Recall' : 'Phase 2: Anchored Variation'}
+                {isDirectDrill && 'Phase 1: Direct Recall'}
+                {isReverseDrill && `Phase 1: Reverse Recall (${sourceLanguageLabel} → ${targetLanguageLabel})`}
+                {drillPhase === 'variation' && 'Phase 2: Anchored Variation'}
               </span>
             </div>
             <button
@@ -652,7 +675,7 @@ export default function FrequencyPracticeSession() {
           )}
 
           {/* Drill content */}
-          {!drillLoading && (isDirectDrill || drillSentence) && (
+          {!drillLoading && (isDirectDrill || isReverseDrill || drillSentence) && (
             <div className="space-y-6">
               <div className="space-y-2 text-center">
                 <span className="text-[10px] uppercase font-bold tracking-widest text-purple-400">
@@ -664,11 +687,14 @@ export default function FrequencyPracticeSession() {
                   </h4>
                   <AudioPlayerButton text={drillPromptText} settings={settings} size="sm" />
                 </div>
-                {!isDirectDrill && drillSentence?.hint && (
-                  <p className="text-xs text-slate-400 italic">💡 Hint: {drillSentence.hint}</p>
-                )}
                 {isDirectDrill && (
                   <p className="text-xs text-slate-400 italic">Immediate recall: translate this card into {targetLanguageLabel}</p>
+                )}
+                {isReverseDrill && (
+                  <p className="text-xs text-slate-400 italic">Reverse recall: translate this card into {targetLanguageLabel}</p>
+                )}
+                {drillPhase === 'variation' && drillSentence?.hint && (
+                  <p className="text-xs text-slate-400 italic">💡 Hint: {drillSentence.hint}</p>
                 )}
               </div>
 
@@ -745,13 +771,22 @@ export default function FrequencyPracticeSession() {
                   </div>
 
                   {/* Actions after evaluation */}
-                  <div className="flex flex-col sm:flex-row gap-2 justify-end pt-2">
+                  <div className="flex flex-wrap gap-2 justify-end pt-2">
+                    {!isReverseDrill && (
+                      <button
+                        type="button"
+                        onClick={triggerReverseDrill}
+                        className="px-3 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 border border-indigo-500/30 transition-all"
+                      >
+                        🔄 Try Reverse Direction
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => triggerVariationDrill(currentSentence, previousDrills)}
-                      className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 transition-all"
+                      className="px-3 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 transition-all"
                     >
-                      🔄 Try Variation Drill
+                      ⚡ Try Anchored Variation
                     </button>
                     <button
                       type="button"

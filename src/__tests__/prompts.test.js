@@ -668,8 +668,8 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(prompt).toContain('Стой тут.');
       expect(prompt).toContain('conversational');
       expect(prompt).toContain('upper-intermediate');
-      expect(prompt).toContain('CRITICAL ANCHORING RULES');
-      expect(prompt).toContain('MUST preserve and test the exact core phrase');
+      expect(prompt).toContain('STRICT KEYWORD & PATTERN LOCK (ZERO DRIFT)');
+      expect(prompt).toContain('MANDATORY ENGLISH KEYWORD: The English translation MUST contain "Wait for me here"');
     });
 
     it('parseFrequencyDrillSentence parses valid JSON drill', () => {
@@ -703,6 +703,19 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(prompt).toContain('Study direction: ru-en');
       expect(prompt).toContain('CRITICAL EVALUATION RULES');
       expect(prompt).toContain('"isAccurate"');
+    });
+
+    it('evaluateFrequencyDrillPrompt anchors to originalCard when provided', () => {
+      const prompt = evaluateFrequencyDrillPrompt({
+        targetRu: 'Пойдёшь со мной?',
+        targetEn: 'Come with me?',
+        userAttempt: 'Do you join me?',
+        originalCard: { ru: 'Присоединяйтесь ко мне!', en: 'Join me.' },
+      });
+      expect(prompt).toContain('ORIGINAL ROOT CARD BEING LEARNED:');
+      expect(prompt).toContain('- English: "Join me."');
+      expect(prompt).toContain('- Russian: "Присоединяйтесь ко мне!"');
+      expect(prompt).toContain('Under NO circumstances should you penalize or reject the learner\'s translation for using the vocabulary or construction from this root card!');
     });
 
     it('evaluateFrequencyDrillPrompt adapts correctly for en-ru direction', () => {

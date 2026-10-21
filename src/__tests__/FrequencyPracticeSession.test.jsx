@@ -224,16 +224,18 @@ describe('FrequencyPracticeSession Component', () => {
           targetEn: 'Come here.',
           userAttempt: 'Come here.',
           direction: 'ru-en',
+          originalCard: mockSentences[0],
         }),
         expect.any(Object)
       );
       expect(screen.getByText(/Verdict: natural/i)).toBeInTheDocument();
       expect(screen.getByText(/Accurate direct recall!/i)).toBeInTheDocument();
-      expect(screen.getByText(/Try Variation Drill/i)).toBeInTheDocument();
+      expect(screen.getByText(/Try Anchored Variation/i)).toBeInTheDocument();
+      expect(screen.getByText(/Try Reverse Direction/i)).toBeInTheDocument();
     });
 
     // User chooses to enter Phase 2: Anchored Variation Drill
-    fireEvent.click(screen.getByText(/Try Variation Drill/i));
+    fireEvent.click(screen.getByText(/Try Anchored Variation/i));
 
     await waitFor(() => {
       expect(generateFrequencyMiniDrill).toHaveBeenCalledWith(mockSentences[0], expect.any(Object), []);
@@ -324,6 +326,51 @@ describe('FrequencyPracticeSession Component', () => {
       );
       expect(screen.getByText(/Verdict: natural/i)).toBeInTheDocument();
       expect(screen.getByText(/Отличный перевод!/i)).toBeInTheDocument();
+    });
+  });
+
+  it('allows switching to Reverse Direction drill after evaluation', async () => {
+    saveFrequencySentenceToSrs.mockResolvedValueOnce({});
+    evaluateFrequencyMiniDrill.mockResolvedValueOnce({
+      isAccurate: true,
+      verdict: 'natural',
+      naturalRewrite: 'Come here.',
+      explanation: 'Good recall.',
+    });
+
+    render(
+      <MemoryRouter>
+        <FrequencyPracticeSession />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/"Иди сюда."/i)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByText(/Reveal Translation/i));
+    fireEvent.click(screen.getByText(/Hard/i));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('interactive-mini-drill')).toBeInTheDocument();
+    });
+
+    // Submit Phase 1 direct
+    const textarea = screen.getByPlaceholderText(/Type your English translation/i);
+    fireEvent.change(textarea, { target: { value: 'Come here.' } });
+    fireEvent.submit(screen.getByText(/Check Translation/i).closest('form'));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Try Reverse Direction/i)).toBeInTheDocument();
+    });
+
+    // Switch to Reverse Direction
+    fireEvent.click(screen.getByText(/Try Reverse Direction/i));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Phase 1: Reverse Recall/i)).toBeInTheDocument();
+      expect(screen.getByText(/Translate to Russian/i)).toBeInTheDocument();
+      expect(screen.getByText(/"Come here."/i)).toBeInTheDocument();
     });
   });
 });

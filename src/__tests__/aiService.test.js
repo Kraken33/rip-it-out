@@ -1022,5 +1022,45 @@ describe('AI Service Layer', () => {
         })
       );
     });
+
+    it('threads originalCard into evaluation prompt to prevent false rejections', async () => {
+      const mockPayload = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                isAccurate: true,
+                verdict: 'natural',
+                naturalRewrite: 'Join me for lunch.',
+                explanation: 'Accurate use of target verb join.',
+              }),
+            },
+          },
+        ],
+      };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockPayload,
+      });
+
+      const res = await evaluateFrequencyMiniDrill(
+        {
+          targetRu: 'Пойдёшь со мной?',
+          targetEn: 'Come with me?',
+          userAttempt: 'Will you join me?',
+          originalCard: { ru: 'Присоединяйтесь ко мне!', en: 'Join me.' },
+        },
+        { openaiApiKey: 'sk-test' }
+      );
+
+      expect(res.isAccurate).toBe(true);
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/chat/completions',
+        expect.objectContaining({
+          body: expect.stringContaining('ORIGINAL ROOT CARD BEING LEARNED:'),
+        })
+      );
+    });
   });
 });
