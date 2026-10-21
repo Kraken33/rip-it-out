@@ -1,4 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { processReview } from './srs';
 
 const STORAGE_KEYS = {
   topics: 'rio_topics',
@@ -7,6 +8,7 @@ const STORAGE_KEYS = {
   srsCards: 'rio_srs_cards',
   settings: 'rio_settings',
   activityLogs: 'rio_activity_logs',
+  frequencyProgress: 'rio_frequency_progress',
 };
 
 const DEFAULT_SETTINGS = {
@@ -1198,3 +1200,71 @@ export async function clearAllData() {
     } catch {}
   });
 }
+
+// ── Frequency Sentences Practice Store ─────────────────────────────
+
+export function getFrequencyProgress() {
+  const defaults = {
+    page: 1,
+    sentenceIndex: 0,
+    completedCount: 0,
+    skippedCount: 0,
+    savedCount: 0,
+  };
+  const stored = readLocalStore(STORAGE_KEYS.frequencyProgress);
+  return stored ? { ...defaults, ...stored } : defaults;
+}
+
+export function saveFrequencyProgress(updates = {}) {
+  const current = getFrequencyProgress();
+  const next = {
+    ...current,
+    ...updates,
+    lastUpdated: new Date().toISOString(),
+  };
+  writeLocalStore(STORAGE_KEYS.frequencyProgress, next);
+  return next;
+}
+
+export async function getOrCreateFrequencySession() {
+  const sessions = await getSessions();
+  const existing = sessions.find((s) => s.title === 'Manythings Frequency Sentences');
+  if (existing) return existing;
+  return await createSession({
+    title: 'Manythings Frequency Sentences',
+    sourceType: 'other',
+    activity: 'drill',
+    tags: ['manythings', 'frequency', 'tatoeba'],
+    notes: 'Frequency-ranked English-Russian sentence practice from Manythings/Tatoeba',
+  });
+}
+
+export async function saveFrequencySentenceToSrs(sentence, rating = 3) {
+  if (!sentence || (!sentence.ru && !sentence.en)) {
+    throw new Error('Valid sentence object is required to save to SRS.');
+  }
+  const session = await getOrCreateFrequencySession();
+  const improvements = await addImprovements(session.id, [
+    {
+      construction: sentence.en || sentence.ru,
+      original: sentence.ru || '',
+      improved: sentence.en || '',
+      explanation: sentence.ru || '',
+      category: 'structure',
+      spokenFrequency: 'very_high',
+      context: sentence.ru || '',
+    },
+  ]);
+
+  const createdImp = improvements[0];
+  if (createdImp) {
+    const card = await getSrsCard(createdImp.id);
+    if (card) {
+      const updates = processReview(card, rating);
+      await updateSrsCard(createdImp.id, updates);
+    }
+  }
+
+  return createdImp;
+}
+

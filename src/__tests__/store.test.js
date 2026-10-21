@@ -43,6 +43,10 @@ import {
   calculateDueCards,
   calculateStats,
   calculateActivityStats,
+  getFrequencyProgress,
+  saveFrequencyProgress,
+  getOrCreateFrequencySession,
+  saveFrequencySentenceToSrs,
 } from '../store';
 
 describe('Store Layer', () => {
@@ -381,6 +385,61 @@ describe('Store In-Memory Calculation Helpers & Aggregated Loaders', () => {
     expect(data.topics).toHaveLength(1);
     expect(data.activityLogs).toHaveLength(1);
     expect(data.allTimeWords.totalWords).toBe(3);
+  });
+
+  describe('Frequency Sentences Practice helpers', () => {
+    it('getFrequencyProgress returns default values when empty', () => {
+      const progress = getFrequencyProgress();
+      expect(progress.page).toBe(1);
+      expect(progress.sentenceIndex).toBe(0);
+      expect(progress.completedCount).toBe(0);
+      expect(progress.skippedCount).toBe(0);
+      expect(progress.savedCount).toBe(0);
+    });
+
+    it('saveFrequencyProgress updates and persists progress fields', () => {
+      const updated = saveFrequencyProgress({
+        page: 3,
+        sentenceIndex: 12,
+        completedCount: 20,
+        skippedCount: 15,
+        savedCount: 5,
+      });
+
+      expect(updated.page).toBe(3);
+      expect(updated.sentenceIndex).toBe(12);
+      expect(updated.completedCount).toBe(20);
+
+      const reloaded = getFrequencyProgress();
+      expect(reloaded.page).toBe(3);
+      expect(reloaded.sentenceIndex).toBe(12);
+    });
+
+    it('getOrCreateFrequencySession creates dedicated session once and reuses it', async () => {
+      const s1 = await getOrCreateFrequencySession();
+      expect(s1.title).toBe('Manythings Frequency Sentences');
+      expect(s1.sourceType).toBe('other');
+
+      const s2 = await getOrCreateFrequencySession();
+      expect(s2.id).toBe(s1.id);
+    });
+
+    it('saveFrequencySentenceToSrs adds sentence to improvements and sets SRS card review state', async () => {
+      const imp = await saveFrequencySentenceToSrs(
+        { ru: 'Иди сюда.', en: 'Come here.' },
+        3 // Good
+      );
+
+      expect(imp.construction).toBe('Come here.');
+      expect(imp.original).toBe('Иди сюда.');
+      expect(imp.improved).toBe('Come here.');
+
+      const cards = await getSrsCards();
+      const card = cards.find((c) => c.improvementId === imp.id);
+      expect(card).toBeDefined();
+      expect(card.status).toBe('learning');
+      expect(card.repetitions).toBe(1);
+    });
   });
 });
 

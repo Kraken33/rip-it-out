@@ -245,10 +245,16 @@ export default function Practice() {
           <p className="text-xs text-gray-400 max-w-sm mx-auto">
             You've reviewed all your due phrases. Create a new session or check back later!
           </p>
-          <div className="pt-2">
+          <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
+            <Link 
+              to="/frequency-practice" 
+              className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition-all shadow"
+            >
+              ⚡ Practice Frequency Sentences
+            </Link>
             <Link 
               to="/" 
-              className="inline-block px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg transition-all shadow"
+              className="inline-block px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-lg transition-all"
             >
               Back to Dashboard
             </Link>
@@ -409,6 +415,12 @@ export default function Practice() {
             }`}
           >
             💬 Scenario Q&A (Prompt #3)
+          </button>
+          <button
+            onClick={() => navigate('/frequency-practice')}
+            className="px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5"
+          >
+            ⚡ Frequency Sentences
           </button>
         </div>
 

@@ -13,6 +13,10 @@ import {
   parseTranslationVerdict,
   parseStoryFeedback,
   parseExtractedConstruction,
+  generateFrequencyDrillPrompt,
+  parseFrequencyDrillSentence,
+  evaluateFrequencyDrillPrompt,
+  parseFrequencyDrillEvaluation,
   VARIETY_MATRIX,
   VARIETY_PRESETS,
   sampleVarietyMatrix
@@ -651,6 +655,78 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(parseExtractedConstruction(JSON.stringify({ note: 'nope' })).success).toBe(false);
     });
   });
+
+  describe('Frequency Drill Prompts and Parsers', () => {
+    it('generateFrequencyDrillPrompt constructs proper prompt with sentence and settings', () => {
+      const prompt = generateFrequencyDrillPrompt(
+        { ru: 'Подожди меня здесь.', en: 'Wait for me here.', previousDrills: [{ ru: 'Стой тут.', en: 'Stand here.' }] },
+        { formality: 'conversational', level: 'upper-intermediate' }
+      );
+      expect(prompt).toContain('Подожди меня здесь.');
+      expect(prompt).toContain('Wait for me here.');
+      expect(prompt).toContain('Previously generated drill examples');
+      expect(prompt).toContain('Стой тут.');
+      expect(prompt).toContain('conversational');
+      expect(prompt).toContain('upper-intermediate');
+    });
+
+    it('parseFrequencyDrillSentence parses valid JSON drill', () => {
+      const rawJson = JSON.stringify({
+        ru: 'Позвони мне позже.',
+        en: 'Call me later.',
+        targetPattern: 'Imperative + temporal adverb',
+        hint: 'Use later for future time',
+      });
+      const res = parseFrequencyDrillSentence(`\`\`\`json\n${rawJson}\n\`\`\``);
+      expect(res.success).toBe(true);
+      expect(res.drill.ru).toBe('Позвони мне позже.');
+      expect(res.drill.en).toBe('Call me later.');
+      expect(res.drill.targetPattern).toBe('Imperative + temporal adverb');
+    });
+
+    it('parseFrequencyDrillSentence rejects invalid or missing fields', () => {
+      expect(parseFrequencyDrillSentence('').success).toBe(false);
+      expect(parseFrequencyDrillSentence(JSON.stringify({ ru: 'Привет' })).success).toBe(false);
+    });
+
+    it('evaluateFrequencyDrillPrompt constructs proper evaluation prompt', () => {
+      const prompt = evaluateFrequencyDrillPrompt({
+        targetRu: 'Позвони мне позже.',
+        targetEn: 'Call me later.',
+        userAttempt: 'Call me after.',
+      });
+      expect(prompt).toContain('Позвони мне позже.');
+      expect(prompt).toContain('Call me later.');
+      expect(prompt).toContain('Call me after.');
+      expect(prompt).toContain('"isAccurate"');
+    });
+
+    it('parseFrequencyDrillEvaluation parses valid evaluation JSON', () => {
+      const rawJson = JSON.stringify({
+        isAccurate: true,
+        verdict: 'natural',
+        naturalRewrite: 'Call me later.',
+        explanation: 'Very natural phrasing.',
+      });
+      const res = parseFrequencyDrillEvaluation(rawJson);
+      expect(res.success).toBe(true);
+      expect(res.evaluation.isAccurate).toBe(true);
+      expect(res.evaluation.verdict).toBe('natural');
+      expect(res.evaluation.naturalRewrite).toBe('Call me later.');
+    });
+
+    it('parseFrequencyDrillEvaluation falls back safely on unallowed verdict', () => {
+      const rawJson = JSON.stringify({
+        isAccurate: false,
+        verdict: 'unknown_score',
+        naturalRewrite: 'Call me later.',
+      });
+      const res = parseFrequencyDrillEvaluation(rawJson);
+      expect(res.success).toBe(true);
+      expect(res.evaluation.verdict).toBe('acceptable');
+    });
+  });
 });
+
 
 

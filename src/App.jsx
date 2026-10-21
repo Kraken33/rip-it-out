@@ -6,6 +6,7 @@ import Dashboard from './screens/Dashboard';
 import Session from './screens/Session';
 import Review from './screens/Review';
 import Practice from './screens/Practice';
+import FrequencyPracticeSession from './screens/FrequencyPracticeSession';
 import Library from './screens/Library';
 import Settings from './screens/Settings';
 import Stats from './screens/Stats';
@@ -58,6 +59,7 @@ function AuthenticatedApp() {
   const hideNav =
     location.pathname === '/review' ||
     location.pathname === '/practice' ||
+    location.pathname === '/frequency-practice' ||
     location.pathname.startsWith('/session');
 
   return (
@@ -98,6 +100,7 @@ function AuthenticatedApp() {
           <Route path="/session/new" element={<Session />} />
           <Route path="/review" element={<Review />} />
           <Route path="/practice" element={<Practice />} />
+          <Route path="/frequency-practice" element={<FrequencyPracticeSession />} />
           <Route path="/library" element={<Library />} />
           <Route path="/stats" element={<Stats />} />
           <Route path="/settings" element={<Settings />} />

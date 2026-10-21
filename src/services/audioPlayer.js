@@ -104,7 +104,7 @@ export async function playText(text, settings = {}, onStateChange = () => {}) {
   }
 }
 
-function playBrowserSpeech(text, onStateChange) {
+function playBrowserSpeech(text, onStateChange, explicitLang = null) {
   if (typeof window === 'undefined' || !window.speechSynthesis) {
     onStateChange({ playing: false, loading: false, error: 'Text-to-speech not supported in this browser' });
     activeTextBeingPlayed = null;
@@ -113,8 +113,11 @@ function playBrowserSpeech(text, onStateChange) {
 
   window.speechSynthesis.cancel();
 
+  const isRussian = /[а-яА-ЯёЁ]/.test(text);
+  const targetLang = explicitLang || (isRussian ? 'ru-RU' : 'en-US');
+
   const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = 'en-US';
+  utterance.lang = targetLang;
   utterance.rate = 0.95; // slightly natural cadence for language learning
 
   utterance.onstart = () => {

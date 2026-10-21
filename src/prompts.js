@@ -759,3 +759,147 @@ export function parseExtractedConstruction(text) {
   };
 }
 
+/**
+ * Prompt to generate a similar spoken Russian practice sentence reinforcing
+ * the grammar pattern or vocabulary of a difficult sentence.
+ *
+ * @param {{ ru: string, en: string, previousDrills?: Array<{ ru: string, en: string }> }} params
+ * @param {Object} [settings]
+ * @returns {string}
+ */
+export function generateFrequencyDrillPrompt({ ru, en, previousDrills = [] }, settings = {}) {
+  const formality = settings?.formality || 'casual spoken';
+  const level = settings?.level || 'intermediate';
+
+  let prevContext = '';
+  if (Array.isArray(previousDrills) && previousDrills.length > 0) {
+    const list = previousDrills.map((d, i) => `${i + 1}. RU: "${d.ru}" | EN: "${d.en}"`).join('\n');
+    prevContext = `\nPreviously generated drill examples (do NOT repeat these):\n${list}\n`;
+  }
+
+  return `You are an expert bilingual Russian-English language coach.
+The learner struggled with this sentence:
+Russian: "${ru}"
+English: "${en}"
+
+Your task is to generate ONE new, natural, similar sentence in Russian that reinforces the same grammatical pattern, collocation, or core vocabulary in a fresh context, along with its accurate natural English translation.
+
+Formality: ${formality}
+Learner level: ${level}
+${prevContext}
+Rules:
+- Keep the sentence concise (typically 3 to 10 words).
+- Focus on natural everyday spoken speech.
+- Respond ONLY with a valid JSON object in this exact format (no markdown code blocks, no extra commentary):
+{
+  "ru": "new Russian sentence",
+  "en": "natural English translation",
+  "targetPattern": "short name of grammatical pattern or vocabulary slot being reinforced",
+  "hint": "short helpful tip in English"
+}`;
+}
+
+/**
+ * Parse an LLM response containing a generated frequency drill sentence.
+ *
+ * @param {string} text
+ * @returns {{ success: boolean, drill?: { ru: string, en: string, targetPattern: string, hint: string }, error?: string }}
+ */
+export function parseFrequencyDrillSentence(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty drill response.' };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(extractJsonObject(text));
+  } catch {
+    return { success: false, error: 'Drill result was not valid JSON.' };
+  }
+
+  const ru = optionalText(parsed?.ru);
+  const en = optionalText(parsed?.en);
+
+  if (!ru || !en) {
+    return { success: false, error: 'Generated drill must include both "ru" and "en" sentences.' };
+  }
+
+  return {
+    success: true,
+    drill: {
+      ru,
+      en,
+      targetPattern: optionalText(parsed?.targetPattern) || '',
+      hint: optionalText(parsed?.hint) || '',
+    },
+  };
+}
+
+/**
+ * Prompt to evaluate a learner's translation attempt for a drill sentence.
+ *
+ * @param {{ targetRu: string, targetEn: string, userAttempt: string }} params
+ * @param {Object} [settings]
+ * @returns {string}
+ */
+export function evaluateFrequencyDrillPrompt({ targetRu, targetEn, userAttempt }, settings = {}) {
+  const formality = settings?.formality || 'casual spoken';
+
+  return `You are an expert bilingual Russian-English language coach evaluating a learner's translation attempt.
+
+Target Russian sentence: "${targetRu}"
+Reference English translation: "${targetEn}"
+Learner's translation attempt: "${userAttempt}"
+
+Formality: ${formality}
+
+Analyze whether the learner's attempt accurately conveys the meaning in natural spoken English (or Russian if translating into Russian). Ignore minor punctuation or casing differences.
+
+Respond ONLY with a valid JSON object in this exact format:
+{
+  "isAccurate": true,
+  "verdict": "natural",
+  "naturalRewrite": "the most natural spoken translation",
+  "explanation": "brief, constructive feedback explaining why this phrasing works or how to fix errors"
+}
+
+Notes for fields:
+- "isAccurate": boolean (true if meaning is preserved without major errors, false otherwise)
+- "verdict": one of "natural", "acceptable", "awkward", "incorrect"
+- "naturalRewrite": string showing the ideal natural phrasing
+- "explanation": concise (1-2 sentences) feedback`;
+}
+
+/**
+ * Parse the evaluation of a frequency drill attempt.
+ *
+ * @param {string} text
+ * @returns {{ success: boolean, evaluation?: { isAccurate: boolean, verdict: string, naturalRewrite: string, explanation: string }, error?: string }}
+ */
+export function parseFrequencyDrillEvaluation(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty evaluation response.' };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(extractJsonObject(text));
+  } catch {
+    return { success: false, error: 'Evaluation result was not valid JSON.' };
+  }
+
+  const allowedVerdicts = ['natural', 'acceptable', 'awkward', 'incorrect'];
+  const rawVerdict = typeof parsed?.verdict === 'string' ? parsed.verdict.toLowerCase().trim() : '';
+  const verdict = allowedVerdicts.includes(rawVerdict) ? rawVerdict : 'acceptable';
+
+  return {
+    success: true,
+    evaluation: {
+      isAccurate: Boolean(parsed?.isAccurate),
+      verdict,
+      naturalRewrite: optionalText(parsed?.naturalRewrite) || '',
+      explanation: optionalText(parsed?.explanation) || '',
+    },
+  };
+}
+

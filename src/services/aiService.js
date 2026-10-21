@@ -6,6 +6,10 @@ import {
   generateStoryPassagePrompt,
   generateStoryFeedbackPrompt,
   generateConstructionExtractionPrompt,
+  generateFrequencyDrillPrompt,
+  parseFrequencyDrillSentence,
+  evaluateFrequencyDrillPrompt,
+  parseFrequencyDrillEvaluation,
 } from '../prompts';
 
 /**
@@ -633,3 +637,66 @@ export async function fetchOpenAITTS(text, voice = 'alloy', apiKey) {
 
   return await response.blob();
 }
+
+/**
+ * Generate a single interactive frequency drill sentence based on a target sentence.
+ *
+ * @param {{ ru: string, en: string }} targetSentence
+ * @param {Object} [settings]
+ * @param {Array<{ ru: string, en: string }>} [previousDrills]
+ * @returns {Promise<{ ru: string, en: string, targetPattern: string, hint: string }>}
+ */
+export async function generateFrequencyMiniDrill(targetSentence, settings = {}, previousDrills = []) {
+  const prompt = generateFrequencyDrillPrompt(
+    {
+      ru: targetSentence?.ru || '',
+      en: targetSentence?.en || '',
+      previousDrills,
+    },
+    settings
+  );
+
+  const reply = await requestOpenAIChat(settings, {
+    messages: [
+      { role: 'system', content: 'You are a bilingual Russian-English language tutor.' },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.6,
+    maxTokens: 600,
+  });
+
+  const parsed = parseFrequencyDrillSentence(reply);
+  if (!parsed.success) {
+    throw new Error(parsed.error || 'Failed to generate frequency drill sentence.');
+  }
+
+  return parsed.drill;
+}
+
+/**
+ * Evaluate a learner's frequency mini-drill translation attempt.
+ *
+ * @param {{ targetRu: string, targetEn: string, userAttempt: string }} params
+ * @param {Object} [settings]
+ * @returns {Promise<{ isAccurate: boolean, verdict: string, naturalRewrite: string, explanation: string }>}
+ */
+export async function evaluateFrequencyMiniDrill({ targetRu, targetEn, userAttempt }, settings = {}) {
+  const prompt = evaluateFrequencyDrillPrompt({ targetRu, targetEn, userAttempt }, settings);
+
+  const reply = await requestOpenAIChat(settings, {
+    messages: [
+      { role: 'system', content: 'You are an expert bilingual Russian-English language coach.' },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.3,
+    maxTokens: 600,
+  });
+
+  const parsed = parseFrequencyDrillEvaluation(reply);
+  if (!parsed.success) {
+    throw new Error(parsed.error || 'Failed to evaluate frequency drill attempt.');
+  }
+
+  return parsed.evaluation;
+}
+

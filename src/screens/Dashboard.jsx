@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { 
   getDashboardData, 
   formatDuration, 
-  getImprovementsBySession 
+  getImprovementsBySession,
+  getFrequencyProgress 
 } from '../store';
 import ConversationViewerModal from './ConversationViewerModal';
 
@@ -49,6 +50,7 @@ export default function Dashboard() {
   const [activeViewerSession, setActiveViewerSession] = useState(null);
   const [activeSessionImprovements, setActiveSessionImprovements] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [frequencyProgress, setFrequencyProgress] = useState({ page: 1, completedCount: 0 });
 
   useEffect(() => {
     let isMounted = true;
@@ -56,11 +58,13 @@ export default function Dashboard() {
       try {
         setLoading(true);
         const data = await getDashboardData();
+        const freqProg = getFrequencyProgress();
         if (isMounted) {
           setStats(data.stats);
           setActivityStats(data.activityStats);
           setTopics(data.topics);
           setWordsToday(data.wordsToday);
+          setFrequencyProgress(freqProg);
         }
       } catch (err) {
         console.error('Error loading dashboard data:', err);
@@ -193,6 +197,34 @@ export default function Dashboard() {
             </div>
           )}
         </div>
+      </div>
+
+      {/* Frequency Sentence Practice Banner Card */}
+      <div className="glass-panel p-5 rounded-2xl border border-indigo-500/30 flex flex-col sm:flex-row items-center justify-between gap-4 bg-gradient-to-r from-indigo-950/40 via-slate-900/60 to-purple-950/40 shadow-lg">
+        <div className="flex items-center gap-3.5 text-center sm:text-left">
+          <div className="w-11 h-11 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center text-xl shrink-0">
+            ⚡
+          </div>
+          <div>
+            <div className="flex items-center gap-2 justify-center sm:justify-start">
+              <h3 className="text-sm font-bold text-white">Frequency Sentence Practice</h3>
+              <span className="text-[10px] font-bold text-indigo-300 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
+                Page {frequencyProgress?.page || 1}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Stream Tatoeba English-Russian bilingual pairs dynamically with interactive AI mini-drills.
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          id="btn-frequency-practice-dashboard"
+          onClick={() => navigate('/frequency-practice')}
+          className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-md transition-all shrink-0 cursor-pointer text-center"
+        >
+          Start Practice →
+        </button>
       </div>
 
       {/* Stats Row */}

@@ -1,5 +1,20 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { transcribeAudio, generateSeamlessSessionFeedback, streamSeamlessChatCompletion, fetchOpenAITTS, generateTranslationRoundPassage, generateTranslationSentence, parseRoundPassagePayload, evaluateTranslationRound, generateTranslationStoryPassage, evaluateTranslationStory, extractConstruction, OPENAI_MODEL_OPTIONS } from '../services/aiService';
+import {
+  transcribeAudio,
+  generateSeamlessSessionFeedback,
+  streamSeamlessChatCompletion,
+  fetchOpenAITTS,
+  generateTranslationRoundPassage,
+  generateTranslationSentence,
+  parseRoundPassagePayload,
+  evaluateTranslationRound,
+  generateTranslationStoryPassage,
+  evaluateTranslationStory,
+  extractConstruction,
+  generateFrequencyMiniDrill,
+  evaluateFrequencyMiniDrill,
+  OPENAI_MODEL_OPTIONS,
+} from '../services/aiService';
 
 describe('AI Service Layer', () => {
   beforeEach(() => {
@@ -879,6 +894,91 @@ describe('AI Service Layer', () => {
           (o) => o.label === `${o.value} — ${o.limits}` && /TPM · .* RPM · .* TPD/.test(o.limits)
         )
       ).toBe(true);
+    });
+  });
+
+  describe('generateFrequencyMiniDrill', () => {
+    it('throws error when no API key is configured', async () => {
+      await expect(
+        generateFrequencyMiniDrill({ ru: 'Привет', en: 'Hi' }, {})
+      ).rejects.toThrow('No API Key configured. Please add an OpenAI API Key in Settings.');
+    });
+
+    it('requests drill sentence and parses response', async () => {
+      const mockPayload = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                ru: 'Позвони мне позже.',
+                en: 'Call me later.',
+                targetPattern: 'Adverb position',
+                hint: 'Use later',
+              }),
+            },
+          },
+        ],
+      };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockPayload,
+      });
+
+      const res = await generateFrequencyMiniDrill(
+        { ru: 'Жди меня тут.', en: 'Wait for me here.' },
+        { openaiApiKey: 'sk-test' }
+      );
+
+      expect(res.ru).toBe('Позвони мне позже.');
+      expect(res.en).toBe('Call me later.');
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/chat/completions',
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({ Authorization: 'Bearer sk-test' }),
+        })
+      );
+    });
+  });
+
+  describe('evaluateFrequencyMiniDrill', () => {
+    it('throws error when no API key is configured', async () => {
+      await expect(
+        evaluateFrequencyMiniDrill({ targetRu: 'Привет', targetEn: 'Hi', userAttempt: 'Hello' }, {})
+      ).rejects.toThrow('No API Key configured. Please add an OpenAI API Key in Settings.');
+    });
+
+    it('evaluates translation attempt and returns evaluation verdict', async () => {
+      const mockPayload = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                isAccurate: true,
+                verdict: 'natural',
+                naturalRewrite: 'Call me later.',
+                explanation: 'Accurate and natural translation.',
+              }),
+            },
+          },
+        ],
+      };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockPayload,
+      });
+
+      const res = await evaluateFrequencyMiniDrill(
+        { targetRu: 'Позвони мне позже.', targetEn: 'Call me later.', userAttempt: 'Call me later.' },
+        { openaiApiKey: 'sk-test' }
+      );
+
+      expect(res.isAccurate).toBe(true);
+      expect(res.verdict).toBe('natural');
+      expect(res.naturalRewrite).toBe('Call me later.');
+      expect(res.explanation).toBe('Accurate and natural translation.');
     });
   });
 });

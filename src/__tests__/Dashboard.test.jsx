@@ -117,4 +117,18 @@ describe('Dashboard Component', () => {
 
     expect(screen.getAllByText(/2m 30s/i).length).toBeGreaterThan(0);
   });
+
+  it('renders Frequency Sentence Practice card and navigates on click', async () => {
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByText(/Frequency Sentence Practice/i)).toBeInTheDocument();
+      expect(screen.getByText(/Page 1/i)).toBeInTheDocument();
+    });
+
+    const startBtn = screen.getByRole('button', { name: /Start Practice →/i });
+    fireEvent.click(startBtn);
+
+    expect(window.location.pathname).toBe('/frequency-practice');
+  });
 });
