@@ -52,7 +52,7 @@ describe('FrequencyPracticeSession Component', () => {
   ];
 
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     getSettings.mockResolvedValue({ level: 'intermediate', formality: 'casual' });
     getFrequencyProgress.mockReturnValue({
       page: 1,
@@ -172,7 +172,7 @@ describe('FrequencyPracticeSession Component', () => {
     });
   });
 
-  it('rates Hard: launches interactive mini-drill loop with AI', async () => {
+  it('rates Hard: enters Phase 1 immediate recall, evaluates, and transitions to Phase 2 variation', async () => {
     saveFrequencySentenceToSrs.mockResolvedValueOnce({});
     generateFrequencyMiniDrill.mockResolvedValueOnce({
       ru: 'Иди быстрее.',
@@ -182,8 +182,8 @@ describe('FrequencyPracticeSession Component', () => {
     evaluateFrequencyMiniDrill.mockResolvedValueOnce({
       isAccurate: true,
       verdict: 'natural',
-      naturalRewrite: 'Come faster.',
-      explanation: 'Great translation!',
+      naturalRewrite: 'Come here.',
+      explanation: 'Accurate direct recall!',
     });
 
     render(
@@ -199,32 +199,51 @@ describe('FrequencyPracticeSession Component', () => {
     fireEvent.click(screen.getByText(/Reveal Translation/i));
     fireEvent.click(screen.getByText(/Hard/i));
 
+    // Phase 1: Direct Recall starts immediately without generating via AI
     await waitFor(() => {
       expect(saveFrequencySentenceToSrs).toHaveBeenCalledWith(mockSentences[0], 2);
       expect(screen.getByTestId('interactive-mini-drill')).toBeInTheDocument();
+      expect(screen.getByText(/Phase 1: Direct Recall/i)).toBeInTheDocument();
+      expect(screen.getByText(/"Иди сюда."/i)).toBeInTheDocument();
     });
 
-    await waitFor(() => {
-      expect(screen.getByText(/"Иди быстрее."/i)).toBeInTheDocument();
-      expect(screen.getByText(/Comparative adverb/i)).toBeInTheDocument();
-    });
+    // AI generation was NOT called for Phase 1
+    expect(generateFrequencyMiniDrill).not.toHaveBeenCalled();
 
-    // Type translation
+    // Type translation for Phase 1
     const textarea = screen.getByPlaceholderText(/Type your English translation/i);
-    fireEvent.change(textarea, { target: { value: 'Come quicker.' } });
+    fireEvent.change(textarea, { target: { value: 'Come here.' } });
 
     const submitBtn = screen.getByText(/Check Translation/i);
     fireEvent.submit(submitBtn.closest('form'));
 
     await waitFor(() => {
-      expect(evaluateFrequencyMiniDrill).toHaveBeenCalled();
+      expect(evaluateFrequencyMiniDrill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetRu: 'Иди сюда.',
+          targetEn: 'Come here.',
+          userAttempt: 'Come here.',
+          direction: 'ru-en',
+        }),
+        expect.any(Object)
+      );
       expect(screen.getByText(/Verdict: natural/i)).toBeInTheDocument();
-      expect(screen.getByText(/"Come faster."/i)).toBeInTheDocument();
-      expect(screen.getByText(/Great translation!/i)).toBeInTheDocument();
+      expect(screen.getByText(/Accurate direct recall!/i)).toBeInTheDocument();
+      expect(screen.getByText(/Try Variation Drill/i)).toBeInTheDocument();
+    });
+
+    // User chooses to enter Phase 2: Anchored Variation Drill
+    fireEvent.click(screen.getByText(/Try Variation Drill/i));
+
+    await waitFor(() => {
+      expect(generateFrequencyMiniDrill).toHaveBeenCalledWith(mockSentences[0], expect.any(Object), []);
+      expect(screen.getByText(/Phase 2: Anchored Variation/i)).toBeInTheDocument();
+      expect(screen.getByText(/"Иди быстрее."/i)).toBeInTheDocument();
+      expect(screen.getByText(/Comparative adverb/i)).toBeInTheDocument();
     });
 
     // Continue to next sentence
-    fireEvent.click(screen.getByText(/Continue to Next Sentence/i));
+    fireEvent.click(screen.getByText(/Skip drill/i));
 
     await waitFor(() => {
       expect(screen.getByText(/"Подожди."/i)).toBeInTheDocument();
@@ -232,12 +251,6 @@ describe('FrequencyPracticeSession Component', () => {
   });
 
   it('allows speech transcription in mini-drill via AudioRecorder', async () => {
-    generateFrequencyMiniDrill.mockResolvedValueOnce({
-      ru: 'Иди быстрее.',
-      en: 'Come quicker.',
-      hint: '',
-    });
-
     render(
       <MemoryRouter>
         <FrequencyPracticeSession />
@@ -252,7 +265,7 @@ describe('FrequencyPracticeSession Component', () => {
     fireEvent.click(screen.getByText(/Again/i));
 
     await waitFor(() => {
-      expect(screen.getByText(/"Иди быстрее."/i)).toBeInTheDocument();
+      expect(screen.getByText(/Phase 1: Direct Recall/i)).toBeInTheDocument();
     });
 
     // Click mic button
@@ -260,5 +273,57 @@ describe('FrequencyPracticeSession Component', () => {
 
     const textarea = screen.getByPlaceholderText(/Type your English translation/i);
     expect(textarea.value).toBe('spoken answer');
+  });
+
+  it('supports en-ru direction in Phase 1 drill', async () => {
+    saveFrequencySentenceToSrs.mockResolvedValueOnce({});
+    evaluateFrequencyMiniDrill.mockResolvedValueOnce({
+      isAccurate: true,
+      verdict: 'natural',
+      naturalRewrite: 'Иди сюда.',
+      explanation: 'Отличный перевод!',
+    });
+
+    render(
+      <MemoryRouter>
+        <FrequencyPracticeSession />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText(/"Иди сюда."/i)).toBeInTheDocument();
+    });
+
+    // Toggle direction to EN -> RU
+    fireEvent.click(screen.getByText(/RU →.*EN/i));
+
+    // Reveal and rate Again
+    fireEvent.click(screen.getByText(/Reveal Translation/i));
+    fireEvent.click(screen.getByText(/Again/i));
+
+    await waitFor(() => {
+      expect(screen.getByText(/Translate to Russian/i)).toBeInTheDocument();
+      expect(screen.getByText(/"Come here."/i)).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(/Type your Russian translation/i);
+    fireEvent.change(textarea, { target: { value: 'Иди сюда.' } });
+
+    const submitBtn = screen.getByText(/Check Translation/i);
+    fireEvent.submit(submitBtn.closest('form'));
+
+    await waitFor(() => {
+      expect(evaluateFrequencyMiniDrill).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetRu: 'Иди сюда.',
+          targetEn: 'Come here.',
+          userAttempt: 'Иди сюда.',
+          direction: 'en-ru',
+        }),
+        expect.any(Object)
+      );
+      expect(screen.getByText(/Verdict: natural/i)).toBeInTheDocument();
+      expect(screen.getByText(/Отличный перевод!/i)).toBeInTheDocument();
+    });
   });
 });

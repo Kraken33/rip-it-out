@@ -980,5 +980,47 @@ describe('AI Service Layer', () => {
       expect(res.naturalRewrite).toBe('Call me later.');
       expect(res.explanation).toBe('Accurate and natural translation.');
     });
+
+    it('evaluates translation attempt in en-ru direction', async () => {
+      const mockPayload = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                isAccurate: true,
+                verdict: 'natural',
+                naturalRewrite: 'Позвони мне позже.',
+                explanation: 'Accurate Russian translation.',
+              }),
+            },
+          },
+        ],
+      };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockPayload,
+      });
+
+      const res = await evaluateFrequencyMiniDrill(
+        {
+          targetRu: 'Позвони мне позже.',
+          targetEn: 'Call me later.',
+          userAttempt: 'Позвони мне позже.',
+          direction: 'en-ru',
+        },
+        { openaiApiKey: 'sk-test' }
+      );
+
+      expect(res.isAccurate).toBe(true);
+      expect(res.verdict).toBe('natural');
+      expect(res.naturalRewrite).toBe('Позвони мне позже.');
+      expect(fetch).toHaveBeenCalledWith(
+        'https://api.openai.com/v1/chat/completions',
+        expect.objectContaining({
+          body: expect.stringContaining('Study direction: en-ru'),
+        })
+      );
+    });
   });
 });

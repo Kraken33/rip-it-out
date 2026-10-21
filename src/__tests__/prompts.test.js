@@ -668,6 +668,8 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(prompt).toContain('Стой тут.');
       expect(prompt).toContain('conversational');
       expect(prompt).toContain('upper-intermediate');
+      expect(prompt).toContain('CRITICAL ANCHORING RULES');
+      expect(prompt).toContain('MUST preserve and test the exact core phrase');
     });
 
     it('parseFrequencyDrillSentence parses valid JSON drill', () => {
@@ -689,16 +691,32 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(parseFrequencyDrillSentence(JSON.stringify({ ru: 'Привет' })).success).toBe(false);
     });
 
-    it('evaluateFrequencyDrillPrompt constructs proper evaluation prompt', () => {
+    it('evaluateFrequencyDrillPrompt constructs proper evaluation prompt for default ru-en', () => {
       const prompt = evaluateFrequencyDrillPrompt({
         targetRu: 'Позвони мне позже.',
         targetEn: 'Call me later.',
         userAttempt: 'Call me after.',
       });
-      expect(prompt).toContain('Позвони мне позже.');
-      expect(prompt).toContain('Call me later.');
-      expect(prompt).toContain('Call me after.');
+      expect(prompt).toContain('Target Sentence (Russian): "Позвони мне позже."');
+      expect(prompt).toContain('Reference Translation (English): "Call me later."');
+      expect(prompt).toContain('Learner\'s translation attempt: "Call me after."');
+      expect(prompt).toContain('Study direction: ru-en');
+      expect(prompt).toContain('CRITICAL EVALUATION RULES');
       expect(prompt).toContain('"isAccurate"');
+    });
+
+    it('evaluateFrequencyDrillPrompt adapts correctly for en-ru direction', () => {
+      const prompt = evaluateFrequencyDrillPrompt({
+        targetRu: 'Позвони мне позже.',
+        targetEn: 'Call me later.',
+        userAttempt: 'Позвони мне потом.',
+        direction: 'en-ru',
+      });
+      expect(prompt).toContain('Target Sentence (English): "Call me later."');
+      expect(prompt).toContain('Reference Translation (Russian): "Позвони мне позже."');
+      expect(prompt).toContain('Learner\'s translation attempt: "Позвони мне потом."');
+      expect(prompt).toContain('Study direction: en-ru');
+      expect(prompt).toContain('translating from English into Russian');
     });
 
     it('parseFrequencyDrillEvaluation parses valid evaluation JSON', () => {

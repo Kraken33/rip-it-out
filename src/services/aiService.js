@@ -676,12 +676,12 @@ export async function generateFrequencyMiniDrill(targetSentence, settings = {}, 
 /**
  * Evaluate a learner's frequency mini-drill translation attempt.
  *
- * @param {{ targetRu: string, targetEn: string, userAttempt: string }} params
+ * @param {{ targetRu: string, targetEn: string, userAttempt: string, direction?: string }} params
  * @param {Object} [settings]
  * @returns {Promise<{ isAccurate: boolean, verdict: string, naturalRewrite: string, explanation: string }>}
  */
-export async function evaluateFrequencyMiniDrill({ targetRu, targetEn, userAttempt }, settings = {}) {
-  const prompt = evaluateFrequencyDrillPrompt({ targetRu, targetEn, userAttempt }, settings);
+export async function evaluateFrequencyMiniDrill({ targetRu, targetEn, userAttempt, direction = 'ru-en' }, settings = {}) {
+  const prompt = evaluateFrequencyDrillPrompt({ targetRu, targetEn, userAttempt, direction }, settings);
 
   const reply = await requestOpenAIChat(settings, {
     messages: [

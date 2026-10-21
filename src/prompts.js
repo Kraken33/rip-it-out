@@ -782,12 +782,14 @@ The learner struggled with this sentence:
 Russian: "${ru}"
 English: "${en}"
 
-Your task is to generate ONE new, natural, similar sentence in Russian that reinforces the same grammatical pattern, collocation, or core vocabulary in a fresh context, along with its accurate natural English translation.
+Your task is to generate ONE new, natural practice sentence that strictly reinforces the EXACT core construction, phrasal verb, or grammatical pattern from this sentence in a natural spoken context, along with its accurate translation.
 
 Formality: ${formality}
 Learner level: ${level}
 ${prevContext}
-Rules:
+CRITICAL ANCHORING RULES:
+- You MUST preserve and test the exact core phrase, phrasal verb, or key idiom from the target sentence (e.g. if the sentence is "Eat up.", your variation MUST use "eat up" in the English translation; do NOT substitute synonyms like "finish" or "eat").
+- Do NOT drift into unrelated contexts that change the core vocabulary.
 - Keep the sentence concise (typically 3 to 10 words).
 - Focus on natural everyday spoken speech.
 - Respond ONLY with a valid JSON object in this exact format (no markdown code blocks, no extra commentary):
@@ -838,22 +840,32 @@ export function parseFrequencyDrillSentence(text) {
 /**
  * Prompt to evaluate a learner's translation attempt for a drill sentence.
  *
- * @param {{ targetRu: string, targetEn: string, userAttempt: string }} params
+ * @param {{ targetRu: string, targetEn: string, userAttempt: string, direction?: string }} params
  * @param {Object} [settings]
  * @returns {string}
  */
-export function evaluateFrequencyDrillPrompt({ targetRu, targetEn, userAttempt }, settings = {}) {
+export function evaluateFrequencyDrillPrompt({ targetRu, targetEn, userAttempt, direction = 'ru-en' }, settings = {}) {
   const formality = settings?.formality || 'casual spoken';
+  const targetLang = direction === 'en-ru' ? 'Russian' : 'English';
+  const sourceLang = direction === 'en-ru' ? 'English' : 'Russian';
+  const targetSentence = direction === 'en-ru' ? targetEn : targetRu;
+  const referenceTranslation = direction === 'en-ru' ? targetRu : targetEn;
 
   return `You are an expert bilingual Russian-English language coach evaluating a learner's translation attempt.
 
-Target Russian sentence: "${targetRu}"
-Reference English translation: "${targetEn}"
+Target Sentence (${sourceLang}): "${targetSentence}"
+Reference Translation (${targetLang}): "${referenceTranslation}"
 Learner's translation attempt: "${userAttempt}"
 
 Formality: ${formality}
+Study direction: ${direction} (learner is translating from ${sourceLang} into ${targetLang})
 
-Analyze whether the learner's attempt accurately conveys the meaning in natural spoken English (or Russian if translating into Russian). Ignore minor punctuation or casing differences.
+Analyze whether the learner's attempt accurately conveys the meaning in natural spoken ${targetLang}.
+
+CRITICAL EVALUATION RULES:
+- The learner is specifically practicing the target construction/sentence. Do NOT penalize the learner for using the target phrasal verb, idiom, or construction from the reference translation.
+- Accept valid natural phrasing variations, but verify the core meaning matches the target sentence.
+- Ignore minor punctuation, trailing periods, quotation marks, or casing differences.
 
 Respond ONLY with a valid JSON object in this exact format:
 {

@@ -37,6 +37,7 @@ export default function FrequencyPracticeSession() {
 
   // Mini-drill state (when Hard or Again is selected)
   const [inDrill, setInDrill] = useState(false);
+  const [drillPhase, setDrillPhase] = useState('direct'); // 'direct' (Phase 1) | 'variation' (Phase 2)
   const [drillLoading, setDrillLoading] = useState(false);
   const [drillError, setDrillError] = useState(null);
   const [drillSentence, setDrillSentence] = useState(null);
@@ -124,6 +125,7 @@ export default function FrequencyPracticeSession() {
   const advanceToNext = useCallback(() => {
     setRevealed(false);
     setInDrill(false);
+    setDrillPhase('direct');
     setEvaluation(null);
     setDrillSentence(null);
     setUserAttempt('');
@@ -166,7 +168,7 @@ export default function FrequencyPracticeSession() {
       return;
     }
 
-    // HARD (2) or AGAIN (1): Save to SRS and start interactive AI drill
+    // HARD (2) or AGAIN (1): Save to SRS and launch Phase 1 direct recall drill immediately
     try {
       await saveFrequencySentenceToSrs(currentSentence, rating);
     } catch (err) {
@@ -187,24 +189,32 @@ export default function FrequencyPracticeSession() {
       savedCount: nextStats.saved,
     });
 
-    // Launch Drill
+    // Launch Phase 1 Direct Recall Drill immediately (zero latency, zero AI drift)
     setInDrill(true);
-    triggerDrillGeneration(currentSentence, []);
+    setDrillPhase('direct');
+    setDrillSentence(null);
+    setDrillLoading(false);
+    setDrillError(null);
+    setEvaluation(null);
+    setUserAttempt('');
   };
 
-  const triggerDrillGeneration = async (target, pastDrills) => {
+  const triggerVariationDrill = async (target, pastDrills) => {
+    setDrillPhase('variation');
     setDrillLoading(true);
     setDrillError(null);
     setEvaluation(null);
     setUserAttempt('');
 
     try {
-      const generated = await generateFrequencyMiniDrill(target, settings, pastDrills);
+      const targetItem = target || currentSentence;
+      const history = pastDrills || previousDrills;
+      const generated = await generateFrequencyMiniDrill(targetItem, settings, history);
       setDrillSentence(generated);
       setPreviousDrills((prev) => [...prev, generated]);
     } catch (err) {
       console.error('Failed to generate drill sentence:', err);
-      setDrillError(err.message || 'Could not generate a drill. Check your OpenAI API key in Settings.');
+      setDrillError(err.message || 'Could not generate a variation. Check your OpenAI API key in Settings.');
     } finally {
       setDrillLoading(false);
     }
@@ -217,12 +227,17 @@ export default function FrequencyPracticeSession() {
     setEvaluating(true);
     setDrillError(null);
 
+    const isPhase1 = drillPhase === 'direct';
+    const targetRu = isPhase1 ? currentSentence?.ru : (drillSentence?.ru || currentSentence?.ru);
+    const targetEn = isPhase1 ? currentSentence?.en : (drillSentence?.en || currentSentence?.en);
+
     try {
       const result = await evaluateFrequencyMiniDrill(
         {
-          targetRu: drillSentence?.ru || currentSentence?.ru,
-          targetEn: drillSentence?.en || currentSentence?.en,
+          targetRu,
+          targetEn,
           userAttempt: userAttempt.trim(),
+          direction,
         },
         settings
       );
@@ -294,6 +309,14 @@ export default function FrequencyPracticeSession() {
   const answerText = direction === 'ru-en' ? currentSentence?.en : currentSentence?.ru;
   const promptLang = direction === 'ru-en' ? 'ru-RU' : 'en-US';
   const answerLang = direction === 'ru-en' ? 'en-US' : 'ru-RU';
+
+  // Mini-drill computed values
+  const isDirectDrill = drillPhase === 'direct';
+  const drillPromptText = isDirectDrill
+    ? (direction === 'ru-en' ? currentSentence?.ru : currentSentence?.en)
+    : (direction === 'ru-en' ? drillSentence?.ru : drillSentence?.en);
+  const targetLanguageLabel = direction === 'ru-en' ? 'English' : 'Russian';
+  const targetLangCode = direction === 'ru-en' ? 'en' : 'ru';
 
   return (
     <div className="w-full max-w-2xl mx-auto space-y-4 py-2 animate-fade-in" data-testid="frequency-practice-screen">
@@ -575,7 +598,9 @@ export default function FrequencyPracticeSession() {
           <div className="flex items-center justify-between pb-3 border-b border-purple-500/20">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-purple-300">⚡ Interactive AI Mini-Drill</span>
-              <span className="text-[11px] text-slate-400">Reinforcing pattern</span>
+              <span className="text-[11px] px-2 py-0.5 rounded-full font-medium bg-purple-500/10 border border-purple-500/20 text-purple-300">
+                {isDirectDrill ? 'Phase 1: Direct Recall' : 'Phase 2: Anchored Variation'}
+              </span>
             </div>
             <button
               type="button"
@@ -588,7 +613,7 @@ export default function FrequencyPracticeSession() {
 
           {/* Original sentence reference */}
           <div className="bg-slate-950/40 p-3 rounded-xl border border-slate-800 text-xs text-slate-300 space-y-1">
-            <div className="font-semibold text-slate-400">Original Sentence:</div>
+            <div className="font-semibold text-slate-400">Target Card:</div>
             <div className="flex justify-between items-center">
               <span>🇷🇺 {currentSentence?.ru}</span>
               <span className="text-slate-400">🇬🇧 {currentSentence?.en}</span>
@@ -599,7 +624,7 @@ export default function FrequencyPracticeSession() {
           {drillLoading && (
             <div className="p-8 text-center space-y-3">
               <div className="animate-spin rounded-full h-7 w-7 border-t-2 border-b-2 border-purple-400 mx-auto" />
-              <p className="text-xs text-purple-300">AI is crafting a similar practice sentence...</p>
+              <p className="text-xs text-purple-300">AI is crafting an anchored variation...</p>
             </div>
           )}
 
@@ -610,10 +635,10 @@ export default function FrequencyPracticeSession() {
               <div className="flex gap-2">
                 <button
                   type="button"
-                  onClick={() => triggerDrillGeneration(currentSentence, previousDrills)}
+                  onClick={() => triggerVariationDrill(currentSentence, previousDrills)}
                   className="px-3 py-1 bg-rose-800 hover:bg-rose-700 text-white rounded text-xs font-semibold"
                 >
-                  Retry Drill
+                  Retry Variation
                 </button>
                 <button
                   type="button"
@@ -627,20 +652,23 @@ export default function FrequencyPracticeSession() {
           )}
 
           {/* Drill content */}
-          {!drillLoading && drillSentence && (
+          {!drillLoading && (isDirectDrill || drillSentence) && (
             <div className="space-y-6">
               <div className="space-y-2 text-center">
                 <span className="text-[10px] uppercase font-bold tracking-widest text-purple-400">
-                  Translate to English
+                  Translate to {targetLanguageLabel}
                 </span>
                 <div className="flex items-center justify-center gap-3">
                   <h4 className="text-2xl font-extrabold text-white leading-relaxed">
-                    "{drillSentence.ru}"
+                    "{drillPromptText}"
                   </h4>
-                  <AudioPlayerButton text={drillSentence.ru} settings={settings} size="sm" />
+                  <AudioPlayerButton text={drillPromptText} settings={settings} size="sm" />
                 </div>
-                {drillSentence.hint && (
+                {!isDirectDrill && drillSentence?.hint && (
                   <p className="text-xs text-slate-400 italic">💡 Hint: {drillSentence.hint}</p>
+                )}
+                {isDirectDrill && (
+                  <p className="text-xs text-slate-400 italic">Immediate recall: translate this card into {targetLanguageLabel}</p>
                 )}
               </div>
 
@@ -652,12 +680,13 @@ export default function FrequencyPracticeSession() {
                       rows={2}
                       value={userAttempt}
                       onChange={(e) => setUserAttempt(e.target.value)}
-                      placeholder="Type your English translation or tap the microphone..."
+                      placeholder={`Type your ${targetLanguageLabel} translation or tap the microphone...`}
                       className="w-full p-3.5 pr-14 rounded-xl bg-slate-900 border border-slate-700 text-white text-sm focus:outline-none focus:border-purple-500 transition-all resize-none"
                     />
                     <div className="absolute right-2.5 bottom-3.5">
                       <AudioRecorder
                         settings={settings}
+                        language={targetLangCode}
                         onTranscribed={(text) => setUserAttempt((prev) => (prev ? `${prev} ${text}` : text))}
                         onError={(err) => setDrillError(err)}
                       />
@@ -701,7 +730,7 @@ export default function FrequencyPracticeSession() {
                     {evaluation.naturalRewrite && (
                       <div className="pt-1">
                         <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                          Natural English Phrasing:
+                          Natural {targetLanguageLabel} Phrasing:
                         </span>
                         <div className="flex items-center gap-2 pt-0.5">
                           <p className="text-sm font-bold text-white">"{evaluation.naturalRewrite}"</p>
@@ -719,10 +748,10 @@ export default function FrequencyPracticeSession() {
                   <div className="flex flex-col sm:flex-row gap-2 justify-end pt-2">
                     <button
                       type="button"
-                      onClick={() => triggerDrillGeneration(currentSentence, previousDrills)}
+                      onClick={() => triggerVariationDrill(currentSentence, previousDrills)}
                       className="px-4 py-2 text-xs font-bold rounded-xl bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-500/30 transition-all"
                     >
-                      🔄 Try Another Drill
+                      🔄 Try Variation Drill
                     </button>
                     <button
                       type="button"
