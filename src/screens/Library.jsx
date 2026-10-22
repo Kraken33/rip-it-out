@@ -134,8 +134,8 @@ export default function Library() {
       if (sortBy === 'date_desc') {
         return new Date(b.createdAt) - new Date(a.createdAt);
       } else if (sortBy === 'next_review_asc') {
-        const dateA = new Date(srsCards[a.id]?.nextReview || 0);
-        const dateB = new Date(srsCards[b.id]?.nextReview || 0);
+        const dateA = new Date(srsCards[a.id]?.due || srsCards[a.id]?.nextReview || 0);
+        const dateB = new Date(srsCards[b.id]?.due || srsCards[b.id]?.nextReview || 0);
         return dateA - dateB;
       } else if (sortBy === 'ease_asc') {
         const easeA = srsCards[a.id]?.easeFactor || 2.5;
@@ -378,7 +378,7 @@ export default function Library() {
                     <Badge>{formatOption(item.spokenFrequency)} freq</Badge>
                     {srsCard && (
                       <Badge type={getSrsBadgeType(srsCard.status)}>
-                        {formatOption(srsCard.status)} • {formatNextReview(srsCard.nextReview)}
+                        {formatOption(srsCard.status)} • {formatNextReview(srsCard.due || srsCard.nextReview)}
                       </Badge>
                     )}
                   </div>

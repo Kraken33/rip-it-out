@@ -73,10 +73,10 @@ export default function Review() {
     async function findNextDue() {
       const allCards = await getSrsCards();
       const futureCards = allCards
-        .filter((c) => new Date(c.nextReview) > new Date())
-        .sort((a, b) => new Date(a.nextReview) - new Date(b.nextReview));
+        .filter((c) => new Date(c.due || c.nextReview) > new Date())
+        .sort((a, b) => new Date(a.due || a.nextReview) - new Date(b.due || b.nextReview));
       if (futureCards.length > 0 && isMounted) {
-        setNextDue(new Date(futureCards[0].nextReview));
+        setNextDue(new Date(futureCards[0].due || futureCards[0].nextReview));
       }
     }
 

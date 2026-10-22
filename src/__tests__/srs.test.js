@@ -1,7 +1,16 @@
 import { describe, it, expect } from 'vitest';
-import { processReview, formatNextReview, RATINGS } from '../srs';
+import {
+  processReview,
+  formatNextReview,
+  RATINGS,
+  scheduler,
+  toFsrsCard,
+  fsrsStateToStatus,
+  statusToFsrsState,
+  State,
+} from '../srs';
 
-describe('SRS SM-2 Engine', () => {
+describe('SRS Engine (FSRS Integration)', () => {
   const initialCard = {
     improvementId: 'imp1',
     status: 'new',
@@ -13,49 +22,101 @@ describe('SRS SM-2 Engine', () => {
     nextReview: new Date().toISOString(),
   };
 
-  it('Rating 1 (Again) on new card sets status to learning and interval to 1 day', () => {
+  it('Rating 1 (Again) on new card sets status to learning and schedules immediate intraday step (1 min)', () => {
+    const before = Date.now();
     const result = processReview(initialCard, 1);
+    const scheduledDue = new Date(result.nextReview).getTime();
+
     expect(result.status).toBe('learning');
-    expect(result.repetitions).toBe(0);
-    expect(result.intervalDays).toBe(1);
+    expect(result.state).toBe(State.Learning);
+    expect(result.repetitions).toBe(1);
     expect(result.totalReviews).toBe(1);
+    // 1-minute learning step: due should be ~60s in future, NOT 1 full day
+    const diffSec = Math.round((scheduledDue - before) / 1000);
+    expect(diffSec).toBeGreaterThanOrEqual(55);
+    expect(diffSec).toBeLessThanOrEqual(65);
   });
 
-  it('Rating 1 (Again) on reviewing card increments lapses and reduces ease factor', () => {
-    const reviewingCard = { ...initialCard, status: 'reviewing', repetitions: 2, intervalDays: 6 };
+  it('Rating 1 (Again) on reviewing card lapses card into relearning step with lapse count incremented', () => {
+    const reviewingCard = {
+      ...initialCard,
+      status: 'reviewing',
+      state: State.Review,
+      stability: 10,
+      difficulty: 5,
+      repetitions: 3,
+      intervalDays: 10,
+    };
+    const before = Date.now();
     const result = processReview(reviewingCard, 1);
     expect(result.status).toBe('learning');
+    expect(result.state).toBe(State.Relearning);
     expect(result.lapses).toBe(1);
-    expect(result.easeFactor).toBe(2.3);
+    const diffSec = Math.round((new Date(result.nextReview).getTime() - before) / 1000);
+    // 10-minute relearning step
+    expect(diffSec).toBeGreaterThanOrEqual(550);
+    expect(diffSec).toBeLessThanOrEqual(650);
   });
 
-  it('Rating 2 (Hard) on reviewing card scales interval conservatively and decreases ease factor', () => {
-    const card = { ...initialCard, status: 'reviewing', intervalDays: 10, easeFactor: 2.5 };
-    const result = processReview(card, 2);
-    expect(result.easeFactor).toBe(2.35);
-    expect(result.intervalDays).toBe(12);
+  it('Rating 2 (Hard) updates card difficulty and keeps conservative interval', () => {
+    const reviewingCard = {
+      ...initialCard,
+      status: 'reviewing',
+      state: State.Review,
+      stability: 5,
+      difficulty: 5,
+      repetitions: 2,
+    };
+    const result = processReview(reviewingCard, 2);
+    expect(result.difficulty).toBeGreaterThanOrEqual(5);
+    expect(result.totalReviews).toBe(1);
+    expect(Number.isFinite(result.stability)).toBe(true);
   });
 
-  it('Rating 3 (Good) graduates new card to learning and second Good graduates to reviewing', () => {
-    const result1 = processReview(initialCard, 3);
-    expect(result1.status).toBe('learning');
-    expect(result1.repetitions).toBe(1);
+  it('Rating 3 (Good) on new card sets 10-minute learning step and graduates on next Good', () => {
+    const before = Date.now();
+    const step1 = processReview(initialCard, 3);
+    expect(step1.status).toBe('learning');
+    expect(step1.state).toBe(State.Learning);
+    const diffSec = Math.round((new Date(step1.nextReview).getTime() - before) / 1000);
+    expect(diffSec).toBeGreaterThanOrEqual(550);
+    expect(diffSec).toBeLessThanOrEqual(650);
 
-    const result2 = processReview({ ...initialCard, status: 'learning', repetitions: 1 }, 3);
-    expect(result2.status).toBe('reviewing');
-    expect(result2.repetitions).toBe(2);
+    const step2 = processReview(step1, 3);
+    expect(step2.status).toBe('reviewing');
+    expect(step2.state).toBe(State.Review);
+    expect(step2.intervalDays).toBeGreaterThanOrEqual(1);
   });
 
-  it('Rating 4 (Easy) increases ease factor and applies bonus interval on reviewing card', () => {
-    const card = { ...initialCard, status: 'reviewing', repetitions: 2, intervalDays: 6, easeFactor: 2.5 };
-    const result = processReview(card, 4);
-    expect(result.easeFactor).toBe(2.65);
-    expect(result.intervalDays).toBe(Math.round(6 * 2.5 * 1.3));
+  it('Rating 4 (Easy) immediately graduates new card into reviewing state with accelerated stability', () => {
+    const result = processReview(initialCard, 4);
+    expect(result.status).toBe('reviewing');
+    expect(result.state).toBe(State.Review);
+    expect(result.intervalDays).toBeGreaterThanOrEqual(4);
   });
 
-  it('formatNextReview provides human readable relative time string', () => {
+  it('toFsrsCard transparently adapts legacy cards without error', () => {
+    const legacy = {
+      improvementId: 'legacy_1',
+      status: 'reviewing',
+      easeFactor: 2.1,
+      intervalDays: 7,
+      repetitions: 4,
+      lapses: 1,
+      nextReview: new Date().toISOString(),
+    };
+    const fsrsCard = toFsrsCard(legacy);
+    expect(fsrsCard.state).toBe(State.Review);
+    expect(fsrsCard.stability).toBe(7);
+    expect(fsrsCard.difficulty).toBeGreaterThan(1);
+    expect(fsrsCard.reps).toBe(4);
+    expect(fsrsCard.lapses).toBe(1);
+  });
+
+  it('formatNextReview provides human-readable relative time strings including intraday minutes and hours', () => {
     expect(formatNextReview(new Date(Date.now() - 1000).toISOString())).toBe('Due now');
-    expect(formatNextReview(new Date(Date.now() + 3600 * 1000 * 12).toISOString())).toBe('Tomorrow');
+    expect(formatNextReview(new Date(Date.now() + 60 * 1000).toISOString())).toBe('In 1 min');
+    expect(formatNextReview(new Date(Date.now() + 10 * 60 * 1000).toISOString())).toBe('In 10 mins');
     expect(formatNextReview(new Date(Date.now() + 3600 * 1000 * 24 * 3).toISOString())).toBe('In 3 days');
   });
 
@@ -65,16 +126,14 @@ describe('SRS SM-2 Engine', () => {
     expect(RATINGS[3].label).toBe('Easy');
   });
 
-  // Contract guard for the Practice rate-recall handoff regression: processReview
-  // expects a real SRS card (status/easeFactor/intervalDays/lapses). Handing it an
-  // improvement record made scores 2-4 compute NaN intervals and throw on
-  // Invalid Date in toISOString, leaving only "Again" clickable.
   it('processReview contract: a complete new-status SRS card rates cleanly for all scores 1-4', () => {
     for (const score of [1, 2, 3, 4]) {
       const result = processReview({ ...initialCard }, score);
       expect(Number.isFinite(result.intervalDays)).toBe(true);
       expect(Number.isFinite(result.easeFactor)).toBe(true);
       expect(Number.isNaN(new Date(result.nextReview).getTime())).toBe(false);
+      expect(Number.isNaN(new Date(result.due).getTime())).toBe(false);
+      expect(typeof result.state).toBe('number');
     }
   });
 });

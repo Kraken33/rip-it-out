@@ -177,7 +177,7 @@ describe('Practice Component', () => {
       const all = await getSrsCards();
       const rated = all.filter((c) => c.status === 'reviewing');
       expect(rated).toHaveLength(1);
-      expect(rated[0].intervalDays).toBe(4);
+      expect(rated[0].intervalDays).toBeGreaterThanOrEqual(4);
       expect(rated[0].totalReviews).toBe(1);
       expect(new Date(rated[0].nextReview).getTime()).toBeGreaterThan(Date.now());
     });
@@ -215,9 +215,10 @@ describe('Practice Component', () => {
       const all = await getSrsCards();
       expect(all).toHaveLength(1);
       expect(all[0].status).toBe('learning');
-      expect(all[0].intervalDays).toBe(1);
+      expect(all[0].intervalDays).toBe(0); // FSRS short-term 10-minute step
       expect(all[0].repetitions).toBe(1);
       expect(all[0].totalReviews).toBe(1);
+      expect(new Date(all[0].nextReview).getTime()).toBeGreaterThan(Date.now());
     });
 
     // Single card rated -> completion screen

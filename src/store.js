@@ -134,6 +134,14 @@ function mapSrsCardFromDb(r) {
     lastReview: r.last_review,
     totalReviews: r.total_reviews,
     lapses: r.lapses,
+    due: r.due || r.next_review,
+    stability: r.stability,
+    difficulty: r.difficulty,
+    state: r.state,
+    elapsed_days: r.elapsed_days,
+    scheduled_days: r.scheduled_days,
+    reps: r.reps,
+    learning_steps: r.learning_steps,
   };
 }
 function mapSrsCardToDb(c) {
@@ -143,7 +151,7 @@ function mapSrsCardToDb(c) {
     ease_factor: c.easeFactor,
     interval_days: c.intervalDays,
     repetitions: c.repetitions,
-    next_review: c.nextReview,
+    next_review: c.nextReview || c.due,
     last_review: c.lastReview,
     total_reviews: c.totalReviews,
     lapses: c.lapses,
@@ -490,20 +498,32 @@ export async function getSrsCard(improvementId) {
 }
 
 async function createSrsCard(improvementId) {
+  const nowISO = new Date().toISOString();
   const card = {
     improvementId,
     status: 'new',
     easeFactor: 2.5,
     intervalDays: 0,
     repetitions: 0,
-    nextReview: new Date().toISOString(),
+    nextReview: nowISO,
     lastReview: null,
     totalReviews: 0,
     lapses: 0,
+    due: nowISO,
+    stability: 0,
+    difficulty: 0,
+    state: 0,
+    elapsed_days: 0,
+    scheduled_days: 0,
+    reps: 0,
+    learning_steps: 0,
   };
 
   if (isSupabaseConfigured) {
-    await supabase.from('srs_cards').insert(mapSrsCardToDb(card));
+    const { error } = await supabase.from('srs_cards').insert(mapSrsCardToDb(card));
+    if (error) {
+      console.warn('Supabase createSrsCard error:', error);
+    }
     return card;
   }
 
@@ -523,16 +543,23 @@ async function deleteSrsCard(improvementId) {
 }
 
 export async function updateSrsCard(improvementId, updates) {
+  const syncedUpdates = { ...updates };
+  if ('nextReview' in updates && !('due' in updates)) {
+    syncedUpdates.due = updates.nextReview;
+  } else if ('due' in updates && !('nextReview' in updates)) {
+    syncedUpdates.nextReview = updates.due;
+  }
+
   if (isSupabaseConfigured) {
     const dbUpdates = {};
-    if ('status' in updates) dbUpdates.status = updates.status;
-    if ('easeFactor' in updates) dbUpdates.ease_factor = updates.easeFactor;
-    if ('intervalDays' in updates) dbUpdates.interval_days = updates.intervalDays;
-    if ('repetitions' in updates) dbUpdates.repetitions = updates.repetitions;
-    if ('nextReview' in updates) dbUpdates.next_review = updates.nextReview;
-    if ('lastReview' in updates) dbUpdates.last_review = updates.lastReview;
-    if ('totalReviews' in updates) dbUpdates.total_reviews = updates.totalReviews;
-    if ('lapses' in updates) dbUpdates.lapses = updates.lapses;
+    if ('status' in syncedUpdates) dbUpdates.status = syncedUpdates.status;
+    if ('easeFactor' in syncedUpdates) dbUpdates.ease_factor = syncedUpdates.easeFactor;
+    if ('intervalDays' in syncedUpdates) dbUpdates.interval_days = syncedUpdates.intervalDays;
+    if ('repetitions' in syncedUpdates) dbUpdates.repetitions = syncedUpdates.repetitions;
+    if ('nextReview' in syncedUpdates) dbUpdates.next_review = syncedUpdates.nextReview;
+    if ('lastReview' in syncedUpdates) dbUpdates.last_review = syncedUpdates.lastReview;
+    if ('totalReviews' in syncedUpdates) dbUpdates.total_reviews = syncedUpdates.totalReviews;
+    if ('lapses' in syncedUpdates) dbUpdates.lapses = syncedUpdates.lapses;
 
     const { data, error } = await supabase.from('srs_cards').update(dbUpdates).eq('improvement_id', improvementId).select().single();
     if (!error && data) return mapSrsCardFromDb(data);
@@ -541,36 +568,36 @@ export async function updateSrsCard(improvementId, updates) {
   const cards = readLocalStore(STORAGE_KEYS.srsCards) || [];
   const idx = cards.findIndex((c) => c.improvementId === improvementId);
   if (idx === -1) return null;
-  cards[idx] = { ...cards[idx], ...updates };
+  cards[idx] = { ...cards[idx], ...syncedUpdates };
   writeLocalStore(STORAGE_KEYS.srsCards, cards);
   return cards[idx];
 }
 
 export async function resetSrsCard(improvementId) {
+  const nowISO = new Date().toISOString();
   return await updateSrsCard(improvementId, {
     status: 'new',
     easeFactor: 2.5,
     intervalDays: 0,
     repetitions: 0,
-    nextReview: new Date().toISOString(),
+    nextReview: nowISO,
     lastReview: null,
     totalReviews: 0,
     lapses: 0,
+    due: nowISO,
+    stability: 0,
+    difficulty: 0,
+    state: 0,
+    learning_steps: 0,
+    elapsed_days: 0,
+    scheduled_days: 0,
+    reps: 0,
   });
 }
 
 export async function getDueCards() {
-  const now = new Date();
   const cards = await getSrsCards();
-  const due = cards.filter((c) => new Date(c.nextReview) <= now);
-
-  return due.sort((a, b) => {
-    const priorityMap = { learning: 0, new: 1, reviewing: 2, mature: 3 };
-    const pa = a.lapses > 0 && a.status === 'learning' ? -1 : (priorityMap[a.status] ?? 2);
-    const pb = b.lapses > 0 && b.status === 'learning' ? -1 : (priorityMap[b.status] ?? 2);
-    if (pa !== pb) return pa - pb;
-    return new Date(a.nextReview) - new Date(b.nextReview);
-  });
+  return calculateDueCards(cards);
 }
 
 export async function getPracticeCards(requestedLimit = 20, fallbackLimit = 20) {
@@ -580,7 +607,11 @@ export async function getPracticeCards(requestedLimit = 20, fallbackLimit = 20) 
   }
   const allCards = await getSrsCards();
   if (allCards.length === 0) return [];
-  const sorted = [...allCards].sort((a, b) => new Date(a.nextReview) - new Date(b.nextReview));
+  const sorted = [...allCards].sort((a, b) => {
+    const dateA = new Date(a.due || a.nextReview || 0);
+    const dateB = new Date(b.due || b.nextReview || 0);
+    return dateA - dateB;
+  });
   return sorted.slice(0, fallbackLimit);
 }
 
@@ -646,14 +677,20 @@ export async function updateSettings(updates) {
 
 export function calculateDueCards(cards = []) {
   const now = new Date();
-  const due = (cards || []).filter((c) => new Date(c.nextReview) <= now);
+  const due = (cards || []).filter((c) => {
+    const rawTime = c.nextReview || c.due;
+    const dueTime = new Date(rawTime);
+    return !isNaN(dueTime.getTime()) && dueTime <= now;
+  });
 
   return due.sort((a, b) => {
     const priorityMap = { learning: 0, new: 1, reviewing: 2, mature: 3 };
     const pa = a.lapses > 0 && a.status === 'learning' ? -1 : (priorityMap[a.status] ?? 2);
     const pb = b.lapses > 0 && b.status === 'learning' ? -1 : (priorityMap[b.status] ?? 2);
     if (pa !== pb) return pa - pb;
-    return new Date(a.nextReview) - new Date(b.nextReview);
+    const dateA = new Date(a.nextReview || a.due || 0);
+    const dateB = new Date(b.nextReview || b.due || 0);
+    return dateA - dateB;
   });
 }
 
@@ -1239,7 +1276,7 @@ export async function getOrCreateFrequencySession() {
   });
 }
 
-export async function saveFrequencySentenceToSrs(sentence, rating = 3) {
+export async function saveFrequencySentenceToSrs(sentence, rating = null) {
   if (!sentence || (!sentence.ru && !sentence.en)) {
     throw new Error('Valid sentence object is required to save to SRS.');
   }
@@ -1257,7 +1294,7 @@ export async function saveFrequencySentenceToSrs(sentence, rating = 3) {
   ]);
 
   const createdImp = improvements[0];
-  if (createdImp) {
+  if (createdImp && rating !== null && rating !== undefined) {
     const card = await getSrsCard(createdImp.id);
     if (card) {
       const updates = processReview(card, rating);
