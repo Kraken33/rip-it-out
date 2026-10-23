@@ -1,0 +1,89 @@
+# Spec Delta: Frequency Sentence Practice
+
+## MODIFIED Requirements
+
+### Requirement: Flashcard Practice and Direction Toggle
+The system SHALL present the active sentence in a flashcard interface displaying the source prompt sentence, an audio pronunciation playback button, a "Reveal" action to expose the target translation, a direction toggle between Russian-to-English and English-to-Russian, and an on-demand "Explain & Practice" action visible upon reveal.
+
+#### Scenario: Reveal translation
+- **WHEN** user views a sentence card and triggers "Reveal Translation" (or presses Space)
+- **THEN** system displays the corresponding translation alongside its audio playback button, reveals the rating buttons, and displays the "Explain & Practice" action button
+
+#### Scenario: Switching translation direction
+- **WHEN** user toggles prompt direction from Russian-first to English-first
+- **THEN** the active card and subsequent cards immediately display English on the front and reveal Russian upon flipping
+
+### Requirement: First-Encounter SRS Triage
+The system SHALL provide four rating actions on revealed cards (`Easy`, `Good`, `Hard`, `Again`) and apply immediate triage rules based on user rating without interrupting the card flow.
+
+#### Scenario: Rating Easy skips without saving to SRS
+- **WHEN** user selects `Easy` on an unpracticed sentence
+- **THEN** system advances immediately to the next sentence without creating an SRS card or initiating a drill
+
+#### Scenario: Rating Good saves to SRS and advances
+- **WHEN** user selects `Good` on an unpracticed sentence
+- **THEN** system saves the sentence pair as an improvement and SRS card with initial review interval, and immediately advances to the next sentence
+
+#### Scenario: Rating Hard or Again enters interactive drill
+- **WHEN** user selects `Hard` or `Again` on a sentence
+- **THEN** system saves the sentence pair to SRS with learning status and immediately advances to the next sentence without initiating a mandatory drill
+
+## REMOVED Requirements
+
+### Requirement: Interactive AI Mini-Drill Session
+**Reason**: Replaced by the comprehensive on-demand "Explain & Practice" modal system, allowing learners to review cards quickly without forced drills upon rating Hard or Again.
+**Migration**: Deep study, contextual variations, and interactive practice are now accessed on-demand via the "Explain & Practice" button on revealed cards.
+
+## ADDED Requirements
+
+### Requirement: On-Demand Sentence Explain and Deep Practice System
+The system SHALL provide a comprehensive, on-demand study system accessible via the "Explain & Practice" button on revealed cards. When triggered, the system SHALL display a tabbed modal interface with three sections ("Explanation", "Examples", "Practice") that learners can freely navigate between.
+
+#### Scenario: Opening Explain & Practice modal
+- **WHEN** user clicks "Explain & Practice" on a revealed sentence card
+- **THEN** system opens the modal, immediately fetches or retrieves cached content for all three tabs in a unified payload, and presents the "Explanation" tab by default
+
+#### Scenario: Navigating between tabs
+- **WHEN** user selects the "Explanation", "Examples", or "Practice" tab
+- **THEN** system switches view immediately without re-querying the AI for previously fetched content
+
+#### Scenario: Session caching
+- **WHEN** user closes the Explain & Practice modal and re-opens it for the same sentence within the active session
+- **THEN** system displays the cached explanation, examples, and practice content without triggering new network or AI requests
+
+### Requirement: Detailed Sentence Explanation
+The system SHALL provide an in-depth linguistic and contextual explanation for the active sentence within the "Explanation" tab.
+
+#### Scenario: Viewing explanation breakdown
+- **WHEN** user views the "Explanation" tab
+- **THEN** system displays the core meaning and nuances (literal vs. natural phrasing), a structured vocabulary and grammar table detailing key words, grammatical roles, cases, and verb aspect, and situational usage notes describing register and formality, along with audio playback buttons
+
+### Requirement: Contextual Example Variations
+The system SHALL generate and display contextual example variations illustrating the target sentence pattern within the "Examples" tab.
+
+#### Scenario: Displaying initial contextual examples
+- **WHEN** user views the "Examples" tab
+- **THEN** system displays 3 to 4 distinct sentence examples showing diverse frames (questions, negations, varied tenses or subjects) retaining the core construction, each with Russian and English text and audio playback buttons
+
+#### Scenario: Generating additional examples
+- **WHEN** user clicks "Generate More Examples"
+- **THEN** system queries the AI for additional distinct example variations and appends them to the active list without discarding previously displayed examples
+
+### Requirement: Multi-Exercise Practice and Evaluation
+The system SHALL provide interactive practice exercises with immediate, detailed AI evaluation within the "Practice" tab.
+
+#### Scenario: Practicing with translation drill
+- **WHEN** user selects or engages with a translation exercise in the Practice tab
+- **THEN** system presents the prompt sentence in the source language and accepts text input or microphone speech-to-text input in the target language
+
+#### Scenario: Practicing with fill-in-the-blank cloze exercise
+- **WHEN** user selects or engages with a cloze exercise in the Practice tab
+- **THEN** system presents a sentence with the target construction or grammatical inflection blanked out and accepts the learner's completion attempt
+
+#### Scenario: Submitting practice attempt for evaluation
+- **WHEN** user submits their translation or cloze answer
+- **THEN** system displays an accuracy verdict, a natural target-language rewrite with audio playback, and a granular grammatical explanation of any mistakes or alternative phrasings
+
+#### Scenario: Retrying or requesting a new exercise
+- **WHEN** user clicks "Retry" or "Try Another Exercise" after receiving evaluation
+- **THEN** system resets the input field for another attempt or generates a new practice exercise

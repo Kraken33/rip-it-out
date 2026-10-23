@@ -13,6 +13,9 @@ import {
   extractConstruction,
   generateFrequencyMiniDrill,
   evaluateFrequencyMiniDrill,
+  getSentenceDeepStudy,
+  generateAdditionalSentenceExamples,
+  evaluatePracticeExercise,
   OPENAI_MODEL_OPTIONS,
 } from '../services/aiService';
 
@@ -1061,6 +1064,140 @@ describe('AI Service Layer', () => {
           body: expect.stringContaining('ORIGINAL ROOT CARD BEING LEARNED:'),
         })
       );
+    });
+  });
+
+  describe('getSentenceDeepStudy', () => {
+    it('throws error when no API key is configured', async () => {
+      await expect(
+        getSentenceDeepStudy({ ru: 'Привет', en: 'Hi' }, {})
+      ).rejects.toThrow('No API Key configured. Please add an OpenAI API Key in Settings.');
+    });
+
+    it('requests unified study package and parses output', async () => {
+      const mockPayload = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                explanation: {
+                  overallMeaning: 'Standard friendly greeting.',
+                  nuances: 'Informal equivalent of Здравствуйте.',
+                  vocabulary: [
+                    { term: 'привет', role: 'interjection', meaning: 'hi/hello' }
+                  ],
+                  usage: { formality: 'casual', context: 'friends' }
+                },
+                examples: [
+                  { ru: 'Привет, как дела?', en: 'Hi, how are you?', contextType: 'Question' }
+                ],
+                practice: {
+                  translation: {
+                    prompt: 'Hi, how are you?',
+                    reference: 'Привет, как дела?',
+                    direction: 'en-ru'
+                  },
+                  cloze: {
+                    sentenceWithBlank: '_____, как дела?',
+                    blankTarget: 'Привет',
+                    promptTranslation: 'Hi, how are you?'
+                  }
+                }
+              }),
+            },
+          },
+        ],
+      };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockPayload,
+      });
+
+      const res = await getSentenceDeepStudy(
+        { ru: 'Привет.', en: 'Hi.' },
+        { openaiApiKey: 'sk-test' }
+      );
+
+      expect(res.explanation.overallMeaning).toBe('Standard friendly greeting.');
+      expect(res.examples).toHaveLength(1);
+      expect(res.practice.cloze.blankTarget).toBe('Привет');
+    });
+  });
+
+  describe('generateAdditionalSentenceExamples', () => {
+    it('throws error when no API key is configured', async () => {
+      await expect(
+        generateAdditionalSentenceExamples({ ru: 'Привет', en: 'Hi' }, [], {})
+      ).rejects.toThrow('No API Key configured. Please add an OpenAI API Key in Settings.');
+    });
+
+    it('requests variations avoiding existing ones', async () => {
+      const mockPayload = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                examples: [
+                  { ru: 'Привет всем!', en: 'Hello everyone!', contextType: 'Plural' }
+                ]
+              }),
+            },
+          },
+        ],
+      };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockPayload,
+      });
+
+      const res = await generateAdditionalSentenceExamples(
+        { ru: 'Привет.', en: 'Hi.' },
+        [{ ru: 'Привет, друг.', en: 'Hi, friend.' }],
+        { openaiApiKey: 'sk-test' }
+      );
+
+      expect(res).toHaveLength(1);
+      expect(res[0].ru).toBe('Привет всем!');
+    });
+  });
+
+  describe('evaluatePracticeExercise', () => {
+    it('evaluates cloze exercise successfully', async () => {
+      const mockPayload = {
+        choices: [
+          {
+            message: {
+              content: JSON.stringify({
+                isAccurate: true,
+                verdict: 'natural',
+                naturalRewrite: 'болит',
+                explanation: 'Correct inflection.',
+              }),
+            },
+          },
+        ],
+      };
+
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockPayload,
+      });
+
+      const res = await evaluatePracticeExercise(
+        {
+          exerciseType: 'cloze',
+          prompt: 'У меня _____ голова.',
+          blankTarget: 'болит',
+          userAttempt: 'болит',
+        },
+        { openaiApiKey: 'sk-test' }
+      );
+
+      expect(res.isAccurate).toBe(true);
+      expect(res.verdict).toBe('natural');
+      expect(res.naturalRewrite).toBe('болит');
     });
   });
 });

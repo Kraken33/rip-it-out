@@ -929,3 +929,358 @@ export function parseFrequencyDrillEvaluation(text) {
   };
 }
 
+// ── Frequency Deep Study (Explain & Practice) Prompts & Parsers ────
+
+/**
+ * Generate a comprehensive deep study prompt covering:
+ * 1. Linguistic and situational explanation
+ * 2. 3-4 contextual examples with varied frames
+ * 3. Multi-exercise practice (translation & cloze)
+ *
+ * @param {{ ru: string, en: string }} params
+ * @param {Object} [settings]
+ * @returns {string}
+ */
+export function generateSentenceDeepStudyPrompt({ ru, en }, settings = {}) {
+  const formality = settings?.formality || 'casual spoken';
+  const level = settings?.level || 'intermediate';
+
+  return `You are an expert bilingual Russian-English language coach.
+A language learner is studying this exact sentence pair:
+Target Russian: "${ru || ''}"
+Target English: "${en || ''}"
+
+Learner Level: ${level}
+Target Formality: ${formality}
+
+Analyze this sentence deeply and generate a complete study package containing:
+1. EXPLANATION:
+   - overallMeaning: Clear explanation of what the sentence expresses and when it is used.
+   - nuances: Differences between literal and natural translation, conversational flavor, or common traps.
+   - vocabulary: Array of key words/chunks in the sentence, each with:
+     - "term": the Russian word or phrase
+     - "role": part of speech / grammatical role (e.g. "verb (imperfective)", "noun (dative singular)")
+     - "caseOrAspect": specific case, verb aspect, or tense if applicable
+     - "meaning": English meaning in this sentence
+     - "note": helpful tip or usage insight
+   - usage:
+     - "formality": formality register (e.g. casual, neutral, formal)
+     - "context": typical real-life situations where people say this
+2. EXAMPLES:
+   - 3 to 4 distinct, natural contextual variations reinforcing the key construction or pattern. Include different conversational frames (e.g., question, negation, past/future tense, or varied pronouns).
+   - Each with "ru", "en", and "contextType" (e.g. "Question", "Negation", "Past tense").
+3. PRACTICE:
+   - "translation": A practical translation drill reinforcing this sentence structure:
+     - "prompt": Source sentence to translate
+     - "reference": Model natural translation
+     - "direction": "ru-en" or "en-ru" (prompt in source language, learner translates to target)
+     - "hint": Short supportive hint
+   - "cloze": A fill-in-the-blank exercise:
+     - "sentenceWithBlank": Russian or English sentence with a "_____" blank for the key grammatical term/pattern
+     - "blankTarget": The exact word/chunk that belongs in the blank
+     - "promptTranslation": Full translation of the complete sentence for context
+     - "targetLanguage": "ru" or "en"
+     - "hint": Grammatical clue (e.g. "use the dative form of 'you'")
+
+Respond ONLY with a valid JSON object in this exact schema (no markdown formatting, no extra prose):
+{
+  "explanation": {
+    "overallMeaning": "...",
+    "nuances": "...",
+    "vocabulary": [
+      { "term": "...", "role": "...", "caseOrAspect": "...", "meaning": "...", "note": "..." }
+    ],
+    "usage": {
+      "formality": "...",
+      "context": "..."
+    }
+  },
+  "examples": [
+    { "ru": "...", "en": "...", "contextType": "..." }
+  ],
+  "practice": {
+    "translation": {
+      "prompt": "...",
+      "reference": "...",
+      "direction": "ru-en",
+      "hint": "..."
+    },
+    "cloze": {
+      "sentenceWithBlank": "...",
+      "blankTarget": "...",
+      "promptTranslation": "...",
+      "targetLanguage": "ru",
+      "hint": "..."
+    }
+  }
+}`;
+}
+
+/**
+ * Parse an LLM response containing a comprehensive deep study package.
+ *
+ * @param {string} text
+ * @returns {{ success: boolean, data?: { explanation: Object, examples: Array, practice: Object }, error?: string }}
+ */
+export function parseSentenceDeepStudy(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty deep study response.' };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(extractJsonObject(text));
+  } catch {
+    return { success: false, error: 'Deep study result was not valid JSON.' };
+  }
+
+  const rawExp = parsed?.explanation || {};
+  const explanation = {
+    overallMeaning: optionalText(rawExp.overallMeaning) || '',
+    nuances: optionalText(rawExp.nuances) || '',
+    vocabulary: Array.isArray(rawExp.vocabulary)
+      ? rawExp.vocabulary
+          .map((v) => ({
+            term: optionalText(v?.term) || '',
+            role: optionalText(v?.role) || '',
+            caseOrAspect: optionalText(v?.caseOrAspect) || '',
+            meaning: optionalText(v?.meaning) || '',
+            note: optionalText(v?.note) || '',
+          }))
+          .filter((v) => v.term)
+      : [],
+    usage: {
+      formality: optionalText(rawExp.usage?.formality) || 'conversational',
+      context: optionalText(rawExp.usage?.context) || '',
+    },
+  };
+
+  const rawExamples = Array.isArray(parsed?.examples) ? parsed.examples : [];
+  const examples = rawExamples
+    .map((ex) => ({
+      ru: optionalText(ex?.ru) || '',
+      en: optionalText(ex?.en) || '',
+      contextType: optionalText(ex?.contextType) || 'Variation',
+    }))
+    .filter((ex) => ex.ru && ex.en);
+
+  const rawPractice = parsed?.practice || {};
+  const rawTrans = rawPractice.translation || {};
+  const rawCloze = rawPractice.cloze || {};
+
+  const practice = {
+    translation: {
+      prompt: optionalText(rawTrans.prompt) || '',
+      reference: optionalText(rawTrans.reference) || '',
+      direction: optionalText(rawTrans.direction) || 'ru-en',
+      hint: optionalText(rawTrans.hint) || '',
+    },
+    cloze: {
+      sentenceWithBlank: optionalText(rawCloze.sentenceWithBlank) || '',
+      blankTarget: optionalText(rawCloze.blankTarget) || '',
+      promptTranslation: optionalText(rawCloze.promptTranslation) || '',
+      targetLanguage: optionalText(rawCloze.targetLanguage) || 'ru',
+      hint: optionalText(rawCloze.hint) || '',
+    },
+  };
+
+  if (!explanation.overallMeaning && examples.length === 0) {
+    return { success: false, error: 'Deep study response did not contain valid explanation or examples.' };
+  }
+
+  return {
+    success: true,
+    data: {
+      explanation,
+      examples,
+      practice,
+    },
+  };
+}
+
+/**
+ * Generate prompt to request additional example variations for a sentence.
+ *
+ * @param {{ ru: string, en: string, existingExamples?: Array<{ ru: string, en: string }> }} params
+ * @param {Object} [settings]
+ * @returns {string}
+ */
+export function generateSentenceExampleVariationsPrompt({ ru, en, existingExamples = [] }, settings = {}) {
+  const formality = settings?.formality || 'casual spoken';
+  const level = settings?.level || 'intermediate';
+
+  let avoidList = '';
+  if (Array.isArray(existingExamples) && existingExamples.length > 0) {
+    avoidList =
+      `\nPreviously generated examples (do NOT repeat these):\n` +
+      existingExamples.map((ex, i) => `${i + 1}. RU: "${ex.ru}" | EN: "${ex.en}"`).join('\n') +
+      '\n';
+  }
+
+  return `You are an expert bilingual Russian-English language coach.
+Target Russian: "${ru || ''}"
+Target English: "${en || ''}"
+Formality: ${formality}
+Learner level: ${level}
+${avoidList}
+Generate 3 NEW, natural conversational example variations using and reinforcing this core construction or pattern. Show diverse contexts (questions, past/future, negation, different persons).
+
+Respond ONLY with a valid JSON object in this format:
+{
+  "examples": [
+    {
+      "ru": "Russian sentence",
+      "en": "Natural English translation",
+      "contextType": "Question / Negation / etc."
+    }
+  ]
+}`;
+}
+
+/**
+ * Parse an LLM response containing additional sentence examples.
+ *
+ * @param {string} text
+ * @returns {{ success: boolean, examples?: Array<{ ru: string, en: string, contextType: string }>, error?: string }}
+ */
+export function parseSentenceExampleVariations(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty example variations response.' };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(extractJsonObject(text));
+  } catch {
+    return { success: false, error: 'Example variations result was not valid JSON.' };
+  }
+
+  const rawExamples = Array.isArray(parsed?.examples) ? parsed.examples : [];
+  const examples = rawExamples
+    .map((ex) => ({
+      ru: optionalText(ex?.ru) || '',
+      en: optionalText(ex?.en) || '',
+      contextType: optionalText(ex?.contextType) || 'Variation',
+    }))
+    .filter((ex) => ex.ru && ex.en);
+
+  if (examples.length === 0) {
+    return { success: false, error: 'No valid examples found in response.' };
+  }
+
+  return {
+    success: true,
+    examples,
+  };
+}
+
+/**
+ * Prompt to evaluate a learner's attempt on a practice exercise (translation or cloze).
+ *
+ * @param {{ exerciseType?: string, targetRu?: string, targetEn?: string, prompt?: string, reference?: string, userAttempt: string, direction?: string, blankTarget?: string, originalCard?: { ru: string, en: string } }} params
+ * @param {Object} [settings]
+ * @returns {string}
+ */
+export function evaluatePracticeExercisePrompt(
+  {
+    exerciseType = 'translation',
+    targetRu,
+    targetEn,
+    prompt,
+    reference,
+    userAttempt,
+    direction = 'ru-en',
+    blankTarget,
+    originalCard,
+  },
+  settings = {}
+) {
+  const formality = settings?.formality || 'casual spoken';
+  const targetLang = direction === 'en-ru' ? 'Russian' : 'English';
+  const sourceLang = direction === 'en-ru' ? 'English' : 'Russian';
+
+  let exerciseContext = '';
+  if (exerciseType === 'cloze') {
+    exerciseContext = `
+EXERCISE TYPE: Fill-in-the-blank (Cloze)
+Sentence prompt: "${prompt || ''}"
+Expected target for blank: "${blankTarget || reference || ''}"
+Learner's answer: "${userAttempt || ''}"
+Reference translation: "${reference || ''}"
+`;
+  } else {
+    exerciseContext = `
+EXERCISE TYPE: Translation (${sourceLang} → ${targetLang})
+Prompt sentence (${sourceLang}): "${prompt || (direction === 'en-ru' ? targetEn : targetRu) || ''}"
+Reference translation (${targetLang}): "${reference || (direction === 'en-ru' ? targetRu : targetEn) || ''}"
+Learner's translation attempt: "${userAttempt || ''}"
+`;
+  }
+
+  let originalCardContext = '';
+  if (originalCard && (originalCard.en || originalCard.ru)) {
+    originalCardContext = `
+Target card being studied:
+- English: "${originalCard.en || ''}"
+- Russian: "${originalCard.ru || ''}"
+`;
+  }
+
+  return `You are an expert bilingual Russian-English language coach evaluating a learner's practice exercise attempt.
+${exerciseContext}
+${originalCardContext}
+Formality: ${formality}
+
+Analyze the learner's response:
+- For cloze exercises: check whether the learner filled the blank accurately (correct vocabulary, case, gender, aspect, tense). Accept minor spelling variations or valid synonyms if they match the grammar context.
+- For translation exercises: assess meaning accuracy, grammatical correctness, and natural spoken usage in ${targetLang}.
+- Ignore trailing punctuation or minor casing differences.
+
+Respond ONLY with a valid JSON object in this exact format:
+{
+  "isAccurate": true,
+  "verdict": "natural",
+  "naturalRewrite": "corrected target phrasing or correct blank word",
+  "explanation": "clear, constructive feedback explaining why this is correct or how to fix errors"
+}
+
+Allowed verdicts: "natural", "acceptable", "awkward", "incorrect".`;
+}
+
+/**
+ * Parse the evaluation of a practice exercise attempt.
+ *
+ * @param {string} text
+ * @returns {{ success: boolean, evaluation?: { isAccurate: boolean, verdict: string, naturalRewrite: string, explanation: string }, error?: string }}
+ */
+export function parsePracticeExerciseEvaluation(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty evaluation response.' };
+  }
+
+  let parsed;
+  try {
+    parsed = JSON.parse(extractJsonObject(text));
+  } catch {
+    return { success: false, error: 'Evaluation result was not valid JSON.' };
+  }
+
+  const allowedVerdicts = ['natural', 'acceptable', 'awkward', 'incorrect'];
+  const rawVerdict = typeof parsed?.verdict === 'string' ? parsed.verdict.toLowerCase().trim() : '';
+  const verdict = allowedVerdicts.includes(rawVerdict)
+    ? rawVerdict
+    : parsed?.isAccurate
+    ? 'acceptable'
+    : 'incorrect';
+
+  return {
+    success: true,
+    evaluation: {
+      isAccurate: Boolean(parsed?.isAccurate),
+      verdict,
+      naturalRewrite: optionalText(parsed?.naturalRewrite) || '',
+      explanation: optionalText(parsed?.explanation) || '',
+    },
+  };
+}
+

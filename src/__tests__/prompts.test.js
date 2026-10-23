@@ -17,6 +17,12 @@ import {
   parseFrequencyDrillSentence,
   evaluateFrequencyDrillPrompt,
   parseFrequencyDrillEvaluation,
+  generateSentenceDeepStudyPrompt,
+  parseSentenceDeepStudy,
+  generateSentenceExampleVariationsPrompt,
+  parseSentenceExampleVariations,
+  evaluatePracticeExercisePrompt,
+  parsePracticeExerciseEvaluation,
   VARIETY_MATRIX,
   VARIETY_PRESETS,
   sampleVarietyMatrix
@@ -755,6 +761,158 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       const res = parseFrequencyDrillEvaluation(rawJson);
       expect(res.success).toBe(true);
       expect(res.evaluation.verdict).toBe('acceptable');
+    });
+  });
+
+  describe('Deep Study (Explain & Practice) Prompts and Parsers', () => {
+    it('generateSentenceDeepStudyPrompt constructs structured prompt with Russian and English', () => {
+      const prompt = generateSentenceDeepStudyPrompt(
+        { ru: 'У меня болит голова.', en: 'I have a headache.' },
+        { formality: 'colloquial', level: 'advanced' }
+      );
+      expect(prompt).toContain('Target Russian: "У меня болит голова."');
+      expect(prompt).toContain('Target English: "I have a headache."');
+      expect(prompt).toContain('Learner Level: advanced');
+      expect(prompt).toContain('Target Formality: colloquial');
+      expect(prompt).toContain('"explanation"');
+      expect(prompt).toContain('"vocabulary"');
+      expect(prompt).toContain('"examples"');
+      expect(prompt).toContain('"practice"');
+    });
+
+    it('parseSentenceDeepStudy parses complete deep study payload', () => {
+      const rawJson = JSON.stringify({
+        explanation: {
+          overallMeaning: 'Expresses that the speaker currently suffers from a headache.',
+          nuances: 'Literally "at me aches head" (dative/genitive possessive construction).',
+          vocabulary: [
+            { term: 'болит', role: 'verb', caseOrAspect: 'imperfective present', meaning: 'hurts/aches', note: 'singular' },
+            { term: 'голова', role: 'noun', caseOrAspect: 'nominative singular', meaning: 'head', note: 'subject' }
+          ],
+          usage: { formality: 'neutral', context: 'Medical or everyday conversation' }
+        },
+        examples: [
+          { ru: 'У тебя болит голова?', en: 'Do you have a headache?', contextType: 'Question' },
+          { ru: 'У него не болит голова.', en: 'He does not have a headache.', contextType: 'Negation' }
+        ],
+        practice: {
+          translation: {
+            prompt: 'Do you have a headache?',
+            reference: 'У тебя болит голова?',
+            direction: 'en-ru',
+            hint: 'Use second person singular'
+          },
+          cloze: {
+            sentenceWithBlank: 'У меня _____ голова.',
+            blankTarget: 'болит',
+            promptTranslation: 'My head hurts.',
+            targetLanguage: 'ru',
+            hint: 'present tense of болеть'
+          }
+        }
+      });
+
+      const res = parseSentenceDeepStudy(`\`\`\`json\n${rawJson}\n\`\`\``);
+      expect(res.success).toBe(true);
+      expect(res.data.explanation.overallMeaning).toContain('Expresses that the speaker');
+      expect(res.data.explanation.vocabulary).toHaveLength(2);
+      expect(res.data.explanation.vocabulary[0].term).toBe('болит');
+      expect(res.data.examples).toHaveLength(2);
+      expect(res.data.examples[0].ru).toBe('У тебя болит голова?');
+      expect(res.data.practice.translation.direction).toBe('en-ru');
+      expect(res.data.practice.cloze.blankTarget).toBe('болит');
+    });
+
+    it('parseSentenceDeepStudy rejects empty or invalid payload', () => {
+      expect(parseSentenceDeepStudy('').success).toBe(false);
+      expect(parseSentenceDeepStudy('not-json').success).toBe(false);
+      expect(parseSentenceDeepStudy(JSON.stringify({ explanation: {} })).success).toBe(false);
+    });
+
+    it('generateSentenceExampleVariationsPrompt constructs prompt avoiding previous examples', () => {
+      const prompt = generateSentenceExampleVariationsPrompt(
+        {
+          ru: 'Я опоздал.',
+          en: 'I am late.',
+          existingExamples: [{ ru: 'Он опоздал.', en: 'He was late.' }]
+        },
+        { formality: 'informal' }
+      );
+      expect(prompt).toContain('Target Russian: "Я опоздал."');
+      expect(prompt).toContain('Target English: "I am late."');
+      expect(prompt).toContain('Previously generated examples');
+      expect(prompt).toContain('Он опоздал.');
+    });
+
+    it('parseSentenceExampleVariations parses list of variations', () => {
+      const rawJson = JSON.stringify({
+        examples: [
+          { ru: 'Мы опоздали на поезд.', en: 'We were late for the train.', contextType: 'Past tense' },
+          { ru: 'Не опаздывай!', en: 'Don\'t be late!', contextType: 'Imperative negation' }
+        ]
+      });
+      const res = parseSentenceExampleVariations(rawJson);
+      expect(res.success).toBe(true);
+      expect(res.examples).toHaveLength(2);
+      expect(res.examples[0].ru).toBe('Мы опоздали на поезд.');
+    });
+
+    it('parseSentenceExampleVariations rejects empty or malformed inputs', () => {
+      expect(parseSentenceExampleVariations('').success).toBe(false);
+      expect(parseSentenceExampleVariations(JSON.stringify({ examples: [] })).success).toBe(false);
+    });
+
+    it('evaluatePracticeExercisePrompt supports cloze exercise evaluation', () => {
+      const prompt = evaluatePracticeExercisePrompt({
+        exerciseType: 'cloze',
+        prompt: 'У меня _____ голова.',
+        blankTarget: 'болит',
+        reference: 'У меня болит голова.',
+        userAttempt: 'болит',
+      });
+      expect(prompt).toContain('EXERCISE TYPE: Fill-in-the-blank (Cloze)');
+      expect(prompt).toContain('Expected target for blank: "болит"');
+      expect(prompt).toContain('Learner\'s answer: "болит"');
+    });
+
+    it('evaluatePracticeExercisePrompt supports translation exercise evaluation', () => {
+      const prompt = evaluatePracticeExercisePrompt({
+        exerciseType: 'translation',
+        targetRu: 'Как дела?',
+        targetEn: 'How are you?',
+        prompt: 'Как дела?',
+        reference: 'How are you?',
+        userAttempt: 'How are you doing?',
+        direction: 'ru-en',
+      });
+      expect(prompt).toContain('EXERCISE TYPE: Translation (Russian → English)');
+      expect(prompt).toContain('Learner\'s translation attempt: "How are you doing?"');
+    });
+
+    it('parsePracticeExerciseEvaluation parses accurate and inaccurate verdicts', () => {
+      const successRes = parsePracticeExerciseEvaluation(
+        JSON.stringify({
+          isAccurate: true,
+          verdict: 'natural',
+          naturalRewrite: 'How are things?',
+          explanation: 'Very conversational.',
+        })
+      );
+      expect(successRes.success).toBe(true);
+      expect(successRes.evaluation.isAccurate).toBe(true);
+      expect(successRes.evaluation.verdict).toBe('natural');
+
+      const failRes = parsePracticeExerciseEvaluation(
+        JSON.stringify({
+          isAccurate: false,
+          verdict: 'incorrect',
+          naturalRewrite: 'болит',
+          explanation: 'Needs 3rd person singular.',
+        })
+      );
+      expect(failRes.success).toBe(true);
+      expect(failRes.evaluation.isAccurate).toBe(false);
+      expect(failRes.evaluation.verdict).toBe('incorrect');
     });
   });
 });

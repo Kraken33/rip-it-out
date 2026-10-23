@@ -10,6 +10,12 @@ import {
   parseFrequencyDrillSentence,
   evaluateFrequencyDrillPrompt,
   parseFrequencyDrillEvaluation,
+  generateSentenceDeepStudyPrompt,
+  parseSentenceDeepStudy,
+  generateSentenceExampleVariationsPrompt,
+  parseSentenceExampleVariations,
+  evaluatePracticeExercisePrompt,
+  parsePracticeExerciseEvaluation,
 } from '../prompts';
 
 /**
@@ -695,6 +701,101 @@ export async function evaluateFrequencyMiniDrill({ targetRu, targetEn, userAttem
   const parsed = parseFrequencyDrillEvaluation(reply);
   if (!parsed.success) {
     throw new Error(parsed.error || 'Failed to evaluate frequency drill attempt.');
+  }
+
+  return parsed.evaluation;
+}
+
+/**
+ * Fetch a unified deep study package (explanation, examples, and practice) for a sentence.
+ *
+ * @param {{ ru: string, en: string }} targetSentence
+ * @param {Object} [settings]
+ * @returns {Promise<{ explanation: Object, examples: Array, practice: Object }>}
+ */
+export async function getSentenceDeepStudy(targetSentence, settings = {}) {
+  const prompt = generateSentenceDeepStudyPrompt(
+    {
+      ru: targetSentence?.ru || '',
+      en: targetSentence?.en || '',
+    },
+    settings
+  );
+
+  const reply = await requestOpenAIChat(settings, {
+    messages: [
+      { role: 'system', content: 'You are an expert bilingual Russian-English language coach.' },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.5,
+    maxTokens: 1200,
+  });
+
+  const parsed = parseSentenceDeepStudy(reply);
+  if (!parsed.success) {
+    throw new Error(parsed.error || 'Failed to generate deep study package.');
+  }
+
+  return parsed.data;
+}
+
+/**
+ * Generate additional sentence example variations on-demand.
+ *
+ * @param {{ ru: string, en: string }} targetSentence
+ * @param {Array<{ ru: string, en: string }>} [existingExamples]
+ * @param {Object} [settings]
+ * @returns {Promise<Array<{ ru: string, en: string, contextType: string }>>}
+ */
+export async function generateAdditionalSentenceExamples(targetSentence, existingExamples = [], settings = {}) {
+  const prompt = generateSentenceExampleVariationsPrompt(
+    {
+      ru: targetSentence?.ru || '',
+      en: targetSentence?.en || '',
+      existingExamples,
+    },
+    settings
+  );
+
+  const reply = await requestOpenAIChat(settings, {
+    messages: [
+      { role: 'system', content: 'You are a bilingual Russian-English language tutor.' },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.6,
+    maxTokens: 600,
+  });
+
+  const parsed = parseSentenceExampleVariations(reply);
+  if (!parsed.success) {
+    throw new Error(parsed.error || 'Failed to generate additional sentence examples.');
+  }
+
+  return parsed.examples;
+}
+
+/**
+ * Evaluate a learner's attempt on a practice exercise (translation or cloze).
+ *
+ * @param {{ exerciseType?: string, targetRu?: string, targetEn?: string, prompt?: string, reference?: string, userAttempt: string, direction?: string, blankTarget?: string, originalCard?: { ru: string, en: string } }} params
+ * @param {Object} [settings]
+ * @returns {Promise<{ isAccurate: boolean, verdict: string, naturalRewrite: string, explanation: string }>}
+ */
+export async function evaluatePracticeExercise(params, settings = {}) {
+  const prompt = evaluatePracticeExercisePrompt(params, settings);
+
+  const reply = await requestOpenAIChat(settings, {
+    messages: [
+      { role: 'system', content: 'You are an expert bilingual Russian-English language coach.' },
+      { role: 'user', content: prompt },
+    ],
+    temperature: 0.3,
+    maxTokens: 600,
+  });
+
+  const parsed = parsePracticeExerciseEvaluation(reply);
+  if (!parsed.success) {
+    throw new Error(parsed.error || 'Failed to evaluate practice attempt.');
   }
 
   return parsed.evaluation;
