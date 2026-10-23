@@ -17,7 +17,7 @@ The system SHALL generate prompt structures for Russian language practice using 
 - **THEN** Prompt #5 is generated instructing the LLM to run a single-sentence translation exercise in Russian, embedding exactly 1 target construction per round without spoiler tags or inline English answers, awaiting English translation after each round, repeating the target construction ONLY if the target construction itself was omitted or used incorrectly, and providing feedback while advancing to the next construction whenever the target construction was used correctly (even when unrelated errors exist elsewhere in the translation).
 
 ### Requirement: Multi-Round Russian Translation Practice
-The system SHALL practice top upcoming or due SRS cards in stateless on-demand rounds of exactly 1 construction each. When zero cards are due today, the system SHALL select the top 20 upcoming ("coming soon") cards sorted by scheduled review date so practice mode is always available. In seamless translation mode, the system SHALL send the active construction and its conceptual nuance explanation to the LLM without concrete narrative sentence examples and without prior conversation history, receive a single natural Russian sentence with zero bracket tags or English clues, accept the learner's translation, and immediately evaluate and branch to the next round.
+The system SHALL practice top upcoming or due SRS cards in stateless on-demand rounds of exactly 1 construction each. When zero cards are due today, the system SHALL select the top 20 upcoming ("coming soon") cards sorted by scheduled review date so practice mode is always available. In seamless translation mode, the system SHALL send the active construction and its conceptual nuance explanation to the LLM without concrete narrative sentence examples and without prior conversation history, receive a single natural Russian sentence framed in conversational dialogue context with zero bracket tags or English clues, accept the learner's translation, and immediately evaluate and branch to the next round.
 
 #### Scenario: Batching SRS cards for translation rounds
 - **WHEN** user launches Translation Practice Mode
@@ -34,7 +34,7 @@ The system SHALL practice top upcoming or due SRS cards in stateless on-demand r
 #### Scenario: Dynamic construction pool selection by the LLM
 - **WHEN** a translation round sentence is requested in seamless translation mode
 - **THEN** the system sends the target construction and its conceptual nuance explanation (without embedding concrete narrative sentence examples) to the LLM without attaching prior message history
-- **AND** the LLM generates a single natural, conversational Russian sentence without bracket tags, clues, or English annotations.
+- **AND** the LLM generates a single natural, conversational Russian sentence without bracket tags, clues, or English annotations, framed as a realistic dialogue reaction or situational premise (e.g. declining an offer, answering an implicit question, explaining a reason, or reacting to a friend) rather than a bare isolated literal translation of the target construction.
 
 #### Scenario: Pool reduction per round
 - **WHEN** a translation round completes and the learner's translation naturally used the target construction

@@ -526,9 +526,31 @@ describe('AI Service Layer', () => {
       expect(body.messages).toHaveLength(2);
       expect(body.messages[0].content).toContain('invite over');
       expect(body.messages[0].content).toContain('Write ONLY the Russian sentence');
+      expect(body.messages[0].content).toMatch(/conversational|dialogue|reaction/i);
+      expect(body.messages[0].content).toMatch(/bare|isolated/i);
       expect(body.messages[0].content).not.toContain('Candidate pool');
       expect(body.messages[0].content).not.toContain('Example:');
       expect(body.messages[0].content).not.toContain('Pattern nuance:');
+    });
+
+    it('instructs LLM to frame the sentence as a conversational reaction and forbids bare translations', async () => {
+      fetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: 'Спасибо, но я в порядке, мне ничего не нужно.' } }],
+        }),
+      });
+
+      await generateTranslationSentence(
+        { construction: "I'm good", improved: "I'm good" },
+        { openaiApiKey: 'sk_123' }
+      );
+
+      const [, options] = fetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+
+      expect(body.messages[0].content).toMatch(/dialogue|reaction/i);
+      expect(body.messages[0].content).toMatch(/DO NOT (write|generate) (short|bare|isolated)/i);
     });
 
     it('includes pattern nuance hint when explanation is provided', async () => {

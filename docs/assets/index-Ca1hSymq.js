@@ -337,6 +337,11 @@ You MUST respond with ONLY a valid JSON object in this exact format — no expla
 Respond naturally to what they share, validate their ideas, and ask 1 engaging follow-up question to keep the conversation flowing. Keep your reply concise (2-4 sentences). Formality: ${n.formality||`casual`}.`},...t.map(e=>({role:e.role,content:e.content}))],temperature:.7,maxTokens:2e3});return r&&a&&r(a),a}async function $d(e={},t={}){let n=(e?.construction||e?.improved||``).trim(),r=(e?.explanation||``).trim(),i=(await Xd(t,{messages:[{role:`system`,content:`You are a Russian language tutor helping an English learner practice natural spoken constructions.
 Write EXACTLY ONE natural, conversational sentence in RUSSIAN (на русском языке) where a native speaker would naturally use this English construction when translating into English: "${n}"${r?` (Pattern nuance: ${r})`:``}.
 
+Context & Scenario Guidelines:
+- Frame the sentence as a natural conversational dialogue reaction or utterance (e.g. politely declining an offer, answering an implicit question, giving a reason, or reacting to a friend or coworker).
+- DO NOT write short, bare, or isolated literal translations of the target phrase in a vacuum (e.g. if the target is "I'm good", do NOT write just "Я в порядке" or "У меня всё хорошо").
+- Provide realistic situational context with a complete conversational thought (e.g. ~10–25 words or 2 connected conversational clauses).
+
 Rules:
 - Write ONLY the Russian sentence. No English words, no bracket tags, no clues, no extra commentary.
 - The sentence must sound natural and conversational in everyday spoken Russian.

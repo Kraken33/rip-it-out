@@ -411,6 +411,11 @@ export async function generateTranslationSentence(card = {}, settings = {}) {
   const systemMessage = `You are a Russian language tutor helping an English learner practice natural spoken constructions.
 Write EXACTLY ONE natural, conversational sentence in RUSSIAN (на русском языке) where a native speaker would naturally use this English construction when translating into English: "${construction}"${nuanceHint}.
 
+Context & Scenario Guidelines:
+- Frame the sentence as a natural conversational dialogue reaction or utterance (e.g. politely declining an offer, answering an implicit question, giving a reason, or reacting to a friend or coworker).
+- DO NOT write short, bare, or isolated literal translations of the target phrase in a vacuum (e.g. if the target is "I'm good", do NOT write just "Я в порядке" or "У меня всё хорошо").
+- Provide realistic situational context with a complete conversational thought (e.g. ~10–25 words or 2 connected conversational clauses).
+
 Rules:
 - Write ONLY the Russian sentence. No English words, no bracket tags, no clues, no extra commentary.
 - The sentence must sound natural and conversational in everyday spoken Russian.
