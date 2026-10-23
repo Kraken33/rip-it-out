@@ -13,6 +13,7 @@ export default function ExplainPracticeModal({
   sentence,
   settings,
   cache,
+  direction = 'ru-en',
 }) {
   const [activeTab, setActiveTab] = useState('explanation'); // 'explanation' | 'examples' | 'practice'
   const [loading, setLoading] = useState(false);
@@ -36,11 +37,11 @@ export default function ExplainPracticeModal({
     localCacheRef.current = cache;
   }
 
-  // Load unified study package on sentence change or modal open
+  // Load unified study package on sentence change, direction change, or modal open
   useEffect(() => {
     if (!isOpen || !sentence) return;
 
-    const cacheKey = `${sentence.ru}::${sentence.en}`;
+    const cacheKey = `${sentence.ru}::${sentence.en}::${direction}`;
     const cached = localCacheRef.current.get(cacheKey);
 
     if (cached) {
@@ -56,7 +57,7 @@ export default function ExplainPracticeModal({
       setLoading(true);
       setError(null);
       try {
-        const result = await getSentenceDeepStudy(sentence, settings);
+        const result = await getSentenceDeepStudy(sentence, settings, direction);
         if (isMounted) {
           localCacheRef.current.set(cacheKey, result);
           setStudyData(result);
@@ -78,14 +79,14 @@ export default function ExplainPracticeModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, sentence, settings]);
+  }, [isOpen, sentence, settings, direction]);
 
   // Reset practice state on tab/mode switch or modal close
   useEffect(() => {
     setUserAttempt('');
     setEvaluation(null);
     setPracticeError(null);
-  }, [activeTab, practiceMode, sentence]);
+  }, [activeTab, practiceMode, sentence, direction]);
 
   if (!isOpen || !sentence) return null;
 
@@ -93,12 +94,12 @@ export default function ExplainPracticeModal({
     setLoadingMoreExamples(true);
     setExamplesError(null);
     try {
-      const more = await generateAdditionalSentenceExamples(sentence, examplesList, settings);
+      const more = await generateAdditionalSentenceExamples(sentence, examplesList, settings, direction);
       const updated = [...examplesList, ...more];
       setExamplesList(updated);
 
       // Update cached record
-      const cacheKey = `${sentence.ru}::${sentence.en}`;
+      const cacheKey = `${sentence.ru}::${sentence.en}::${direction}`;
       const existing = localCacheRef.current.get(cacheKey) || {};
       localCacheRef.current.set(cacheKey, { ...existing, examples: updated });
     } catch (err) {
@@ -123,20 +124,21 @@ export default function ExplainPracticeModal({
       const params = isCloze
         ? {
             exerciseType: 'cloze',
-            prompt: clozeData?.sentenceWithBlank || sentence.ru,
-            reference: clozeData?.promptTranslation || sentence.en,
+            prompt: clozeData?.sentenceWithBlank || (direction === 'en-ru' ? sentence.ru : sentence.en),
+            reference: clozeData?.promptTranslation || (direction === 'en-ru' ? sentence.en : sentence.ru),
             blankTarget: clozeData?.blankTarget,
             userAttempt: userAttempt.trim(),
+            direction: clozeData?.targetLanguage === 'ru' ? 'en-ru' : (direction || 'ru-en'),
             originalCard: sentence,
           }
         : {
             exerciseType: 'translation',
             targetRu: sentence.ru,
             targetEn: sentence.en,
-            prompt: transData?.prompt || sentence.ru,
-            reference: transData?.reference || sentence.en,
+            prompt: transData?.prompt || (direction === 'en-ru' ? sentence.en : sentence.ru),
+            reference: transData?.reference || (direction === 'en-ru' ? sentence.ru : sentence.en),
             userAttempt: userAttempt.trim(),
-            direction: transData?.direction || 'ru-en',
+            direction: transData?.direction || direction || 'ru-en',
             originalCard: sentence,
           };
 
@@ -154,12 +156,12 @@ export default function ExplainPracticeModal({
   const clozeExercise = studyData?.practice?.cloze;
 
   const activePracticePrompt = practiceMode === 'cloze'
-    ? clozeExercise?.sentenceWithBlank
-    : translationExercise?.prompt || sentence.ru;
+    ? (clozeExercise?.sentenceWithBlank || (direction === 'en-ru' ? sentence.ru : sentence.en))
+    : (translationExercise?.prompt || (direction === 'en-ru' ? sentence.en : sentence.ru));
 
   const practiceTargetLang = practiceMode === 'cloze'
-    ? clozeExercise?.targetLanguage || 'ru'
-    : (translationExercise?.direction === 'en-ru' ? 'ru' : 'en');
+    ? (clozeExercise?.targetLanguage || (direction === 'en-ru' ? 'ru' : 'en'))
+    : (translationExercise?.direction === 'en-ru' || direction === 'en-ru' ? 'ru' : 'en');
 
   return (
     <div
@@ -263,9 +265,9 @@ export default function ExplainPracticeModal({
               <button
                 type="button"
                 onClick={() => {
-                  localCacheRef.current.delete(`${sentence.ru}::${sentence.en}`);
+                  localCacheRef.current.delete(`${sentence.ru}::${sentence.en}::${direction}`);
                   setLoading(true);
-                  getSentenceDeepStudy(sentence, settings)
+                  getSentenceDeepStudy(sentence, settings, direction)
                     .then((res) => {
                       setStudyData(res);
                       setExamplesList(res.examples || []);

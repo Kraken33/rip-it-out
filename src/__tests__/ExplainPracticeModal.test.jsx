@@ -112,12 +112,12 @@ describe('ExplainPracticeModal Component', () => {
     expect(screen.getByText('болит')).toBeInTheDocument();
     expect(screen.getByText('голова')).toBeInTheDocument();
     expect(screen.getByText('Everyday medical or conversational situations.')).toBeInTheDocument();
-    expect(getSentenceDeepStudy).toHaveBeenCalledWith(mockSentence, mockSettings);
+    expect(getSentenceDeepStudy).toHaveBeenCalledWith(mockSentence, mockSettings, 'ru-en');
   });
 
   it('uses cached data without re-fetching from AI service', async () => {
     const cache = new Map();
-    const cacheKey = `${mockSentence.ru}::${mockSentence.en}`;
+    const cacheKey = `${mockSentence.ru}::${mockSentence.en}::ru-en`;
     cache.set(cacheKey, mockDeepStudyData);
 
     render(
@@ -132,6 +132,24 @@ describe('ExplainPracticeModal Component', () => {
 
     expect(screen.getByTestId('tab-explanation')).toBeInTheDocument();
     expect(getSentenceDeepStudy).not.toHaveBeenCalled();
+  });
+
+  it('isolates cache and passes direction to deep study', async () => {
+    const cache = new Map();
+    cache.set(`${mockSentence.ru}::${mockSentence.en}::ru-en`, mockDeepStudyData);
+
+    render(
+      <ExplainPracticeModal
+        isOpen={true}
+        onClose={vi.fn()}
+        sentence={mockSentence}
+        settings={mockSettings}
+        cache={cache}
+        direction="en-ru"
+      />
+    );
+
+    expect(getSentenceDeepStudy).toHaveBeenCalledWith(mockSentence, mockSettings, 'en-ru');
   });
 
   it('switches to Examples tab and generates more examples', async () => {

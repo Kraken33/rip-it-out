@@ -501,6 +501,7 @@ export default function FrequencyPracticeSession() {
         sentence={currentSentence}
         settings={settings}
         cache={studyCacheRef.current}
+        direction={direction}
       />
     </div>
   );

@@ -934,16 +934,22 @@ export function parseFrequencyDrillEvaluation(text) {
 /**
  * Generate a comprehensive deep study prompt covering:
  * 1. Linguistic and situational explanation
- * 2. 3-4 contextual examples with varied frames
- * 3. Multi-exercise practice (translation & cloze)
+ * 2. 3-4 contextual examples with varied frames (with strict zero-drift anchor)
+ * 3. Multi-exercise practice (contextual translation & direction-aware cloze)
  *
- * @param {{ ru: string, en: string }} params
+ * @param {{ ru: string, en: string, direction?: string }} params
  * @param {Object} [settings]
  * @returns {string}
  */
-export function generateSentenceDeepStudyPrompt({ ru, en }, settings = {}) {
+export function generateSentenceDeepStudyPrompt({ ru, en, direction = 'ru-en' }, settings = {}) {
   const formality = settings?.formality || 'casual spoken';
   const level = settings?.level || 'intermediate';
+  const dir = direction === 'en-ru' ? 'en-ru' : 'ru-en';
+  const targetLang = dir === 'en-ru' ? 'Russian' : 'English';
+  const sourceLang = dir === 'en-ru' ? 'English' : 'Russian';
+
+  const cleanEn = (en || '').trim().replace(/[.!?]+$/, '');
+  const cleanRu = (ru || '').trim().replace(/[.!?]+$/, '');
 
   return `You are an expert bilingual Russian-English language coach.
 A language learner is studying this exact sentence pair:
@@ -952,6 +958,12 @@ Target English: "${en || ''}"
 
 Learner Level: ${level}
 Target Formality: ${formality}
+Study Direction: ${dir} (learner is translating/producing ${targetLang})
+
+STRICT TARGET CONSTRUCTION LOCK (ZERO DRIFT):
+1. MANDATORY TARGET ANCHOR: The learner is specifically practicing the vocabulary, idiom, and construction in the target sentence ("${cleanEn}" in English / "${cleanRu}" in Russian).
+2. ZERO DRIFT IN EXAMPLES: For all generated example variations, you MUST strictly retain and reinforce the exact target construction or its direct verbal root and grammatical inflections (e.g. if the target sentence is "Tom wept", every example variation MUST use forms of "weep" such as "wept", "weeping", "weep").
+3. NO SYNONYM SUBSTITUTION: You are STRICTLY FORBIDDEN from substituting generic colloquial synonyms or different verbs (e.g. if the target is "wept", you CANNOT write "Why was Tom crying?" or "Tom didn't cry"; you MUST use "weep/wept"). Ensure the Russian translations accurately match this anchored English phrasing.
 
 Analyze this sentence deeply and generate a complete study package containing:
 1. EXPLANATION:
@@ -967,20 +979,20 @@ Analyze this sentence deeply and generate a complete study package containing:
      - "formality": formality register (e.g. casual, neutral, formal)
      - "context": typical real-life situations where people say this
 2. EXAMPLES:
-   - 3 to 4 distinct, natural contextual variations reinforcing the key construction or pattern. Include different conversational frames (e.g., question, negation, past/future tense, or varied pronouns).
-   - Each with "ru", "en", and "contextType" (e.g. "Question", "Negation", "Past tense").
+   - 3 to 4 distinct, natural contextual variations strictly reinforcing the target construction without vocabulary drift. Include different conversational frames (e.g., question, negation, past/future tense, or varied pronouns).
+   - Each with "ru", "en", and "contextType" (e.g. "Question", "Negation", "Past tense with duration").
 3. PRACTICE:
-   - "translation": A practical translation drill reinforcing this sentence structure:
-     - "prompt": Source sentence to translate
-     - "reference": Model natural translation
-     - "direction": "ru-en" or "en-ru" (prompt in source language, learner translates to target)
-     - "hint": Short supportive hint
-   - "cloze": A fill-in-the-blank exercise:
-     - "sentenceWithBlank": Russian or English sentence with a "_____" blank for the key grammatical term/pattern
-     - "blankTarget": The exact word/chunk that belongs in the blank
-     - "promptTranslation": Full translation of the complete sentence for context
-     - "targetLanguage": "ru" or "en"
-     - "hint": Grammatical clue (e.g. "use the dative form of 'you'")
+   - "translation": A practical contextual translation drill (${sourceLang} → ${targetLang}):
+     - "prompt": A newly authored, rich conversational or situational sentence in ${sourceLang} (roughly 6 to 14 words) providing realistic context (e.g. time, reason, circumstance, emotion, or conversation) that naturally calls for using the target construction. DO NOT simply repeat the original 2-4 word sentence!
+     - "reference": The natural, model translation of that contextual sentence in ${targetLang}, correctly using the target construction.
+     - "direction": "${dir}"
+     - "hint": Short supportive hint guiding the learner toward the target phrasing.
+   - "cloze": A fill-in-the-blank exercise in the target production language (${targetLang}):
+     - "sentenceWithBlank": A contextual sentence in ${targetLang} with a "_____" blank where the key target grammatical word/construction belongs.
+     - "blankTarget": The exact word/chunk that belongs in the blank.
+     - "promptTranslation": Full translation of the complete sentence in ${sourceLang} for context.
+     - "targetLanguage": "${dir === 'en-ru' ? 'ru' : 'en'}",
+     - "hint": Helpful grammatical clue (e.g. "use the past tense form of 'weep'").
 
 Respond ONLY with a valid JSON object in this exact schema (no markdown formatting, no extra prose):
 {
@@ -1002,14 +1014,14 @@ Respond ONLY with a valid JSON object in this exact schema (no markdown formatti
     "translation": {
       "prompt": "...",
       "reference": "...",
-      "direction": "ru-en",
+      "direction": "${dir}",
       "hint": "..."
     },
     "cloze": {
       "sentenceWithBlank": "...",
       "blankTarget": "...",
       "promptTranslation": "...",
-      "targetLanguage": "ru",
+      "targetLanguage": "${dir === 'en-ru' ? 'ru' : 'en'}",
       "hint": "..."
     }
   }
@@ -1101,13 +1113,15 @@ export function parseSentenceDeepStudy(text) {
 /**
  * Generate prompt to request additional example variations for a sentence.
  *
- * @param {{ ru: string, en: string, existingExamples?: Array<{ ru: string, en: string }> }} params
+ * @param {{ ru: string, en: string, direction?: string, existingExamples?: Array<{ ru: string, en: string }> }} params
  * @param {Object} [settings]
  * @returns {string}
  */
-export function generateSentenceExampleVariationsPrompt({ ru, en, existingExamples = [] }, settings = {}) {
+export function generateSentenceExampleVariationsPrompt({ ru, en, direction = 'ru-en', existingExamples = [] }, settings = {}) {
   const formality = settings?.formality || 'casual spoken';
   const level = settings?.level || 'intermediate';
+  const dir = direction === 'en-ru' ? 'en-ru' : 'ru-en';
+  const cleanEn = (en || '').trim().replace(/[.!?]+$/, '');
 
   let avoidList = '';
   if (Array.isArray(existingExamples) && existingExamples.length > 0) {
@@ -1122,7 +1136,13 @@ Target Russian: "${ru || ''}"
 Target English: "${en || ''}"
 Formality: ${formality}
 Learner level: ${level}
+Study direction: ${dir}
 ${avoidList}
+STRICT TARGET CONSTRUCTION LOCK (ZERO DRIFT):
+1. MANDATORY ENGLISH KEYWORD / PATTERN: The learner is specifically practicing the English phrasing "${cleanEn}".
+2. ZERO DRIFT: Every new example MUST strictly retain and reinforce this exact target English construction or its direct verbal root and grammatical inflections (e.g. if the target is "wept", all examples MUST use forms of "weep" / "wept").
+3. NO SYNONYM SUBSTITUTION: You are STRICTLY FORBIDDEN from substituting colloquial synonyms or different verbs (e.g. do NOT substitute "cry" for "wept"). Ensure Russian translations accurately match.
+
 Generate 3 NEW, natural conversational example variations using and reinforcing this core construction or pattern. Show diverse contexts (questions, past/future, negation, different persons).
 
 Respond ONLY with a valid JSON object in this format:
@@ -1203,15 +1223,15 @@ export function evaluatePracticeExercisePrompt(
   if (exerciseType === 'cloze') {
     exerciseContext = `
 EXERCISE TYPE: Fill-in-the-blank (Cloze)
-Sentence prompt: "${prompt || ''}"
+Sentence prompt (${targetLang} with blank): "${prompt || ''}"
 Expected target for blank: "${blankTarget || reference || ''}"
 Learner's answer: "${userAttempt || ''}"
-Reference translation: "${reference || ''}"
+Reference context translation (${sourceLang}): "${reference || ''}"
 `;
   } else {
     exerciseContext = `
 EXERCISE TYPE: Translation (${sourceLang} → ${targetLang})
-Prompt sentence (${sourceLang}): "${prompt || (direction === 'en-ru' ? targetEn : targetRu) || ''}"
+Contextual prompt sentence (${sourceLang}): "${prompt || (direction === 'en-ru' ? targetEn : targetRu) || ''}"
 Reference translation (${targetLang}): "${reference || (direction === 'en-ru' ? targetRu : targetEn) || ''}"
 Learner's translation attempt: "${userAttempt || ''}"
 `;
@@ -1220,9 +1240,10 @@ Learner's translation attempt: "${userAttempt || ''}"
   let originalCardContext = '';
   if (originalCard && (originalCard.en || originalCard.ru)) {
     originalCardContext = `
-Target card being studied:
+ROOT CARD BEING LEARNED:
 - English: "${originalCard.en || ''}"
 - Russian: "${originalCard.ru || ''}"
+NOTE: The learner is specifically practicing the vocabulary and phrasing of this root card. Under NO circumstances should you penalize or reject the learner's answer for using the vocabulary or construction from this root card or reference translation! If the learner uses the root card's wording accurately, accept it as valid.
 `;
   }
 
@@ -1230,10 +1251,11 @@ Target card being studied:
 ${exerciseContext}
 ${originalCardContext}
 Formality: ${formality}
+Study direction: ${direction} (learner is translating/producing ${targetLang})
 
 Analyze the learner's response:
-- For cloze exercises: check whether the learner filled the blank accurately (correct vocabulary, case, gender, aspect, tense). Accept minor spelling variations or valid synonyms if they match the grammar context.
-- For translation exercises: assess meaning accuracy, grammatical correctness, and natural spoken usage in ${targetLang}.
+- For cloze exercises: check whether the learner filled the blank accurately (correct vocabulary, case, gender, aspect, tense). Accept minor spelling variations, valid synonyms, or inflections matching the grammar context.
+- For translation exercises: assess meaning accuracy, grammatical correctness, and natural spoken usage in ${targetLang}. Accept valid natural phrasing variations, especially if they correctly use the target construction from the root card or reference translation.
 - Ignore trailing punctuation or minor casing differences.
 
 Respond ONLY with a valid JSON object in this exact format:

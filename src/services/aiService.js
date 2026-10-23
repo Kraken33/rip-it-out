@@ -709,15 +709,18 @@ export async function evaluateFrequencyMiniDrill({ targetRu, targetEn, userAttem
 /**
  * Fetch a unified deep study package (explanation, examples, and practice) for a sentence.
  *
- * @param {{ ru: string, en: string }} targetSentence
+ * @param {{ ru: string, en: string, direction?: string }} targetSentence
  * @param {Object} [settings]
+ * @param {string} [direction]
  * @returns {Promise<{ explanation: Object, examples: Array, practice: Object }>}
  */
-export async function getSentenceDeepStudy(targetSentence, settings = {}) {
+export async function getSentenceDeepStudy(targetSentence, settings = {}, direction = 'ru-en') {
+  const dir = direction || targetSentence?.direction || settings?.direction || 'ru-en';
   const prompt = generateSentenceDeepStudyPrompt(
     {
       ru: targetSentence?.ru || '',
       en: targetSentence?.en || '',
+      direction: dir,
     },
     settings
   );
@@ -742,16 +745,19 @@ export async function getSentenceDeepStudy(targetSentence, settings = {}) {
 /**
  * Generate additional sentence example variations on-demand.
  *
- * @param {{ ru: string, en: string }} targetSentence
+ * @param {{ ru: string, en: string, direction?: string }} targetSentence
  * @param {Array<{ ru: string, en: string }>} [existingExamples]
  * @param {Object} [settings]
+ * @param {string} [direction]
  * @returns {Promise<Array<{ ru: string, en: string, contextType: string }>>}
  */
-export async function generateAdditionalSentenceExamples(targetSentence, existingExamples = [], settings = {}) {
+export async function generateAdditionalSentenceExamples(targetSentence, existingExamples = [], settings = {}, direction = 'ru-en') {
+  const dir = direction || targetSentence?.direction || settings?.direction || 'ru-en';
   const prompt = generateSentenceExampleVariationsPrompt(
     {
       ru: targetSentence?.ru || '',
       en: targetSentence?.en || '',
+      direction: dir,
       existingExamples,
     },
     settings

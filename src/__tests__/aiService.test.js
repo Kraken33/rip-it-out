@@ -1116,12 +1116,17 @@ describe('AI Service Layer', () => {
 
       const res = await getSentenceDeepStudy(
         { ru: 'Привет.', en: 'Hi.' },
-        { openaiApiKey: 'sk-test' }
+        { openaiApiKey: 'sk-test' },
+        'en-ru'
       );
 
       expect(res.explanation.overallMeaning).toBe('Standard friendly greeting.');
       expect(res.examples).toHaveLength(1);
       expect(res.practice.cloze.blankTarget).toBe('Привет');
+
+      const [, options] = fetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+      expect(body.messages[1].content).toContain('Study Direction: en-ru');
     });
   });
 
@@ -1155,11 +1160,16 @@ describe('AI Service Layer', () => {
       const res = await generateAdditionalSentenceExamples(
         { ru: 'Привет.', en: 'Hi.' },
         [{ ru: 'Привет, друг.', en: 'Hi, friend.' }],
-        { openaiApiKey: 'sk-test' }
+        { openaiApiKey: 'sk-test' },
+        'en-ru'
       );
 
       expect(res).toHaveLength(1);
       expect(res[0].ru).toBe('Привет всем!');
+
+      const [, options] = fetch.mock.calls[0];
+      const body = JSON.parse(options.body);
+      expect(body.messages[1].content).toContain('Study direction: en-ru');
     });
   });
 

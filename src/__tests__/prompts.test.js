@@ -774,10 +774,24 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(prompt).toContain('Target English: "I have a headache."');
       expect(prompt).toContain('Learner Level: advanced');
       expect(prompt).toContain('Target Formality: colloquial');
+      expect(prompt).toContain('STRICT TARGET CONSTRUCTION LOCK (ZERO DRIFT)');
+      expect(prompt).toContain('ZERO DRIFT IN EXAMPLES');
+      expect(prompt).toContain('NO SYNONYM SUBSTITUTION');
+      expect(prompt).toContain('DO NOT simply repeat the original 2-4 word sentence');
       expect(prompt).toContain('"explanation"');
       expect(prompt).toContain('"vocabulary"');
       expect(prompt).toContain('"examples"');
       expect(prompt).toContain('"practice"');
+    });
+
+    it('generateSentenceDeepStudyPrompt adapts direction for en-ru practice', () => {
+      const prompt = generateSentenceDeepStudyPrompt(
+        { ru: 'Том плакал.', en: 'Tom wept.', direction: 'en-ru' },
+        { level: 'intermediate' }
+      );
+      expect(prompt).toContain('Study Direction: en-ru');
+      expect(prompt).toContain('"targetLanguage": "ru"');
+      expect(prompt).toContain('"direction": "en-ru"');
     });
 
     it('parseSentenceDeepStudy parses complete deep study payload', () => {
@@ -829,17 +843,20 @@ describe('Translation Story prompts & parseStoryFeedback', () => {
       expect(parseSentenceDeepStudy(JSON.stringify({ explanation: {} })).success).toBe(false);
     });
 
-    it('generateSentenceExampleVariationsPrompt constructs prompt avoiding previous examples', () => {
+    it('generateSentenceExampleVariationsPrompt constructs prompt avoiding previous examples and enforcing zero drift', () => {
       const prompt = generateSentenceExampleVariationsPrompt(
         {
           ru: 'Я опоздал.',
           en: 'I am late.',
+          direction: 'ru-en',
           existingExamples: [{ ru: 'Он опоздал.', en: 'He was late.' }]
         },
         { formality: 'informal' }
       );
       expect(prompt).toContain('Target Russian: "Я опоздал."');
       expect(prompt).toContain('Target English: "I am late."');
+      expect(prompt).toContain('STRICT TARGET CONSTRUCTION LOCK (ZERO DRIFT)');
+      expect(prompt).toContain('NO SYNONYM SUBSTITUTION');
       expect(prompt).toContain('Previously generated examples');
       expect(prompt).toContain('Он опоздал.');
     });
