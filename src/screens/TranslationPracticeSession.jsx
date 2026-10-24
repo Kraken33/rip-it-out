@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { generateTranslationSentence, evaluateTranslationRound } from '../services/aiService';
 import { parseTranslationVerdict } from '../prompts';
-import InteractiveSessionShell from '../components/InteractiveSessionShell';
-import { scrollToElementBottom } from '../hooks/useVisualViewport';
+import AudioPlayerButton from '../components/AudioPlayerButton';
+import AudioRecorder from '../components/AudioRecorder';
+import { insertTranscriptionAtCaret } from '../components/InteractiveSessionShell';
+import { RATINGS } from '../srs';
 
 export const ITEMS_PER_ROUND = 1;
 
@@ -28,7 +30,7 @@ function VerdictCard({ verdict }) {
   return (
     <div
       data-testid="translation-verdict"
-      className="glass-panel p-4 rounded-2xl rounded-tl-sm border border-purple-500/20 w-full space-y-3"
+      className="glass-panel p-4 rounded-2xl border border-purple-500/20 w-full space-y-3"
     >
       <p className="text-sm text-gray-100 font-semibold">
         {verdict?.summary || 'Evaluation complete.'}
@@ -94,6 +96,7 @@ function distinctCardCount(rounds) {
 export default function TranslationPracticeSession({
   allCards = [],
   settings = {},
+  onRateCard,
   onFinish,
   onExit,
 }) {
@@ -109,18 +112,17 @@ export default function TranslationPracticeSession({
     currentRoundIndexRef.current = currentRoundIndex;
   }, [currentRoundIndex]);
 
-  // On-demand rounds of 1 target construction each
   const [rounds, setRounds] = useState(() => [{ cards: allCards[0] ? [allCards[0]] : [] }]);
   const roundsRef = useRef(rounds);
   useEffect(() => {
     roundsRef.current = rounds;
   }, [rounds]);
 
-  const [messages, setMessages] = useState([]);
-  const messagesRef = useRef(messages);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+  const [currentSentence, setCurrentSentence] = useState('');
+  const [submittedTranslation, setSubmittedTranslation] = useState('');
+  const [verdict, setVerdict] = useState(null);
+  const [unparsedFeedback, setUnparsedFeedback] = useState(null);
+  const [evaluationRetryData, setEvaluationRetryData] = useState(null);
 
   const [inputText, setInputText] = useState('');
   const [roundLoading, setRoundLoading] = useState(false);
@@ -128,24 +130,16 @@ export default function TranslationPracticeSession({
   const [isCompleted, setIsCompleted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const requestedRoundsRef = useRef(new Set());
   const submittedRoundsRef = useRef([]);
 
-  const messageSeqRef = useRef(0);
-  const nextMessageId = (prefix) => {
-    messageSeqRef.current += 1;
-    return `${prefix}_${messageSeqRef.current}`;
-  };
-
-  const scrollToActivePassage = useCallback(() => {
-    scrollToElementBottom(messagesEndRef.current);
-  }, []);
-
+  // Auto-focus input when sentence loads and we are in translating mode
   useEffect(() => {
-    scrollToActivePassage();
-  }, [messages, roundLoading, evaluating, scrollToActivePassage]);
+    if (!roundLoading && !evaluating && !verdict && !unparsedFeedback && !isCompleted && currentSentence) {
+      inputRef.current?.focus();
+    }
+  }, [roundLoading, evaluating, verdict, unparsedFeedback, isCompleted, currentSentence]);
 
   // Load a single natural Russian sentence for the round's target construction
   const loadRoundSentence = useCallback(
@@ -153,12 +147,12 @@ export default function TranslationPracticeSession({
       if (!cardToPractice) return;
       setRoundLoading(true);
       setErrorMsg('');
-
-      const assistantMsgId = nextMessageId(`asst_round_${roundIndex}`);
-      setMessages((prev) => [
-        ...prev,
-        { id: assistantMsgId, role: 'assistant', content: '', createdAt: new Date().toISOString() },
-      ]);
+      setCurrentSentence('');
+      setSubmittedTranslation('');
+      setVerdict(null);
+      setUnparsedFeedback(null);
+      setEvaluationRetryData(null);
+      setInputText('');
 
       try {
         const reply = await generateTranslationSentence(cardToPractice, settings);
@@ -176,12 +170,9 @@ export default function TranslationPracticeSession({
           return next;
         });
 
-        setMessages((prev) =>
-          prev.map((m) => (m.id === assistantMsgId ? { ...m, content: sentence } : m))
-        );
+        setCurrentSentence(sentence);
       } catch (err) {
         requestedRoundsRef.current.delete(roundIndex);
-        setMessages((prev) => prev.filter((m) => m.id !== assistantMsgId));
         setErrorMsg(err.message || 'Failed to load sentence from AI.');
       } finally {
         setRoundLoading(false);
@@ -199,20 +190,7 @@ export default function TranslationPracticeSession({
     loadRoundSentence(0, allCards[0]);
   }, [allCards, loadRoundSentence]);
 
-  const currentPassageText =
-    [...messages]
-      .reverse()
-      .find(
-        (m) =>
-          m.role === 'assistant' &&
-          !m.verdict &&
-          !m.unparsed &&
-          typeof m.content === 'string' &&
-          m.content.trim()
-      )?.content || '';
-
   const requestVerdict = async (
-    verdictMsgId,
     roundIndex,
     sentenceText,
     translationText,
@@ -225,29 +203,15 @@ export default function TranslationPracticeSession({
       const raw = await evaluateTranslationRound([roundCard], sentenceText, translationText, settings);
       const parsed = parseTranslationVerdict(raw);
 
-      setMessages((prev) =>
-        prev.map((m) => {
-          if (m.id !== verdictMsgId) return m;
-          if (parsed.success) {
-            return {
-              ...m,
-              pending: false,
-              verdict: parsed.verdict,
-              unparsed: false,
-              rawText: '',
-              retry: null,
-            };
-          }
-          return {
-            ...m,
-            pending: false,
-            verdict: null,
-            unparsed: true,
-            rawText: raw.trim(),
-            retry: { sentenceText, translation: translationText, roundCard, roundIndex },
-          };
-        })
-      );
+      if (parsed.success) {
+        setVerdict(parsed.verdict);
+        setUnparsedFeedback(null);
+        setEvaluationRetryData(null);
+      } else {
+        setVerdict(null);
+        setUnparsedFeedback(raw.trim());
+        setEvaluationRetryData({ sentenceText, translation: translationText, roundCard, roundIndex });
+      }
 
       submittedRoundsRef.current = submittedRoundsRef.current.filter(
         (r) => r.roundIndex !== roundIndex
@@ -261,41 +225,7 @@ export default function TranslationPracticeSession({
         verdict: parsed.success ? parsed.verdict : null,
         rawFeedback: parsed.success ? '' : raw.trim(),
       });
-
-      if (parsed.success) {
-        const constructions = parsed.verdict?.constructions || [];
-        const isNatural =
-          constructions.length > 0 &&
-          constructions.every((c) => Boolean(c.used) && c.quality === 'natural');
-
-        if (isNatural) {
-          // Natural: advance card in queue
-          const nextCardIndex = activeCardIndexRef.current + 1;
-          activeCardIndexRef.current = nextCardIndex;
-          setActiveCardIndex(nextCardIndex);
-
-          if (nextCardIndex < allCards.length) {
-            const nextCard = allCards[nextCardIndex];
-            const nextRoundIndex = currentRoundIndexRef.current + 1;
-            currentRoundIndexRef.current = nextRoundIndex;
-            setCurrentRoundIndex(nextRoundIndex);
-            requestedRoundsRef.current.add(nextRoundIndex);
-            loadRoundSentence(nextRoundIndex, nextCard);
-          } else {
-            setIsCompleted(true);
-          }
-        } else {
-          // Missed / awkward: retry same construction with immediate fresh sentence
-          const sameCard = roundCard || allCards[activeCardIndexRef.current];
-          const nextRoundIndex = currentRoundIndexRef.current + 1;
-          currentRoundIndexRef.current = nextRoundIndex;
-          setCurrentRoundIndex(nextRoundIndex);
-          requestedRoundsRef.current.add(nextRoundIndex);
-          loadRoundSentence(nextRoundIndex, sameCard);
-        }
-      }
     } catch (err) {
-      setMessages((prev) => prev.filter((m) => m.id !== verdictMsgId));
       setErrorMsg(err.message || 'Failed to evaluate the translation.');
     } finally {
       setEvaluating(false);
@@ -307,42 +237,20 @@ export default function TranslationPracticeSession({
     if (!text || evaluating || roundLoading || isCompleted) return;
 
     const roundIndex = currentRoundIndexRef.current;
-    const sentenceText = currentPassageText;
+    const sentenceText = currentSentence;
     const roundCard =
       roundsRef.current[roundIndex]?.cards?.[0] || allCards[activeCardIndexRef.current];
-    const verdictMsgId = nextMessageId('asst_verdict');
-    const userMsgId = nextMessageId('user');
 
     setErrorMsg('');
+    setSubmittedTranslation(text);
     setInputText('');
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: userMsgId,
-        role: 'user',
-        content: text,
-        createdAt: new Date().toISOString(),
-      },
-      {
-        id: verdictMsgId,
-        role: 'assistant',
-        content: '',
-        pending: true,
-        createdAt: new Date().toISOString(),
-      },
-    ]);
-
-    requestVerdict(verdictMsgId, roundIndex, sentenceText, text, roundCard);
+    requestVerdict(roundIndex, sentenceText, text, roundCard);
   };
 
-  const handleRetryEvaluation = (msg) => {
-    if (evaluating || !msg?.retry) return;
-
-    setMessages((prev) =>
-      prev.map((m) => (m.id === msg.id ? { ...m, pending: true, unparsed: false, rawText: '' } : m))
-    );
-    const { sentenceText, translation, roundCard, roundIndex } = msg.retry;
-    requestVerdict(msg.id, roundIndex, sentenceText, translation, roundCard);
+  const handleRetryEvaluation = () => {
+    if (evaluating || !evaluationRetryData) return;
+    const { sentenceText, translation, roundCard, roundIndex } = evaluationRetryData;
+    requestVerdict(roundIndex, sentenceText, translation, roundCard);
   };
 
   const handleNextRound = () => {
@@ -362,7 +270,56 @@ export default function TranslationPracticeSession({
     }
   };
 
-  const handleFinishSession = () => {
+  const handleGenerateAnotherSentence = () => {
+    if (evaluating || roundLoading || isCompleted) return;
+    const sameCard = allCards[activeCardIndexRef.current];
+    const nextRoundIndex = currentRoundIndexRef.current + 1;
+    currentRoundIndexRef.current = nextRoundIndex;
+    setCurrentRoundIndex(nextRoundIndex);
+    requestedRoundsRef.current.add(nextRoundIndex);
+    loadRoundSentence(nextRoundIndex, sameCard);
+  };
+
+  const handleRateRecall = async (score) => {
+    const currentCard = allCards[activeCardIndexRef.current];
+    if (onRateCard && currentCard) {
+      await onRateCard(currentCard, score);
+    }
+
+    const nextCardIndex = activeCardIndexRef.current + 1;
+    if (nextCardIndex < allCards.length) {
+      activeCardIndexRef.current = nextCardIndex;
+      setActiveCardIndex(nextCardIndex);
+      const nextCard = allCards[nextCardIndex];
+      const nextRoundIndex = currentRoundIndexRef.current + 1;
+      currentRoundIndexRef.current = nextRoundIndex;
+      setCurrentRoundIndex(nextRoundIndex);
+      requestedRoundsRef.current.add(nextRoundIndex);
+      loadRoundSentence(nextRoundIndex, nextCard);
+    } else {
+      setIsCompleted(true);
+      handleFinishSession({ ratedInline: true });
+    }
+  };
+
+  // Keyboard shortcut for recall rating 1..4 when in evaluated view
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (!verdict && !unparsedFeedback) return;
+      if (evaluating || roundLoading || isCompleted) return;
+
+      if (e.key === '1') handleRateRecall(1);
+      else if (e.key === '2') handleRateRecall(2);
+      else if (e.key === '3') handleRateRecall(3);
+      else if (e.key === '4') handleRateRecall(4);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
+
+  const handleFinishSession = (options) => {
     if (!onFinish) return;
     const orderedRounds = [...submittedRoundsRef.current].sort(
       (a, b) => a.roundIndex - b.roundIndex
@@ -378,164 +335,126 @@ export default function TranslationPracticeSession({
         }
       })
     );
-    onFinish(orderedRounds, practicedImprovements);
+    if (options && Object.keys(options).length > 0) {
+      onFinish(orderedRounds, practicedImprovements, options);
+    } else {
+      onFinish(orderedRounds, practicedImprovements);
+    }
   };
 
-  const headerLeftContent = (
-    <div className="flex items-center gap-1.5 sm:gap-2">
-      <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1">
-        <span>🌐</span>
-        <span>Round {currentRoundIndex + 1}</span>
-      </span>
-      <span className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full shrink-0">
-        {distinctCardCount(rounds.slice(0, currentRoundIndex + 1))} practiced
-      </span>
-    </div>
-  );
-
-  const headerRightContent = (
-    <div className="flex items-center gap-1.5 sm:gap-2">
-      {onExit && (
-        <button
-          type="button"
-          onClick={onExit}
-          className="hidden sm:inline-flex px-2.5 py-1 text-xs text-gray-400 hover:text-gray-200 font-semibold transition cursor-pointer"
-        >
-          Exit
-        </button>
-      )}
-
-      <button
-        type="button"
-        onClick={handleNextRound}
-        disabled={
-          evaluating ||
-          roundLoading ||
-          isCompleted ||
-          activeCardIndex >= allCards.length - 1
-        }
-        className="hidden sm:inline-flex px-3.5 py-1.5 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
-      >
-        Next Round →
-      </button>
-
-      <button
-        id="btn-finish-translation-practice"
-        type="button"
-        onClick={handleFinishSession}
-        disabled={evaluating}
-        className="px-2.5 sm:px-3.5 py-1 sm:py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 shrink-0"
-      >
-        Finish & Rate Recall →
-      </button>
-    </div>
-  );
-
-  const mobileHeaderContent = (
-    <div className="flex items-center gap-1.5">
-      <span className="text-xs font-bold text-white flex items-center gap-1">
-        <span>🌐</span>
-        <span>Round {currentRoundIndex + 1}</span>
-      </span>
-      <span className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full">
-        {distinctCardCount(rounds.slice(0, currentRoundIndex + 1))} practiced
-      </span>
-    </div>
-  );
+  const currentCard = allCards[activeCardIndex] || null;
+  const isEvaluated = Boolean(verdict || unparsedFeedback);
+  const progressPercent = allCards.length > 0 ? ((activeCardIndex + 1) / allCards.length) * 100 : 0;
 
   return (
-    <InteractiveSessionShell
-      className="w-full flex flex-col h-[calc(100dvh-5.5rem)] sm:h-[82vh] min-h-0 glass-panel rounded-2xl overflow-hidden border border-[var(--border-color)] animate-fade-in relative"
-      messagesEndRef={messagesEndRef}
-      onKeyboardOpen={scrollToActivePassage}
-      headerLeft={headerLeftContent}
-      headerRight={headerRightContent}
-      mobileHeaderContent={mobileHeaderContent}
-      mobileRoundLabel={`R${currentRoundIndex + 1}`}
-      mobileToggleTestId="toggle-mobile-practice-actions"
-      mobileActionsTestId="mobile-practice-actions-panel"
-      mobileCloseTestId="close-mobile-practice-actions"
-      mobileSubmitTestId="mobile-practice-translate-button"
-      mobileSubmitLabel="Translate Translation"
-      renderMobileActions={({ closeMenu }) => (
-        <>
-          <button
-            type="button"
-            onClick={() => {
-              handleNextRound();
-              closeMenu();
-            }}
-            disabled={
-              evaluating ||
-              roundLoading ||
-              isCompleted ||
-              activeCardIndex >= allCards.length - 1
-            }
-            className="w-full py-2.5 px-3 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-          >
-            <span>➡️</span>
-            <span>Next Round</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              handleFinishSession();
-              closeMenu();
-            }}
-            disabled={evaluating}
-            className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
-          >
-            <span>✓</span>
-            <span>Finish & Rate Recall</span>
-          </button>
-
+    <div className="w-full max-w-2xl mx-auto space-y-4 py-2 animate-fade-in" data-testid="translation-practice-card">
+      {/* Session Top Bar */}
+      <div className="flex items-center justify-between gap-2 text-xs font-semibold text-gray-400 pb-2 border-b border-gray-800">
+        <div className="flex items-center gap-2">
           {onExit && (
             <button
               type="button"
-              onClick={() => {
-                closeMenu();
-                onExit();
-              }}
-              className="w-full py-2 px-3 bg-gray-900 hover:bg-gray-800 text-gray-400 hover:text-gray-200 font-semibold text-xs rounded-xl border border-gray-800 transition cursor-pointer text-center"
+              onClick={onExit}
+              className="text-gray-400 hover:text-white px-2 py-1 rounded bg-gray-800/60 hover:bg-gray-800 transition-colors cursor-pointer"
             >
-              Exit to Practice Modes
+              ← Exit
             </button>
           )}
-        </>
-      )}
-      errorMsg={errorMsg}
-      inputRef={inputRef}
-      inputText={inputText}
-      onInputChange={setInputText}
-      onInputFocus={scrollToActivePassage}
-      onSubmit={handleSendTranslation}
-      canSubmit={Boolean(inputText.trim()) && !evaluating && !roundLoading && !isCompleted}
-      submitLabel="Translate ▶"
-      inputPlaceholder={
-        isCompleted
-          ? 'Session complete! Click Finish & Rate Recall above.'
-          : 'Type or speak your English translation...'
-      }
-      inputRows={3}
-      inputDisabled={evaluating || isCompleted}
-      shortcutHint="Enter adds a new line · Ctrl/⌘ + Enter translates"
-      settings={settings}
-      onAudioError={(err) => setErrorMsg(err)}
-    >
-      {messages.map((m) => {
-        if (m.role === 'assistant') {
-          if (m.verdict) {
-            return (
-              <div key={m.id} className="w-full">
-                <VerdictCard verdict={m.verdict} />
-              </div>
-            );
-          }
+          <span className="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+            <span>🌐</span>
+            <span>Round {currentRoundIndex + 1}</span>
+          </span>
+          <span className="text-[10px] font-semibold text-purple-300 bg-purple-950/60 border border-purple-800/40 px-2 py-0.5 rounded-full">
+            {distinctCardCount(rounds.slice(0, currentRoundIndex + 1))} practiced
+          </span>
+        </div>
 
-          if (m.pending) {
-            return (
-              <div key={m.id} className="w-full">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={handleNextRound}
+            disabled={evaluating || roundLoading || isCompleted || activeCardIndex >= allCards.length - 1}
+            className="px-3 py-1 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-lg border border-purple-800/40 transition cursor-pointer disabled:opacity-50"
+          >
+            Next Round →
+          </button>
+          <button
+            id="btn-finish-translation-practice"
+            type="button"
+            onClick={() => handleFinishSession()}
+            disabled={evaluating}
+            className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg shadow transition cursor-pointer disabled:opacity-50"
+          >
+            Finish & Rate Recall →
+          </button>
+        </div>
+      </div>
+
+      {/* Card Progress */}
+      <div className="space-y-1">
+        <div className="flex justify-between text-[11px] font-bold text-gray-400 uppercase tracking-wider">
+          <span>Card {activeCardIndex + 1} of {allCards.length}</span>
+          <span>{Math.round(progressPercent)}%</span>
+        </div>
+        <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden border border-gray-700/60">
+          <div
+            className="h-full bg-purple-500 rounded-full transition-all duration-300"
+            style={{ width: `${Math.max(5, progressPercent)}%` }}
+          />
+        </div>
+      </div>
+
+      {errorMsg && (
+        <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/50 text-rose-300 text-xs flex justify-between items-center">
+          <span>⚠️ {errorMsg}</span>
+          <button
+            type="button"
+            onClick={() => setErrorMsg('')}
+            className="text-rose-400 hover:text-white text-xs px-2 py-0.5 rounded"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* Main Single Card Panel */}
+      <div className="glass-panel p-6 sm:p-8 rounded-2xl border border-gray-800 shadow-xl flex flex-col justify-between min-h-[360px] space-y-6">
+        {/* Card Header & Russian Sentence */}
+        <div className="flex flex-col items-center justify-center text-center space-y-4 my-2">
+          <span className="text-[10px] uppercase font-bold tracking-widest text-purple-400 bg-purple-500/10 px-2.5 py-0.5 rounded-full border border-purple-500/20">
+            Russian Sentence to Translate
+          </span>
+
+          {roundLoading ? (
+            <div className="py-8 flex flex-col items-center justify-center space-y-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-purple-500" />
+              <p className="text-xs text-purple-300 font-medium animate-pulse">
+                Generating Russian sentence for practice...
+              </p>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center gap-3">
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-white leading-relaxed">
+                {currentSentence || 'Sentence loading...'}
+              </h3>
+              {currentSentence && (
+                <AudioPlayerButton text={currentSentence} settings={settings} size="sm" />
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Translation Input Phase (when not evaluated) */}
+        {!isEvaluated && !roundLoading && (
+          <div className="space-y-4 border-t border-gray-800/80 pt-5">
+            {evaluating && (
+              <div className="space-y-3 animate-fade-in">
+                <div className="flex flex-col items-end gap-1.5 ml-auto max-w-[95%]">
+                  <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tr-sm text-sm sm:text-base leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
+                    <p className="whitespace-pre-wrap">{submittedTranslation}</p>
+                  </div>
+                </div>
+
                 <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm border border-purple-500/20 w-full">
                   <p
                     data-testid="evaluating-indicator"
@@ -545,75 +464,196 @@ export default function TranslationPracticeSession({
                   </p>
                 </div>
               </div>
-            );
-          }
+            )}
 
-          if (m.unparsed) {
-            return (
-              <div key={m.id} className="w-full">
-                <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm border border-amber-500/30 w-full space-y-2">
-                  <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">
-                    {m.rawText || 'The evaluation response was empty.'}
-                  </p>
-                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-amber-500/20">
-                    <span className="text-[10px] text-amber-400 font-semibold">
-                      Structured evaluation unavailable — showing the raw feedback.
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleRetryEvaluation(m)}
-                      disabled={evaluating}
-                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] rounded-lg transition cursor-pointer disabled:opacity-50 shrink-0"
-                    >
-                      Retry evaluation ↻
-                    </button>
-                  </div>
+            <div className="space-y-3">
+              <div className="relative">
+                <textarea
+                  ref={inputRef}
+                  rows={3}
+                  autoFocus
+                  disabled={isCompleted || evaluating}
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                      e.preventDefault();
+                      handleSendTranslation();
+                    }
+                  }}
+                  placeholder={
+                    isCompleted
+                      ? 'Session complete! Click Finish & Rate Recall above.'
+                      : 'Type or speak your English translation...'
+                  }
+                  className="w-full p-3.5 pr-14 rounded-xl bg-[#0e0f17] border border-gray-800 text-white text-base focus:outline-none focus:border-purple-500 transition-all resize-none"
+                />
+                <div className="absolute right-2.5 bottom-3.5">
+                  <AudioRecorder
+                    settings={settings}
+                    language="en"
+                    onTranscribed={(transcription) => {
+                      const nextText = insertTranscriptionAtCaret(inputRef.current, inputText, transcription);
+                      setInputText(nextText);
+                    }}
+                    onError={(err) => setErrorMsg(err)}
+                  />
                 </div>
               </div>
-            );
-          }
 
-          return (
-            <div key={m.id} className="w-full">
-              <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm text-sm sm:text-base text-gray-200 leading-relaxed space-y-2 border border-purple-500/20 w-full max-h-[45vh] overflow-y-auto">
-                <p className="whitespace-pre-wrap">{m.content || 'Generating sentence...'}</p>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-2 pt-1">
+                <span className="text-[11px] text-gray-500 hidden sm:inline">
+                  Enter adds a new line · Ctrl/⌘ + Enter translates
+                </span>
+
+                <button
+                  type="button"
+                  onClick={handleSendTranslation}
+                  disabled={!inputText.trim() || evaluating || isCompleted}
+                  className="w-full sm:w-auto px-6 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                >
+                  <span>Translate ▶</span>
+                </button>
               </div>
             </div>
-          );
-        }
+          </div>
+        )}
 
-        return (
-          <div
-            key={m.id}
-            className="flex flex-col items-end gap-1.5 ml-auto max-w-[95%] sm:max-w-[90%]"
-          >
-            <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tr-sm text-sm sm:text-base leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
-              <p className="whitespace-pre-wrap">{m.content}</p>
+        {/* Evaluated Phase: Verdict, Context, Retry & Rating */}
+        {isEvaluated && !roundLoading && (
+          <div className="space-y-6 border-t border-gray-800/80 pt-5 animate-fade-in">
+            {/* User Translation Display */}
+            <div className="flex flex-col items-end gap-1.5 ml-auto max-w-[95%]">
+              <span className="text-[10px] uppercase font-bold tracking-wider text-purple-400">
+                Your Translation
+              </span>
+              <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tr-sm text-sm sm:text-base leading-relaxed border border-purple-500/30 bg-purple-950/20 text-white w-full">
+                <p className="whitespace-pre-wrap">{submittedTranslation}</p>
+              </div>
+            </div>
+
+            {/* Verdict Display */}
+            {verdict && <VerdictCard verdict={verdict} />}
+
+            {/* Unparsed Fallback */}
+            {unparsedFeedback && (
+              <div className="glass-panel p-3.5 sm:p-4 rounded-2xl rounded-tl-sm border border-amber-500/30 w-full space-y-2">
+                <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">
+                  {unparsedFeedback}
+                </p>
+                <div className="flex items-center justify-between gap-2 pt-2 border-t border-amber-500/20">
+                  <span className="text-[10px] text-amber-400 font-semibold">
+                    Structured evaluation unavailable — showing the raw feedback.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleRetryEvaluation}
+                    disabled={evaluating}
+                    className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold text-[11px] rounded-lg transition cursor-pointer disabled:opacity-50"
+                  >
+                    Retry evaluation ↻
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Target Construction Details */}
+            {currentCard && (
+              <div className="p-4 rounded-xl bg-[#0e0f17] border border-gray-800 space-y-2 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider">
+                    Target Construction: "{currentCard.construction || currentCard.improved}"
+                  </span>
+                  {currentCard.improved && (
+                    <AudioPlayerButton text={currentCard.improved} settings={settings} size="sm" />
+                  )}
+                </div>
+                {currentCard.improved && (
+                  <div className="text-xs text-emerald-400 font-medium">
+                    "{currentCard.improved}"
+                  </div>
+                )}
+                {currentCard.original && (
+                  <div className="text-xs text-rose-400/80 line-through">
+                    "{currentCard.original}"
+                  </div>
+                )}
+                {currentCard.explanation && (
+                  <p className="text-xs text-gray-400 italic pt-1 border-t border-gray-800/80">
+                    {currentCard.explanation}
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Inline Action Bar: Generate Another Sentence or Rate Recall */}
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between gap-2 border-b border-gray-800 pb-3">
+                <span className="text-xs text-gray-400">
+                  Need more practice on this construction?
+                </span>
+                <button
+                  type="button"
+                  onClick={handleGenerateAnotherSentence}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-purple-300 font-bold text-xs rounded-xl border border-purple-800/40 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>🔄</span>
+                  <span>Generate Another Sentence</span>
+                </button>
+              </div>
+
+              {/* Recall Rating Buttons */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-xs font-bold text-gray-400">
+                  <span>Rate your recall to advance:</span>
+                  <span className="text-[10px] text-gray-500 hidden sm:inline">(Keys 1–4)</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  {RATINGS.map((r) => (
+                    <button
+                      key={r.score}
+                      id={`btn-rate-${r.label.toLowerCase()}`}
+                      type="button"
+                      onClick={() => handleRateRecall(r.score)}
+                      className="p-3 rounded-xl bg-[#151622] border border-gray-800 hover:border-purple-500 transition-all cursor-pointer flex flex-col items-center justify-center text-center gap-0.5"
+                    >
+                      <span className="font-bold text-xs sm:text-sm" style={{ color: r.color }}>
+                        {r.score}. {r.label}
+                      </span>
+                      <span className="text-[10px] text-gray-500">
+                        {r.description}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
-        );
-      })}
+        )}
 
-      {isCompleted && (
-        <div
-          data-testid="session-completed-banner"
-          className="glass-panel p-4 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 text-center space-y-2"
-        >
-          <p className="text-base font-bold text-emerald-300">
-            🎉 All target constructions practiced!
-          </p>
-          <p className="text-xs text-gray-300">
-            You've completed all constructions in this session. Ready to rate your recall?
-          </p>
-          <button
-            type="button"
-            onClick={handleFinishSession}
-            className="mt-1 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer"
+        {/* Completion Banner */}
+        {isCompleted && (
+          <div
+            data-testid="session-completed-banner"
+            className="glass-panel p-6 rounded-2xl border border-emerald-500/30 bg-emerald-950/20 text-center space-y-3"
           >
-            Finish & Rate Recall →
-          </button>
-        </div>
-      )}
-    </InteractiveSessionShell>
+            <p className="text-base font-bold text-emerald-300">
+              🎉 All target constructions practiced!
+            </p>
+            <p className="text-xs text-gray-300">
+              You've completed all constructions in this session. Ready to rate your recall?
+            </p>
+            <button
+              type="button"
+              onClick={() => handleFinishSession({ ratedInline: true })}
+              className="mt-1 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer"
+            >
+              Finish & Rate Recall →
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

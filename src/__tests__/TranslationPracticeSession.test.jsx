@@ -74,10 +74,10 @@ describe('TranslationPracticeSession Component', () => {
   const waitForSentence = (text = /пригласил друга в гости/i) =>
     waitFor(() => expect(screen.getByText(text)).toBeInTheDocument());
 
-  const renderSession = (cards = dummyCards) =>
+  const renderSession = (cards = dummyCards, props = {}) =>
     render(
       <MemoryRouter>
-        <TranslationPracticeSession allCards={cards} settings={dummySettings} />
+        <TranslationPracticeSession allCards={cards} settings={dummySettings} {...props} />
       </MemoryRouter>
     );
 
@@ -114,14 +114,19 @@ describe('TranslationPracticeSession Component', () => {
     });
   });
 
-  it('advances to next card in queue automatically when translation is natural', async () => {
+  it('advances to next card in queue when recall rating is selected', async () => {
+    const onRateCardMock = vi.fn();
     mocks.generateTranslationSentence
       .mockResolvedValueOnce('Вчера я пригласил друга в гости.')
       .mockResolvedValueOnce('Я планирую пойти в театр.');
 
     render(
       <MemoryRouter>
-        <TranslationPracticeSession allCards={dummyCards} settings={dummySettings} />
+        <TranslationPracticeSession
+          allCards={dummyCards}
+          settings={dummySettings}
+          onRateCard={onRateCardMock}
+        />
       </MemoryRouter>
     );
 
@@ -132,14 +137,20 @@ describe('TranslationPracticeSession Component', () => {
     submitTranslation('Yesterday I invited a friend over.');
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
-    // Immediately advances and calls generateTranslationSentence for the second card (plan on)
+    // Evaluation stays on card without auto-advancing
+    expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(1);
+
+    // Rating recall persists and advances to the second card (plan on)
+    fireEvent.click(screen.getByRole('button', { name: /Good/i }));
+    expect(onRateCardMock).toHaveBeenCalledWith(dummyCards[0], 3);
+
     await waitFor(() => expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(2));
     expect(mocks.generateTranslationSentence).toHaveBeenLastCalledWith(dummyCards[1], dummySettings);
     expect(screen.getByText(/Round 2/i)).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText('Я планирую пойти в театр.')).toBeInTheDocument());
   });
 
-  it('retries same construction with fresh sentence when translation is awkward or missed', async () => {
+  it('retries same construction with fresh sentence when Generate Another Sentence is clicked', async () => {
     mocks.generateTranslationSentence
       .mockResolvedValueOnce('Вчера я пригласил друга в гости.')
       .mockResolvedValueOnce('Почему бы не позвать коллегу на обед?');
@@ -157,7 +168,9 @@ describe('TranslationPracticeSession Component', () => {
     submitTranslation('Yesterday I invited a friend to my house.');
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
-    // Immediately generates a fresh sentence for the SAME card (dummyCards[0])
+    // Generates a fresh sentence for the SAME card (dummyCards[0]) on demand
+    fireEvent.click(screen.getByRole('button', { name: /Generate Another Sentence/i }));
+
     await waitFor(() => expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(2));
     expect(mocks.generateTranslationSentence).toHaveBeenLastCalledWith(dummyCards[0], dummySettings);
     expect(screen.getByText(/Round 2/i)).toBeInTheDocument();
@@ -222,10 +235,12 @@ describe('TranslationPracticeSession Component', () => {
     submitTranslation('Yesterday I invited a friend over.');
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
-    // Second round automatically loaded
+    // Advance to round 2 via recall rating
+    fireEvent.click(screen.getByRole('button', { name: /Good/i }));
+
     await waitFor(() => expect(screen.getByText('Я планирую пойти в театр.')).toBeInTheDocument());
     submitTranslation('I plan on going to the theater.');
-    await waitFor(() => expect(screen.getAllByTestId('translation-verdict')).toHaveLength(2));
+    await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole('button', { name: /Finish & Rate Recall/i }));
 
@@ -272,7 +287,6 @@ describe('TranslationPracticeSession Component', () => {
 
     expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(1);
     expect(mocks.generateTranslationSentence).toHaveBeenCalledWith(dummyCards[0], dummySettings);
-    // Verifies no history was passed
     expect(mocks.generateTranslationSentence.mock.calls[0].length).toBe(2);
   });
 
@@ -281,7 +295,6 @@ describe('TranslationPracticeSession Component', () => {
     await waitForSentence();
 
     expect(screen.getByText(SENTENCE)).toBeInTheDocument();
-    // No interactive spoiler buttons or tooltips
     expect(screen.queryByTestId('interactive-construction')).not.toBeInTheDocument();
     expect(screen.queryByTestId('construction-tooltip')).not.toBeInTheDocument();
   });
@@ -442,95 +455,45 @@ describe('TranslationPracticeSession Component', () => {
     expect(mocks.generateTranslationSentence).toHaveBeenCalledTimes(1);
   });
 
-  it('renders responsive mobile container, streamlined header, and toolbar controls without chip bar', async () => {
-    const { container } = renderSession();
-    await waitForSentence();
-
-    const outerContainer = container.querySelector('.glass-panel');
-    expect(outerContainer.className).toContain('h-[calc(100dvh-5.5rem)]');
-    expect(outerContainer.className).toContain('sm:h-[82vh]');
-
-    expect(screen.queryByText(/Round Targets:/i)).not.toBeInTheDocument();
-
-    const header = container.querySelector('.border-b');
-    expect(header.className).toContain('hidden');
-    expect(header.className).toContain('sm:flex');
-
-    const desktopTranslateBtn = screen.getByRole('button', { name: /Translate ▶/i });
-    expect(desktopTranslateBtn.className).toContain('hidden');
-    expect(desktopTranslateBtn.className).toContain('sm:inline-flex');
-  });
-
-  it('renders full-width composer with text-base font and resets scroll on focus', async () => {
-    const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  it('renders card-style container with progress bar and pre-focused input', async () => {
     renderSession();
     await waitForSentence();
 
-    const textarea = getTextarea();
-    expect(textarea).toHaveClass('text-base');
-    expect(textarea).toHaveClass('w-full');
-
-    fireEvent.focus(textarea);
-    expect(scrollToSpy).toHaveBeenCalledWith({ top: 0, left: 0, behavior: 'instant' });
-
-    expect(screen.getByText(SENTENCE)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Translate ▶/i })).toBeInTheDocument();
-    expect(screen.getByTestId('toggle-mobile-practice-actions')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('toggle-mobile-practice-actions'));
-    expect(screen.getByTestId('mobile-practice-actions-panel')).toBeInTheDocument();
-    expect(screen.getByTestId('mobile-practice-translate-button')).toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('close-mobile-practice-actions'));
-    expect(screen.queryByTestId('mobile-practice-actions-panel')).not.toBeInTheDocument();
-
-    scrollToSpy.mockRestore();
+    expect(screen.getByTestId('translation-practice-card')).toBeInTheDocument();
+    expect(screen.getByText(/Card 1 of 5/i)).toBeInTheDocument();
+    expect(getTextarea()).toHaveFocus();
   });
 
-  it('submits translation via mobile actions HUD translate button', async () => {
-    renderSession();
-    await waitForSentence();
-
-    const textarea = getTextarea();
-    fireEvent.change(textarea, { target: { value: 'I invited a friend over.' } });
-
-    fireEvent.click(screen.getByTestId('toggle-mobile-practice-actions'));
-    const mobileTranslateBtn = screen.getByTestId('mobile-practice-translate-button');
-    expect(mobileTranslateBtn).toBeInTheDocument();
-
-    fireEvent.click(mobileTranslateBtn);
-
-    expect(screen.queryByTestId('mobile-practice-actions-panel')).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(screen.getByTestId('translation-verdict')).toBeInTheDocument();
-    });
-  });
-
-  it('triggers auto-scroll to active practice sentence when translation textarea is focused', async () => {
-    const scrollIntoViewSpy = vi.fn();
-    Element.prototype.scrollIntoView = scrollIntoViewSpy;
-
-    renderSession();
-    await waitForSentence();
-
-    const textarea = getTextarea();
-    fireEvent.focus(textarea);
-
-    expect(scrollIntoViewSpy).toHaveBeenCalled();
-  });
-
-  it('displays completion banner and disables input when all cards in queue are passed', async () => {
-    const singleCard = [dummyCards[0]];
-    renderSession(singleCard);
+  it('triggers rating via keyboard shortcuts 1 through 4 in evaluated view', async () => {
+    const onRateCardMock = vi.fn();
+    renderSession(dummyCards, { onRateCard: onRateCardMock });
     await waitForSentence();
 
     submitTranslation('Yesterday I invited a friend over.');
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
+    // Press key '2' for Hard
+    await act(async () => {
+      fireEvent.keyDown(window, { key: '2' });
+    });
+    expect(onRateCardMock).toHaveBeenCalledWith(dummyCards[0], 2);
+  });
+
+  it('displays completion banner when all cards in queue are completed', async () => {
+    const singleCard = [dummyCards[0]];
+    const onFinishMock = vi.fn();
+    renderSession(singleCard, { onFinish: onFinishMock });
+    await waitForSentence();
+
+    submitTranslation('Yesterday I invited a friend over.');
+    await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
+
+    // Rate recall to finish single card
+    fireEvent.click(screen.getByRole('button', { name: /Good/i }));
+
     await waitFor(() => {
       expect(screen.getByTestId('session-completed-banner')).toBeInTheDocument();
     });
     expect(screen.getByText(/All target constructions practiced!/i)).toBeInTheDocument();
-    expect(screen.getByPlaceholderText(/Session complete/i)).toBeDisabled();
   });
 });

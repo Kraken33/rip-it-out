@@ -1,9 +1,11 @@
-# Spec Delta
+# Session Flow Specification
 
-## MODIFIED Requirements
+## Purpose
+Orchestrates session creation, activity selection, step transitions, and import handling across dialogue and translation activities.
+
+## Requirements
 
 ### Requirement: Session activity selection
-
 The system SHALL let the user pick a session activity (`dialogue` or `translation`) at the TOP of the New Session setup form, before any other input, and SHALL render a different Step-2 interface per activity. The story-translation activity SHALL complete within its Step-2 interface and return to the Dashboard, while the Review & Confirm import step remains exclusive to the Prompt Copy/Paste dialogue path. Step-1 detail fields SHALL be activity-conditional: title, source type, tags, and notes are shown only for the `dialogue` activity; the `translation` activity shows an optional story topic/demands field instead.
 
 #### Scenario: Activity selector comes first
@@ -30,10 +32,7 @@ The system SHALL let the user pick a session activity (`dialogue` or `translatio
 - **WHEN** the dialogue activity reaches its export step in Prompt Copy/Paste mode
 - **THEN** the pasted JSON is parsed and the selective import picker is presented.
 
-## ADDED Requirements
-
 ### Requirement: Selective import of pasted prompt improvements
-
 The system SHALL let the user select which parsed improvements to import on the Review & Confirm step of the Prompt Copy/Paste path, and SHALL import only the selected items while discarding the rest.
 
 #### Scenario: Selecting improvements before import
@@ -51,11 +50,3 @@ The system SHALL let the user select which parsed improvements to import on the 
 #### Scenario: Picker belongs to the prompt path
 - **WHEN** improvements arrive from pasted prompt JSON
 - **THEN** the selective picker is presented before any vault write.
-
-## REMOVED Requirements
-
-### Requirement: Selective import of improvements
-
-**Reason**: The Review & Confirm picker now serves the Prompt Copy/Paste path only; the story activity finishes back on the Dashboard, and the seamless dialogue path no longer produces a parsed improvement list. Replaced by "Selective import of pasted prompt improvements".
-
-**Migration**: None. Pasted prompt JSON is still imported through the same picker with identical selection behaviour.

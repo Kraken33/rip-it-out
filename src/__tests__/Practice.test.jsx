@@ -308,4 +308,42 @@ describe('Practice Component', () => {
     expect(await screen.findByText('Session finished')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Rate Recall' })).not.toBeInTheDocument();
   });
+
+  it('persists inline rating via onRateCard and finishes directly to completion screen', async () => {
+    const s = await createSession({ title: 'S1', sourceType: 'video' });
+    await addImprovements(s.id, [
+      { construction: 'catch up on', original: 'caught up', improved: 'catch up on work', explanation: 'exp' },
+    ]);
+
+    render(
+      <BrowserRouter>
+        <Practice />
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Round 1/i);
+
+    // Submit translation
+    const textarea = screen.getByPlaceholderText(/Type or speak your English translation/i);
+    fireEvent.change(textarea, { target: { value: 'We caught up on work.' } });
+    fireEvent.click(screen.getByRole('button', { name: /Translate/i }));
+
+    // Wait for verdict
+    await screen.findByTestId('translation-verdict');
+
+    // Rate the card inline via the card rating button
+    const goodBtn = screen.getByRole('button', { name: /3\. Good/i });
+    fireEvent.click(goodBtn);
+
+    // Verify SRS card updated
+    const { getSrsCards } = await import('../store');
+    await waitFor(async () => {
+      const all = await getSrsCards();
+      expect(all[0].totalReviews).toBe(1);
+    });
+
+    // Session completion view is displayed directly without redundant batch rating
+    expect(await screen.findByText('Session finished')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Rate Recall' })).not.toBeInTheDocument();
+  });
 });

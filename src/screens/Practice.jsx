@@ -13,21 +13,12 @@ import { processReview, RATINGS } from '../srs';
 import { generatePracticePrompt, generateTranslationPracticePrompt } from '../prompts';
 import AudioPlayerButton from '../components/AudioPlayerButton';
 import TranslationPracticeSession from './TranslationPracticeSession';
-import { useVisualViewport } from '../hooks/useVisualViewport';
 
 export default function Practice() {
   const navigate = useNavigate();
   const [step, setStep] = useState('loading');
   const [practiceType, setPracticeType] = useState('translation'); // 'translation' | 'scenario'
   const [translationSubMode, setTranslationSubMode] = useState('seamless'); // 'seamless' | 'prompt'
-  const isTranslationActive =
-    practiceType === 'translation' &&
-    translationSubMode === 'seamless' &&
-    step !== 'loading' &&
-    step !== 'empty' &&
-    step !== 'complete' &&
-    step !== 'rating';
-  const { viewportHeight, viewportWidth } = useVisualViewport({ lockBodyScroll: isTranslationActive });
   const [selectedCards, setSelectedCards] = useState([]);
   const [improvements, setImprovements] = useState([]);
   const [promptText, setPromptText] = useState('');
@@ -36,6 +27,7 @@ export default function Practice() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [startTime, setStartTime] = useState(null);
   const [settings, setSettings] = useState(null);
+  const [inlineRatedCardIds, setInlineRatedCardIds] = useState(() => new Set());
 
   useEffect(() => {
     let isMounted = true;
@@ -94,7 +86,17 @@ export default function Practice() {
     });
   }, [startTime]);
 
-  const startRating = useCallback(async (customCards, roundPayload = []) => {
+  const handleInlineRateCard = useCallback(async (cardItem, score) => {
+    const targetId = cardItem?.improvementId || cardItem?.id;
+    const srsCard = selectedCards.find((c) => c.improvementId === targetId || c.id === targetId);
+    if (srsCard) {
+      const updates = processReview(srsCard, score);
+      await updateSrsCard(srsCard.improvementId, updates);
+      setInlineRatedCardIds((prev) => new Set(prev).add(srsCard.improvementId));
+    }
+  }, [selectedCards]);
+
+  const startRating = useCallback(async (customCards, roundPayload = [], options = {}) => {
     const hasRounds = Array.isArray(roundPayload) && roundPayload.length > 0;
     const submittedTranslations = hasRounds
       ? roundPayload
@@ -194,6 +196,11 @@ export default function Practice() {
     // card fields (status, easeFactor, intervalDays) keyed by improvementId.
     // Unlimited-round sessions may repeat constructions: dedupe so each
     // distinct card is rated exactly once.
+    if (options?.ratedInline) {
+      setStep('complete');
+      return;
+    }
+
     if (customCards && Array.isArray(customCards) && customCards.length > 0) {
       const practicedIds = new Set(customCards.map((c) => c.id ?? c.improvementId));
       const cardsToRate = selectedCards.filter((c) => practicedIds.has(c.improvementId));
@@ -209,7 +216,7 @@ export default function Practice() {
 
     setStep('rating');
     setCurrentIndex(0);
-  }, [startTime, improvements, selectedCards]);
+  }, [startTime, improvements, selectedCards, inlineRatedCardIds]);
 
   const handleRate = useCallback(async (score) => {
     const card = selectedCards[currentIndex];
@@ -372,21 +379,17 @@ export default function Practice() {
     );
   }
 
-  // Interactive Seamless AI Session for Translation Practice
+  // Card-Style Seamless AI Session for Translation Practice
   if (practiceType === 'translation' && translationSubMode === 'seamless') {
     return (
-      <div
-        className="w-full h-[100dvh] sm:h-[88vh] flex flex-col max-w-4xl mx-auto -my-1 sm:my-0 fixed sm:static inset-0 z-20 bg-[var(--bg-main)] sm:bg-transparent overflow-hidden"
-        style={viewportWidth < 640 ? { height: `${viewportHeight}px`, maxHeight: `${viewportHeight}px` } : undefined}
-      >
-        <div className="flex-1 min-h-0 flex flex-col">
-          <TranslationPracticeSession
-            allCards={improvements}
-            settings={settings}
-            onFinish={(roundPayload, practicedCards) => startRating(practicedCards, roundPayload)}
-            onExit={() => setTranslationSubMode('prompt')}
-          />
-        </div>
+      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in py-2">
+        <TranslationPracticeSession
+          allCards={improvements}
+          settings={settings}
+          onRateCard={handleInlineRateCard}
+          onFinish={(roundPayload, practicedCards, options) => startRating(practicedCards, roundPayload, options)}
+          onExit={() => setTranslationSubMode('prompt')}
+        />
       </div>
     );
   }
