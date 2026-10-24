@@ -47,7 +47,7 @@ describe('Session Wizard Component', () => {
     expect(screen.getByPlaceholderText(/Atomic Habits/i)).toBeInTheDocument();
   });
 
-  it('submits Step 1 form and advances to Step 2 with Prompt #1', async () => {
+  it('submits Step 1 form and advances to Step 2 with SeamlessChatSession', async () => {
     render(
       <BrowserRouter>
         <Session />
@@ -60,12 +60,12 @@ describe('Session Wizard Component', () => {
     const videoButton = screen.getByText('Video');
     fireEvent.click(videoButton);
 
-    const submitBtn = screen.getByRole('button', { name: /(Generate Prompt #1|Start Seamless Voice Session)/i });
+    const submitBtn = screen.getByRole('button', { name: /(Start Session|Start Seamless Voice Session)/i });
     fireEvent.click(submitBtn);
 
     // createSession is now async, so wait for step 2 content
     await waitFor(() =>
-      expect(screen.getByText(/(Seamless AI Coach|Seamless Voice Session|Step 1: Describe Content)/i)).toBeInTheDocument()
+      expect(screen.getByText(/(Seamless AI Coach|Seamless Voice Session)/i)).toBeInTheDocument()
     );
     expect(screen.getAllByText(/My Video Session/i)[0]).toBeInTheDocument();
   });
@@ -91,106 +91,25 @@ describe('Session Wizard Component', () => {
     expect(screen.getByPlaceholderText(/productivity/i)).toHaveValue('habits');
   });
 
-  describe('Step 4 selective import picker', () => {
-    const IMPORT_JSON = JSON.stringify({
-      improvements: [
-        {
-          construction: 'invite [someone] over',
-          original: 'invited him home',
-          improved: 'invited him over',
-          explanation: 'natural phrasing',
-          category: 'collocation',
-          spoken_frequency: 'high',
-        },
-        {
-          construction: 'catch up on',
-          original: 'caught up',
-          improved: 'catch up on work',
-          explanation: 'phrasal verb',
-          category: 'vocabulary',
-          spoken_frequency: 'medium',
-        },
-      ],
+  it('completes dialogue session directly without an import step', async () => {
+    render(
+      <BrowserRouter>
+        <Session />
+      </BrowserRouter>
+    );
+
+    fireEvent.change(screen.getByPlaceholderText(/Atomic Habits/i), {
+      target: { value: 'Direct Session' },
     });
+    fireEvent.click(screen.getByText('Video'));
+    const submitBtn = await screen.findByRole('button', { name: /(Start Session|Start Seamless Voice Session)/i });
+    fireEvent.click(submitBtn);
 
-    const driveToStep4 = async () => {
-      render(
-        <BrowserRouter>
-          <Session />
-        </BrowserRouter>
-      );
-
-      fireEvent.change(screen.getByPlaceholderText(/Atomic Habits/i), {
-        target: { value: 'Picker Session' },
-      });
-      fireEvent.click(screen.getByText('Video'));
-      const submitBtn = await screen.findByRole('button', { name: /Generate Prompt #1/i });
-      fireEvent.click(submitBtn);
-
-      await waitFor(() =>
-        expect(screen.getByText(/Copy Prompt #1/i)).toBeInTheDocument()
-      );
-      fireEvent.click(screen.getByRole('button', { name: /I Got My Improvements/i }));
-
-      const jsonInput = await screen.findByPlaceholderText('{"improvements": [...]}');
-      fireEvent.change(jsonInput, { target: { value: IMPORT_JSON } });
-      fireEvent.click(screen.getByRole('button', { name: /Parse & Preview Improvements/i }));
-
-      await waitFor(() => expect(screen.getByText(/Review & Confirm/i)).toBeInTheDocument());
-    };
-
-    beforeEach(async () => {
-      await updateSettings({ defaultMode: 'prompt' });
-    });
-
-    it('starts with every improvement checked and a counted confirm button', async () => {
-      await driveToStep4();
-
-      const selectAll = screen.getByRole('checkbox', { name: /Select all improvements/i });
-      expect(selectAll).toBeChecked();
-      expect(screen.getByText(/Select all \(2 of 2 selected\)/i)).toBeInTheDocument();
-
-      expect(screen.getByRole('checkbox', { name: /Select improvement 1/i })).toBeChecked();
-      expect(screen.getByRole('checkbox', { name: /Select improvement 2/i })).toBeChecked();
-
-      const confirmButtons = screen.getAllByRole('button', { name: /Confirm Import \(2 selected\)/i });
-      expect(confirmButtons.length).toBeGreaterThan(0);
-      confirmButtons.forEach((btn) => expect(btn).toBeEnabled());
-    });
-
-    it('imports only the checked improvements on confirm', async () => {
-      await driveToStep4();
-
-      fireEvent.click(screen.getByRole('checkbox', { name: /Select improvement 2/i }));
-      expect(screen.getByText(/Select all \(1 of 2 selected\)/i)).toBeInTheDocument();
-
-      fireEvent.click(screen.getAllByRole('button', { name: /Confirm Import \(1 selected\)/i })[0]);
-
-      await waitFor(async () => {
-        const imported = await getImprovements();
-        expect(imported).toHaveLength(1);
-        expect(imported[0].construction).toBe('invite [someone] over');
-      });
-    });
-
-    it('disables confirm at zero selection and re-enables after select-all', async () => {
-      await driveToStep4();
-
-      // Deselect everything via the select-all toggle.
-      fireEvent.click(screen.getByRole('checkbox', { name: /Select all improvements/i }));
-      expect(screen.getByText(/Select all \(0 of 2 selected\)/i)).toBeInTheDocument();
-
-      screen
-        .getAllByRole('button', { name: /Confirm Import \(0 selected\)/i })
-        .forEach((btn) => expect(btn).toBeDisabled());
-
-      // Re-select everything.
-      fireEvent.click(screen.getByRole('checkbox', { name: /Select all improvements/i }));
-      expect(screen.getByRole('checkbox', { name: /Select improvement 1/i })).toBeChecked();
-      screen
-        .getAllByRole('button', { name: /Confirm Import \(2 selected\)/i })
-        .forEach((btn) => expect(btn).toBeEnabled());
-    });
+    await waitFor(() =>
+      expect(screen.getByText(/(Seamless AI Coach|Seamless Voice Session)/i)).toBeInTheDocument()
+    );
+    expect(screen.queryByText(/Step 1: Describe Content/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Review & Confirm/i)).not.toBeInTheDocument();
   });
 
   describe('Activity selector and Step-2 branching', () => {
@@ -221,7 +140,7 @@ describe('Session Wizard Component', () => {
 
     const submitStep1 = async () => {
       const submitBtn = await screen.findByRole('button', {
-        name: /(Generate Prompt #1|Start Seamless Voice Session)/i,
+        name: /(Start Session|Start Seamless Voice Session)/i,
       });
       fireEvent.click(submitBtn);
     };
@@ -234,7 +153,6 @@ describe('Session Wizard Component', () => {
     });
 
     it('keeps the dialogue interface when the dialogue activity is selected', async () => {
-      await updateSettings({ defaultMode: 'prompt' });
       render(
         <BrowserRouter>
           <Session />
@@ -248,7 +166,7 @@ describe('Session Wizard Component', () => {
       await submitStep1();
 
       expect(
-        await screen.findByText(/Step 1: Describe Content/i)
+        await screen.findByText(/(Seamless AI Coach|Seamless Voice Session)/i)
       ).toBeInTheDocument();
       expect(screen.queryByText(/Writing your story/i)).not.toBeInTheDocument();
 
@@ -257,7 +175,6 @@ describe('Session Wizard Component', () => {
     });
 
     it('renders the story-translation interface and persists activity on the session', async () => {
-      await updateSettings({ defaultMode: 'prompt' });
       render(
         <BrowserRouter>
           <Session />
@@ -325,7 +242,6 @@ describe('Session Wizard Component', () => {
     });
 
     it('threads story demands into the translation session and title', async () => {
-      await updateSettings({ defaultMode: 'prompt' });
       render(
         <BrowserRouter>
           <Session />
@@ -350,7 +266,6 @@ describe('Session Wizard Component', () => {
     });
 
     it('supports selecting Variety Matrix presets and passing matrix state into session', async () => {
-      await updateSettings({ defaultMode: 'prompt' });
       render(
         <BrowserRouter>
           <Session />
@@ -378,7 +293,6 @@ describe('Session Wizard Component', () => {
     });
 
     it('supports custom dimension dropdown selection in Variety Matrix', async () => {
-      await updateSettings({ defaultMode: 'prompt' });
       const { container } = render(
         <BrowserRouter>
           <Session />
@@ -405,7 +319,6 @@ describe('Session Wizard Component', () => {
     });
 
     it('falls back to a date-based title when story demands are empty', async () => {
-      await updateSettings({ defaultMode: 'prompt' });
       render(
         <BrowserRouter>
           <Session />
@@ -429,7 +342,6 @@ describe('Session Wizard Component', () => {
     });
 
     it('records real duration and logs session activity on story finish', async () => {
-      await updateSettings({ defaultMode: 'prompt' });
       const realNow = Date.now;
       let offsetMs = 0;
       const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + offsetMs);

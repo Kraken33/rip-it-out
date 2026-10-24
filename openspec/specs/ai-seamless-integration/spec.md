@@ -5,7 +5,7 @@ The `ai-seamless-integration` capability enables direct API integration with Gro
 
 ## Requirements
 
-### Requirement 1: API Keys & Integrations Configuration
+### Requirement: API Keys & Integrations Configuration
 The system SHALL provide configuration settings for AI services and audio playback preferences. The OpenAI API key SHALL be the primary key required for all AI text generation and evaluation features; the Groq API key SHALL be used exclusively for speech-to-text. The OpenAI chat model SHALL be selected from a dropdown selector listing the supported model catalog: `gpt-6-astra`, `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.5-pro`, `gpt-5.4`, `gpt-5.4-pro`, `gpt-5.4-mini`, `gpt-5.4-nano`, `gpt-5.3-codex`, `gpt-5.2`, `gpt-5.2-pro`, `gpt-5.1`, `gpt-5`, `gpt-5-pro`, `gpt-5-mini`, `gpt-5-nano`, `gpt-4.1`, `gpt-4.1-mini`, `gpt-4o-mini`.
 
 #### Scenario: User saves an OpenAI API key
@@ -38,22 +38,22 @@ The system SHALL provide configuration settings for AI services and audio playba
 - **AND** speech-to-text transcription MUST become available
 - **AND** the Groq key MUST NOT unlock or be used for AI text generation or evaluation features
 
-### Requirement 2: Dual Mode Navigation (Seamless AI vs Prompt Copy/Paste)
-The system SHALL provide a mode switcher allowing users to choose between automated AI processing and manual prompt copy/paste.
+### Requirement: Dual Mode Navigation (Seamless AI vs Prompt Copy/Paste)
+The system SHALL operate exclusively in Seamless AI mode across all session and practice workflows, removing the dual-mode switcher and manual prompt copy/paste alternatives. When an OpenAI API key is missing or not configured, the system SHALL display an inline configuration reminder or error guidance directing the user to configure their OpenAI API key in Settings rather than offering a fallback prompt copy/paste mode.
 
 #### Scenario: User has no OpenAI API key set
-- **GIVEN** no OpenAI key is present in settings (regardless of whether a Groq key is present)
-- **WHEN** the user opens a Session or Practice screen
-- **THEN** the default mode MUST be `Prompt Copy/Paste`
-- **AND** selecting `Seamless AI` MUST display an informative callout inviting the user to configure an OpenAI key in Settings
+- **GIVEN** no OpenAI key is configured in settings
+- **WHEN** the user opens a dialogue session or interactive practice screen
+- **THEN** the system MUST NOT display a mode toggle or prompt copy/paste interface
+- **AND** the system MUST display a callout directing the user to configure an OpenAI API key in Settings to use interactive AI sessions.
 
 #### Scenario: User with configured OpenAI key toggles interaction mode
-- **GIVEN** the user has saved an OpenAI API Key
-- **WHEN** the user views the Session screen
-- **THEN** the system MUST display a mode switch button showing `[ ✨ Seamless AI | 📋 Prompt Copy/Paste ]`
-- **AND** the user can freely toggle to `Prompt Copy/Paste` to manually copy prompts if desired
+- **GIVEN** the user has configured an OpenAI API key
+- **WHEN** the user views the Session or Practice screens
+- **THEN** the system MUST NOT render any mode switcher button
+- **AND** the session MUST run directly in Seamless AI interactive mode.
 
-### Requirement 3: Automated In-App Voice Recording & AI Analysis
+### Requirement: Automated In-App Voice Recording & AI Analysis
 The system SHALL support capturing spoken audio and sending requests directly to the OpenAI Chat Completions API as a conversational coaching chat during a seamless session, and SHALL NOT generate a structured improvement batch when that session is finished.
 
 #### Scenario: Session completes by saving and exiting
@@ -66,7 +66,7 @@ The system SHALL support capturing spoken audio and sending requests directly to
 - **THEN** the system MUST NOT call the Groq chat completions API
 - **AND** MUST surface an error directing the user to configure an OpenAI API key in Settings
 
-### Requirement 4: Audio Playback for Spoken English Constructions
+### Requirement: Audio Playback for Spoken English Constructions
 The system SHALL allow users to listen to spoken pronunciation of constructions and sentences.
 
 #### Scenario: User clicks play audio using browser TTS

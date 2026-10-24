@@ -83,4 +83,19 @@ describe('Settings Component', () => {
     expect(screen.getByRole('option', { name: /gpt-4o \(current — not in catalog\)/ })).toBeInTheDocument();
     expect(select.value).toBe('gpt-4o');
   });
+
+  it('does not render the legacy interaction mode selector', async () => {
+    render(
+      <BrowserRouter>
+        <Settings />
+      </BrowserRouter>
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText(/Settings & Preferences/i)).toBeInTheDocument()
+    );
+
+    expect(screen.queryByText(/Default Session Interaction Mode/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Prompt Copy\/Paste/i)).not.toBeInTheDocument();
+  });
 });

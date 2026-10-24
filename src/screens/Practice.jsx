@@ -10,20 +10,14 @@ import {
   logActivity
 } from '../store';
 import { processReview, RATINGS } from '../srs';
-import { generatePracticePrompt, generateTranslationPracticePrompt } from '../prompts';
 import AudioPlayerButton from '../components/AudioPlayerButton';
 import TranslationPracticeSession from './TranslationPracticeSession';
 
 export default function Practice() {
   const navigate = useNavigate();
   const [step, setStep] = useState('loading');
-  const [practiceType, setPracticeType] = useState('translation'); // 'translation' | 'scenario'
-  const [translationSubMode, setTranslationSubMode] = useState('seamless'); // 'seamless' | 'prompt'
   const [selectedCards, setSelectedCards] = useState([]);
   const [improvements, setImprovements] = useState([]);
-  const [promptText, setPromptText] = useState('');
-  const [translationPromptText, setTranslationPromptText] = useState('');
-  const [copied, setCopied] = useState(false);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [startTime, setStartTime] = useState(null);
   const [settings, setSettings] = useState(null);
@@ -56,14 +50,10 @@ export default function Practice() {
         setImprovements(imps);
 
         const st = await getSettings();
-        const scenarioPrompt = generatePracticePrompt(imps.slice(0, 5), st);
-        const transPrompt = generateTranslationPracticePrompt(imps, st);
 
         if (isMounted) {
           setSettings(st);
-          setPromptText(scenarioPrompt);
-          setTranslationPromptText(transPrompt);
-          setStep('prompt');
+          setStep('practice');
           setStartTime(Date.now());
         }
       } catch (err) {
@@ -77,14 +67,6 @@ export default function Practice() {
       isMounted = false;
     };
   }, []);
-
-  const handleCopy = useCallback((textToCopy) => {
-    if (!startTime) setStartTime(Date.now());
-    navigator.clipboard.writeText(textToCopy).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [startTime]);
 
   const handleInlineRateCard = useCallback(async (cardItem, score) => {
     const targetId = cardItem?.improvementId || cardItem?.id;
@@ -157,8 +139,6 @@ export default function Practice() {
             .filter(Boolean)
             .join('\n'),
           durationSeconds,
-          // Statistics count ONLY the learner's translations; passages and
-          // verdicts stay in messages/notes for review.
           rawText: submittedTranslations.join('\n\n'),
           messages: sessionMessages,
         });
@@ -174,7 +154,6 @@ export default function Practice() {
         console.error('Error saving translation practice session:', err);
       }
       if (startTime) {
-        // Practice time already logged against the saved translation session above.
         setStartTime(null);
       }
     } else if (startTime) {
@@ -191,11 +170,6 @@ export default function Practice() {
       }
     }
 
-    // Callers hand us improvement records, but the rating step must operate on
-    // the SRS cards loaded at mount — processReview/updateSrsCard need real
-    // card fields (status, easeFactor, intervalDays) keyed by improvementId.
-    // Unlimited-round sessions may repeat constructions: dedupe so each
-    // distinct card is rated exactly once.
     if (options?.ratedInline) {
       setStep('complete');
       return;
@@ -248,22 +222,22 @@ export default function Practice() {
 
         <div className="glass-panel p-8 text-center space-y-4">
           <div className="text-4xl">🎉</div>
-          <h2 className="text-lg font-bold text-white">You're all caught up!</h2>
+          <h2 className="text-xl font-bold text-white">You're all caught up!</h2>
           <p className="text-xs text-gray-400 max-w-sm mx-auto">
-            You've reviewed all your due phrases. Create a new session or check back later!
+            You don't have any due cards right now. Check back later or add more constructions from your sessions.
           </p>
-          <div className="pt-2 flex flex-col sm:flex-row gap-2 justify-center">
-            <Link 
-              to="/frequency-practice" 
-              className="inline-block px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg transition-all shadow"
-            >
-              ⚡ Practice Frequency Sentences
-            </Link>
-            <Link 
-              to="/" 
-              className="inline-block px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-lg transition-all"
+          <div className="pt-2 flex justify-center gap-3">
+            <Link
+              to="/"
+              className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl transition shadow"
             >
               Back to Dashboard
+            </Link>
+            <Link
+              to="/session/new"
+              className="px-5 py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-200 font-bold text-xs rounded-xl transition border border-gray-700"
+            >
+              New Session
             </Link>
           </div>
         </div>
@@ -273,24 +247,25 @@ export default function Practice() {
 
   if (step === 'complete') {
     return (
-      <div className="max-w-xl mx-auto space-y-6 animate-fade-in py-6">
-        <header className="space-y-1">
-          <h1 className="text-2xl font-bold text-white">Practice Complete</h1>
-          <p className="text-xs text-gray-400">Great job! You've rated {selectedCards.length} phrases.</p>
-        </header>
-
+      <div className="max-w-md mx-auto space-y-6 animate-fade-in py-8">
         <div className="glass-panel p-8 text-center space-y-4">
-          <div className="text-4xl">✅</div>
-          <h2 className="text-lg font-bold text-white">Session finished</h2>
-          <p className="text-xs text-gray-400 max-w-sm mx-auto">
-            Your memory recall has been saved and your SRS schedule updated.
+          <div className="text-4xl">🎉</div>
+          <h2 className="text-2xl font-bold text-white">Session finished</h2>
+          <p className="text-xs text-gray-400">
+            Great work! All practiced phrases have been updated in your spaced repetition queue.
           </p>
-          <div className="pt-2">
-            <Link 
-              to="/" 
-              className="inline-block px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg transition-all shadow"
+          <div className="pt-4 flex flex-col gap-2.5">
+            <Link
+              to="/"
+              className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition shadow text-center"
             >
               Back to Dashboard
+            </Link>
+            <Link
+              to="/review"
+              className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 font-semibold text-xs rounded-xl transition text-center border border-gray-700"
+            >
+              Review Flashcards
             </Link>
           </div>
         </div>
@@ -299,8 +274,8 @@ export default function Practice() {
   }
 
   if (step === 'rating') {
-    const currentImp = improvements[currentIndex];
-    const progress = ((currentIndex) / selectedCards.length) * 100;
+    const currentCard = selectedCards[currentIndex];
+    const currentImp = improvements.find((i) => i.id === currentCard?.improvementId) || {};
 
     return (
       <div className="max-w-xl mx-auto space-y-5 animate-fade-in py-4">
@@ -314,111 +289,69 @@ export default function Practice() {
           </div>
         </header>
 
-        <div className="h-2 bg-gray-800 rounded-full overflow-hidden border border-gray-700">
-          <div 
-            className="h-full bg-purple-500 transition-all duration-300" 
-            style={{ width: `${progress}%` }} 
-          />
-        </div>
-
         <div className="glass-panel p-6 space-y-4">
-          <div className="pl-3 border-l-2 border-purple-500">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-purple-400 mb-1">Target Construction</div>
-            <div className="text-xl font-bold text-white">
-              "{currentImp?.construction || currentImp?.improved || 'Target Phrase'}"
-            </div>
+          <div className="space-y-2">
+            <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider">Target Construction</span>
+            <h3 className="text-xl font-bold text-white leading-snug">
+              "{currentImp.construction || currentImp.improved}"
+            </h3>
+            {currentImp.improved && (
+              <p className="text-xs text-gray-300 italic flex items-center justify-between gap-2">
+                <span>Example: "{currentImp.improved}"</span>
+                <AudioPlayerButton text={currentImp.improved} settings={settings} size="sm" />
+              </p>
+            )}
+            {currentImp.original && (
+              <p className="text-xs text-gray-400">
+                Original: <span className="line-through text-rose-400/80">"{currentImp.original}"</span>
+              </p>
+            )}
+            {currentImp.explanation && (
+              <p className="text-xs text-gray-400 bg-[#0e0f17] p-2.5 rounded-lg border border-gray-800">
+                {currentImp.explanation}
+              </p>
+            )}
           </div>
 
-          {currentImp?.improved && (
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 flex items-center justify-between">
-                <span>Example / Natural Usage</span>
-                <AudioPlayerButton text={currentImp.improved} settings={settings} size="sm" />
-              </div>
-              <div className="text-sm text-emerald-400 font-medium">
-                "{currentImp.improved}"
-              </div>
-            </div>
-          )}
-
-          {currentImp?.original && (
-            <div>
-              <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Original Wording</div>
-              <div className="text-sm text-rose-400 line-through opacity-80 font-medium">
-                "{currentImp.original}"
-              </div>
-            </div>
-          )}
-
-          {currentImp?.explanation && (
-            <div className="pt-2 border-t border-gray-800">
-              <div className="text-xs text-gray-300 italic bg-gray-900/60 p-3 rounded border border-gray-800">
-                {currentImp.explanation}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-          {RATINGS.map((r) => (
-            <button
-              key={r.score}
-              onClick={() => handleRate(r.score)}
-              className="flex flex-col items-center justify-center p-3.5 rounded-xl bg-[#151622] border border-gray-800 hover:border-purple-500 transition-all cursor-pointer"
-            >
-              <span className="font-bold text-sm" style={{ color: r.color }}>
-                {r.label}
-              </span>
-              <span className="text-[10px] text-gray-400 mt-1 text-center">
-                {r.description}
-              </span>
-            </button>
-          ))}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
+            {RATINGS.map((r) => (
+              <button
+                key={r.score}
+                onClick={() => handleRate(r.score)}
+                className={`p-3 rounded-xl border border-gray-800 bg-[#0e0f17] hover:border-gray-700 transition flex flex-col items-center justify-center cursor-pointer ${
+                  r.score === 1
+                    ? 'hover:border-rose-500/50'
+                    : r.score === 2
+                    ? 'hover:border-amber-500/50'
+                    : r.score === 3
+                    ? 'hover:border-emerald-500/50'
+                    : 'hover:border-blue-500/50'
+                }`}
+              >
+                <span className={`text-xs font-bold ${
+                  r.score === 1 ? 'text-rose-400' : r.score === 2 ? 'text-amber-400' : r.score === 3 ? 'text-emerald-400' : 'text-blue-400'
+                }`}>
+                  {r.label}
+                </span>
+                <span className="text-[10px] text-gray-400 mt-1 text-center">
+                  {r.description}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     );
   }
 
   // Card-Style Seamless AI Session for Translation Practice
-  if (practiceType === 'translation' && translationSubMode === 'seamless') {
-    return (
-      <div className="max-w-2xl mx-auto space-y-6 animate-fade-in py-2">
-        <TranslationPracticeSession
-          allCards={improvements}
-          settings={settings}
-          onRateCard={handleInlineRateCard}
-          onFinish={(roundPayload, practicedCards, options) => startRating(practicedCards, roundPayload, options)}
-          onExit={() => setTranslationSubMode('prompt')}
-        />
-      </div>
-    );
-  }
-
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in py-2">
-      {/* Mode Selector Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 bg-[#11121c] p-2 rounded-xl border border-gray-800">
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPracticeType('translation')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-              practiceType === 'translation'
-                ? 'bg-purple-600 text-white shadow'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
+          <span className="px-4 py-2 rounded-lg text-xs font-bold bg-purple-600 text-white shadow">
             🌐 Translation Practice
-          </button>
-          <button
-            onClick={() => setPracticeType('scenario')}
-            className={`px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer ${
-              practiceType === 'scenario'
-                ? 'bg-purple-600 text-white shadow'
-                : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            💬 Scenario Q&A (Prompt #3)
-          </button>
+          </span>
           <button
             onClick={() => navigate('/frequency-practice')}
             className="px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5"
@@ -426,112 +359,15 @@ export default function Practice() {
             ⚡ Frequency Sentences
           </button>
         </div>
-
-        {practiceType === 'translation' && (
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setTranslationSubMode('seamless')}
-              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                translationSubMode === 'seamless'
-                  ? 'bg-purple-900/80 text-purple-200 border border-purple-600'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-            >
-              ✨ Seamless AI
-            </button>
-            <button
-              onClick={() => setTranslationSubMode('prompt')}
-              className={`px-3 py-1.5 rounded-md text-[11px] font-semibold transition cursor-pointer ${
-                translationSubMode === 'prompt'
-                  ? 'bg-purple-900/80 text-purple-200 border border-purple-600'
-                  : 'text-gray-400 hover:text-gray-200'
-              }`}
-            >
-              📋 Copy Prompt #5
-            </button>
-          </div>
-        )}
       </div>
 
-      {practiceType === 'translation' ? (
-        <>
-          <header className="space-y-1">
-            <h1 className="text-2xl font-bold text-white">
-              Russian Translation Practice (Prompt #5)
-            </h1>
-            <p className="text-xs text-gray-400 leading-relaxed">
-              Copy Prompt #5 to your LLM (ChatGPT, Claude, Gemini). The LLM will generate a single Russian sentence for 1 target construction per round, for as many rounds as you want. Translate it to English!
-            </p>
-          </header>
-
-          <div className="glass-panel p-5 space-y-3">
-            <div className="flex justify-between items-center pb-2 border-b border-gray-800">
-              <div className="text-xs font-bold text-purple-400 uppercase tracking-wider">
-                Prompt #5 • {improvements.length} Targeted Phrases
-              </div>
-              <button
-                id="btn-copy-prompt-5"
-                onClick={() => handleCopy(translationPromptText)}
-                className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
-              >
-                {copied ? 'Copied! ✓' : 'Copy Prompt #5'}
-              </button>
-            </div>
-
-            <div className="bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5">
-              <textarea
-                readOnly
-                value={translationPromptText}
-                className="w-full h-80 bg-transparent text-gray-300 text-xs font-mono leading-relaxed resize-y focus:outline-none"
-              />
-            </div>
-          </div>
-        </>
-      ) : (
-        <>
-          <header className="space-y-1">
-            <h1 className="text-2xl font-bold text-white">
-              Russian Scenario Practice Mode
-            </h1>
-            <p className="text-xs text-gray-400 leading-relaxed">
-              Copy Prompt #3 to your LLM (ChatGPT, Claude, Gemini). The LLM will ask you 5 scenario questions in Russian. Answer them in English using your targeted constructions!
-            </p>
-          </header>
-
-          <div className="glass-panel p-5 space-y-3">
-            <div className="flex justify-between items-center pb-2 border-b border-gray-800">
-              <div className="text-xs font-bold text-purple-400 uppercase tracking-wider">
-                Prompt #3 • {improvements.length} Due {improvements.length === 1 ? 'Phrase' : 'Phrases'}
-              </div>
-              <button
-                id="btn-copy-prompt"
-                onClick={() => handleCopy(promptText)}
-                className="px-3.5 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-bold transition-all cursor-pointer"
-              >
-                {copied ? 'Copied! ✓' : 'Copy Prompt #3'}
-              </button>
-            </div>
-
-            <div className="bg-[#0e0f17] border border-gray-800 rounded-lg p-3.5">
-              <textarea
-                readOnly
-                value={promptText}
-                className="w-full h-80 bg-transparent text-gray-300 text-xs font-mono leading-relaxed resize-y focus:outline-none"
-              />
-            </div>
-          </div>
-        </>
-      )}
-
-      <div className="flex justify-end">
-        <button
-          id="btn-done-practicing"
-          onClick={() => startRating(improvements)}
-          className="px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-sm rounded-xl transition-all shadow cursor-pointer"
-        >
-          I'm Done Practicing → Rate Recall
-        </button>
-      </div>
+      <TranslationPracticeSession
+        allCards={improvements}
+        settings={settings}
+        onRateCard={handleInlineRateCard}
+        onFinish={(roundPayload, practicedCards, options) => startRating(practicedCards, roundPayload, options)}
+        onExit={() => navigate('/')}
+      />
     </div>
   );
 }

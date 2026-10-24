@@ -5,17 +5,6 @@ Prompt external LLMs with Russian scenario questions and single-sentence transla
 
 ## Requirements
 
-### Requirement: Russian Practice Prompt
-The system SHALL generate prompt structures for Russian language practice using targeted English constructions, supporting both open-ended Scenario Questions (Prompt #3) and Multi-Round Translation Exercises (Prompt #5).
-
-#### Scenario: Prompt Generation for Scenario Questions
-- **WHEN** user selects scenario questions practice mode
-- **THEN** Prompt #3 is generated requesting 5 scenario questions in Russian for target English constructions.
-
-#### Scenario: Prompt Generation for Multi-Round Translation
-- **WHEN** user selects prompt-based translation practice mode with 20 upcoming cards
-- **THEN** Prompt #5 is generated instructing the LLM to run a single-sentence translation exercise in Russian, embedding exactly 1 target construction per round without spoiler tags or inline English answers, awaiting English translation after each round, repeating the target construction ONLY if the target construction itself was omitted or used incorrectly, and providing feedback while advancing to the next construction whenever the target construction was used correctly (even when unrelated errors exist elsewhere in the translation).
-
 ### Requirement: Multi-Round Russian Translation Practice
 The system SHALL practice top upcoming or due SRS cards in stateless on-demand card-style exercises of 1 target construction per card. When zero cards are due today, the system SHALL select the top 20 upcoming ("coming soon") cards sorted by scheduled review date so practice mode is always available. In seamless translation mode, the system SHALL present one active card at a time, send the active construction and its conceptual nuance explanation to the LLM without concrete narrative sentence examples and without prior conversation history, display the generated natural Russian sentence on the card with zero bracket tags or English clues alongside a pre-focused translation input, accept the learner's translation, and immediately display the evaluation verdict on the same card together with inline SRS recall rating controls and an option to generate another Russian sentence for the same construction.
 
@@ -45,22 +34,22 @@ The system SHALL practice top upcoming or due SRS cards in stateless on-demand c
 - **THEN** the current construction remains active on the card, a fresh Russian sentence is generated for that same construction, the translation input is cleared and pre-focused, and once all queued constructions are rated, the session completes.
 
 ### Requirement: Dual Mode Execution (Seamless and Prompt-based)
-The system SHALL support both in-app Seamless AI card sessions and copy/paste Prompt-based sessions for Russian-to-English translation practice.
+The system SHALL support exclusively interactive in-app Seamless AI card sessions for Russian-to-English translation practice, removing manual Prompt #5 copy/paste workflows and prompt-mode tabs.
 
 #### Scenario: In-app Seamless AI translation session
-- **WHEN** user runs Translation Practice in Seamless AI mode
+- **WHEN** user runs Translation Practice
 - **THEN** the app presents a card displaying a single natural Russian sentence for the active target construction without clue annotations and a pre-focused translation input, accepts typed or dictated English translation, immediately renders the evaluation verdict on the card, and allows the learner to either generate another sentence for the same construction or rate their recall to move to the next card.
 
 #### Scenario: External LLM Prompt-based translation session
-- **WHEN** user runs Translation Practice in Prompt-based mode
-- **THEN** the app generates Prompt #5 for copying into ChatGPT/Claude web interfaces with 1-construction single-sentence instructions.
+- **WHEN** user opens Practice mode
+- **THEN** no external LLM Prompt #5 generation or copy interfaces are provided and the app directly initializes the card-style Seamless AI Translation Practice.
 
 ### Requirement: Transition to Manual SRS Recall Rating
-The system SHALL persist SRS recall ratings (`Again`, `Hard`, `Good`, `Easy`) for practiced cards either inline on each card immediately after evaluation during Seamless AI translation practice or via a post-session rating screen after Prompt-based practice.
+The system SHALL persist SRS recall ratings (`Again`, `Hard`, `Good`, `Easy`) for practiced cards inline on each card immediately after evaluation during Seamless AI translation practice, and SHALL NOT display post-session sequential rating screens for external prompt sessions.
 
 #### Scenario: Transition after practice completion
-- **WHEN** a translation on the active card is evaluated in Seamless AI mode (or when the user finishes Prompt-based practice)
-- **THEN** the system presents the manual SRS rating controls (`Again`, `Hard`, `Good`, `Easy`) allowing the user to score recall immediately on the evaluated card (or sequentially for Prompt-based sessions)
+- **WHEN** a translation on the active card is evaluated in Seamless AI mode
+- **THEN** the system presents the manual SRS rating controls (`Again`, `Hard`, `Good`, `Easy`) allowing the user to score recall immediately on the evaluated card
 - **AND** each rating button updates that card's SRS schedule and advances to the next card.
 
 #### Scenario: Rating persists the SRS schedule

@@ -102,7 +102,7 @@ describe('Practice Component', () => {
     expect(screen.getByRole('button', { name: /Finish & Rate Recall/i })).toBeInTheDocument();
   });
 
-  it('switches between translation practice and scenario practice mode', async () => {
+  it('renders translation practice directly and links to frequency sentences', async () => {
     const s = await createSession({ title: 'S1', sourceType: 'video' });
     await addImprovements(s.id, [{ construction: 'catch up on', original: 'caught up', improved: 'catch up on work', explanation: 'exp' }]);
 
@@ -116,31 +116,9 @@ describe('Practice Component', () => {
       expect(screen.getByText(/Round 1/i)).toBeInTheDocument()
     );
 
-    // Switch to Copy Prompt #5 submode via Exit button
-    const exitBtn = screen.getByRole('button', { name: /Exit/i });
-    fireEvent.click(exitBtn);
-
-    expect(screen.getByText(/Russian Translation Practice \(Prompt #5\)/i)).toBeInTheDocument();
-    expect(document.getElementById('btn-copy-prompt-5')).toBeInTheDocument();
-
-    // Switch to Scenario Q&A (Prompt #3)
-    const scenarioTab = screen.getByRole('button', { name: /Scenario Q&A/i });
-    fireEvent.click(scenarioTab);
-
-    expect(screen.getByText(/Russian Scenario Practice Mode/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Copy Prompt #3/i })).toBeInTheDocument();
-
-    // Switch back to Translation Practice tab
-    const transTab = screen.getByRole('button', { name: /Translation Practice/i });
-    fireEvent.click(transTab);
-
-    // Switch to Seamless AI
-    const seamlessTab = screen.getByRole('button', { name: /✨ Seamless AI/i });
-    fireEvent.click(seamlessTab);
-
-    await waitFor(() =>
-      expect(screen.getByText(/Round 1/i)).toBeInTheDocument()
-    );
+    expect(screen.getByText(/Frequency Sentences/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Prompt #5/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Prompt #3/i)).not.toBeInTheDocument();
   });
 
   it('persists Easy rating and advances the queue after a seamless translation session finishes', async () => {
@@ -186,43 +164,6 @@ describe('Practice Component', () => {
     await waitFor(() =>
       expect(screen.getByText((_, el) => el?.textContent === '2 / 2')).toBeInTheDocument()
     );
-  });
-
-  it('persists Good rating after prompt-based practice via "I\'m Done Practicing → Rate Recall"', async () => {
-    const s = await createSession({ title: 'S1', sourceType: 'video' });
-    await addImprovements(s.id, [
-      { construction: 'catch up on', original: 'caught up', improved: 'catch up on work', explanation: 'exp' },
-    ]);
-
-    render(
-      <BrowserRouter>
-        <Practice />
-      </BrowserRouter>
-    );
-
-    // Wait for the seamless session, then switch to the Copy Prompt #5 sub-mode via Exit
-    await screen.findByRole('button', { name: /Finish & Rate Recall/i });
-    fireEvent.click(screen.getByRole('button', { name: /Exit/i }));
-
-    const doneBtn = await screen.findByRole('button', { name: /Done Practicing/i });
-    fireEvent.click(doneBtn);
-
-    await screen.findByRole('heading', { name: 'Rate Recall' });
-    fireEvent.click(screen.getByRole('button', { name: /Good/i }));
-
-    const { getSrsCards } = await import('../store');
-    await waitFor(async () => {
-      const all = await getSrsCards();
-      expect(all).toHaveLength(1);
-      expect(all[0].status).toBe('learning');
-      expect(all[0].intervalDays).toBe(0); // FSRS short-term 10-minute step
-      expect(all[0].repetitions).toBe(1);
-      expect(all[0].totalReviews).toBe(1);
-      expect(new Date(all[0].nextReview).getTime()).toBeGreaterThan(Date.now());
-    });
-
-    // Single card rated -> completion screen
-    expect(await screen.findByText('Session finished')).toBeInTheDocument();
   });
 
   it('saves a translation-practice session with translations-only stats on seamless finish', async () => {

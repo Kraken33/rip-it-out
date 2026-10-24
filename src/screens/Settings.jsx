@@ -282,16 +282,6 @@ export default function Settings() {
         </div>
 
         <form onSubmit={handleSaveKeys} className="space-y-6">
-          <PillGroup
-            label="Default Session Interaction Mode"
-            value={settings.defaultMode || 'seamless'}
-            onChange={(val) => handleSettingChange('defaultMode', val)}
-            options={[
-              { label: '✨ Seamless AI (1-Click)', value: 'seamless' },
-              { label: '📋 Prompt Copy/Paste', value: 'prompt' }
-            ]}
-          />
-
           {/* Groq API Key */}
           <div className="space-y-2">
             <div className="flex justify-between items-center">

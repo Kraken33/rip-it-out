@@ -2,14 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { getPracticeCards, getImprovement, getSession, updateSrsCard, getSrsCards, logActivity, getSettings } from '../store';
 import { processReview } from '../srs';
-import { generateExamplesPrompt } from '../prompts';
 import AudioPlayerButton from '../components/AudioPlayerButton';
 
 export default function Review() {
   const [queue, setQueue] = useState([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
-  const [showExamplesPrompt, setShowExamplesPrompt] = useState(false);
   const [sessionComplete, setSessionComplete] = useState(false);
   const [loading, setLoading] = useState(true);
   const startTimeRef = useRef(Date.now());
@@ -24,7 +22,6 @@ export default function Review() {
   });
 
   const [nextDue, setNextDue] = useState(null);
-  const [copied, setCopied] = useState(false);
   const [settings, setSettings] = useState(null);
 
   useEffect(() => {
@@ -143,18 +140,6 @@ export default function Review() {
       setSessionComplete(true);
     } else {
       setCurrentIndex((prev) => prev + 1);
-    }
-  };
-
-  const handleCopyExamples = async () => {
-    const currentCard = queue[currentIndex];
-    const prompt = generateExamplesPrompt([currentCard.improvement]);
-    try {
-      await navigator.clipboard.writeText(prompt);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
-      console.error('Failed to copy', err);
     }
   };
 
@@ -277,32 +262,6 @@ export default function Review() {
                 <p className="text-gray-300 text-sm sm:text-base max-w-xl mx-auto leading-relaxed pt-1">
                   {currentCard.improvement.explanation}
                 </p>
-              )}
-            </div>
-
-            <div className="flex flex-col items-center pt-1">
-              <button 
-                onClick={() => setShowExamplesPrompt(!showExamplesPrompt)}
-                className="px-4 py-2 text-xs font-bold bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 rounded-lg transition-all flex items-center gap-1.5 cursor-pointer"
-              >
-                ✨ Get Example Sentences (Prompt #4)
-              </button>
-
-              {showExamplesPrompt && (
-                <div className="mt-4 w-full p-4 bg-gray-900 border border-gray-800 rounded-lg text-left animate-fade-in">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs font-bold uppercase tracking-wider text-gray-400">Prompt #4 (Examples)</span>
-                    <button 
-                      onClick={handleCopyExamples}
-                      className="text-xs px-2.5 py-1 bg-purple-600 hover:bg-purple-500 text-white rounded font-bold transition-colors cursor-pointer"
-                    >
-                      {copied ? 'Copied! ✓' : 'Copy Prompt'}
-                    </button>
-                  </div>
-                  <pre className="text-xs text-gray-400 whitespace-pre-wrap font-mono max-h-40 overflow-y-auto rounded bg-black/60 p-3 border border-gray-800 leading-relaxed">
-                    {generateExamplesPrompt([currentCard.improvement])}
-                  </pre>
-                </div>
               )}
             </div>
 

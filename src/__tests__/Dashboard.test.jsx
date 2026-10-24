@@ -131,4 +131,16 @@ describe('Dashboard Component', () => {
 
     expect(window.location.pathname).toBe('/frequency-practice');
   });
+
+  it('renders interactive practice action and no external LLM prompt button', async () => {
+    renderDashboard();
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Flashcard Review/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Translation Practice/i })).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText(/Practice with External LLM/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Prompt #3/i)).not.toBeInTheDocument();
+  });
 });

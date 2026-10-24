@@ -1,7 +1,4 @@
 import {
-  generateDescriptionPrompt,
-  generateExportPrompt,
-  parseImportJSON,
   extractJsonObject,
   generateStoryPassagePrompt,
   generateStoryFeedbackPrompt,
@@ -187,6 +184,33 @@ async function requestOpenAIChat(settings, { messages, temperature, maxTokens })
   return data.choices?.[0]?.message?.content || '';
 }
 
+function parseImprovementsResponse(text) {
+  if (!text || !text.trim()) {
+    return { success: false, error: 'Empty input.' };
+  }
+  const jsonStr = extractJsonObject(text);
+  let parsed;
+  try {
+    parsed = JSON.parse(jsonStr);
+  } catch (e) {
+    return { success: false, error: 'Could not parse JSON.' };
+  }
+  if (!parsed.improvements || !Array.isArray(parsed.improvements)) {
+    return { success: false, error: 'Missing improvements array.' };
+  }
+  return {
+    success: true,
+    improvements: parsed.improvements.map((imp) => ({
+      construction: imp.construction || imp.improved || '',
+      original: imp.original || '',
+      improved: imp.improved || '',
+      explanation: imp.explanation || '',
+      category: imp.category || 'other',
+      spoken_frequency: imp.spoken_frequency || 'medium',
+    })),
+  };
+}
+
 /**
  * Send user description directly to the OpenAI Chat Completions API and return parsed improvements
  * @param {Object} session
@@ -240,7 +264,7 @@ You MUST respond with ONLY a valid JSON object in this exact format — no expla
     maxTokens: 8000,
   });
 
-  const parsed = parseImportJSON(rawContent);
+  const parsed = parseImprovementsResponse(rawContent);
   if (!parsed.success) {
     // If content was genuinely empty (the model hit its token limit),
     // give a clearer message instead of the generic parse error.

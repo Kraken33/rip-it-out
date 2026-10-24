@@ -22,7 +22,6 @@ const DEFAULT_SETTINGS = {
   openaiApiKey: '',
   ttsEngine: 'browser',
   ttsVoice: 'alloy',
-  defaultMode: 'seamless',
 };
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -171,7 +170,6 @@ function mapSettingsFromDb(r) {
     openaiApiKey: r.openai_api_key ?? DEFAULT_SETTINGS.openaiApiKey,
     ttsEngine: r.tts_engine || DEFAULT_SETTINGS.ttsEngine,
     ttsVoice: r.tts_voice || DEFAULT_SETTINGS.ttsVoice,
-    defaultMode: r.default_mode || DEFAULT_SETTINGS.defaultMode,
   };
 }
 
@@ -661,7 +659,6 @@ export async function updateSettings(updates) {
           openai_api_key: merged.openaiApiKey,
           tts_engine: merged.ttsEngine,
           tts_voice: merged.ttsVoice,
-          default_mode: merged.defaultMode,
         };
         await supabase.from('settings').upsert(dbRow);
       }

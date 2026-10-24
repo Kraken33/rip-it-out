@@ -122,7 +122,7 @@ export default function Dashboard() {
           </span>
         </h1>
         <p className="text-gray-400 text-base sm:text-lg font-medium">
-          Extract natural spoken phrases &amp; master them with AI prompts
+          Extract natural spoken phrases &amp; master them with interactive AI
         </p>
       </header>
 
@@ -187,7 +187,7 @@ export default function Dashboard() {
               onClick={() => navigate('/practice')}
               className="flex-1 px-5 py-3.5 bg-gray-800 hover:bg-gray-700 text-purple-300 hover:text-white border border-purple-500/40 font-bold text-sm rounded-xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
             >
-              🤖 Practice with External LLM (Prompt #3)
+              🌐 Translation Practice
             </button>
           </div>
 
