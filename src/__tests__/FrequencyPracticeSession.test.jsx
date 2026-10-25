@@ -255,4 +255,33 @@ describe('FrequencyPracticeSession Component', () => {
     fireEvent.click(screen.getByText('Close Modal'));
     expect(screen.queryByTestId('mock-explain-practice-modal')).toBeNull();
   });
+
+  it('renders unified PracticeHeader with active Frequency Sentences tab and jump page modal', async () => {
+    render(
+      <MemoryRouter>
+        <FrequencyPracticeSession />
+      </MemoryRouter>
+    );
+
+    expect(screen.getByTestId('practice-header')).toBeInTheDocument();
+    expect(screen.getByTestId('tab-frequency-active')).toHaveTextContent('Frequency Sentences');
+    expect(screen.getByTestId('tab-translation-inactive')).toHaveTextContent('Translation Practice');
+
+    await waitFor(() => {
+      expect(screen.getByText(/"Иди сюда."/i)).toBeInTheDocument();
+    });
+
+    // Jump page modal
+    const jumpBtn = screen.getByTestId('jump-page-button');
+    fireEvent.click(jumpBtn);
+    expect(screen.getByText('Jump to Manythings Page')).toBeInTheDocument();
+
+    const input = screen.getByPlaceholderText('e.g. 1');
+    fireEvent.change(input, { target: { value: '4' } });
+    fireEvent.click(screen.getByRole('button', { name: /Load Page/i }));
+
+    await waitFor(() => {
+      expect(fetchManythingsPage).toHaveBeenCalledWith(4);
+    });
+  });
 });

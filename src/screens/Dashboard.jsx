@@ -58,7 +58,7 @@ export default function Dashboard() {
       try {
         setLoading(true);
         const data = await getDashboardData();
-        const freqProg = getFrequencyProgress();
+        const freqProg = await getFrequencyProgress();
         if (isMounted) {
           setStats(data.stats);
           setActivityStats(data.activityStats);

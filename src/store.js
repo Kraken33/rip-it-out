@@ -1237,26 +1237,115 @@ export async function clearAllData() {
 
 // ── Frequency Sentences Practice Store ─────────────────────────────
 
-export function getFrequencyProgress() {
+export async function getFrequencyProgress() {
   const defaults = {
     page: 1,
+    pageNumber: 1,
     sentenceIndex: 0,
     completedCount: 0,
     skippedCount: 0,
     savedCount: 0,
   };
   const stored = readLocalStore(STORAGE_KEYS.frequencyProgress);
-  return stored ? { ...defaults, ...stored } : defaults;
+  let local = stored ? { ...defaults, ...stored } : defaults;
+  if (local.pageNumber === undefined && local.page !== undefined) {
+    local.pageNumber = local.page;
+  }
+  if (local.page === undefined && local.pageNumber !== undefined) {
+    local.page = local.pageNumber;
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data, error } = await supabase
+          .from('frequency_progress')
+          .select('*')
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        if (!error && data) {
+          const remoteUpdated = data.updated_at ? new Date(data.updated_at).getTime() : 0;
+          const localUpdated = local.lastUpdated ? new Date(local.lastUpdated).getTime() : 0;
+
+          if (remoteUpdated >= localUpdated) {
+            const merged = {
+              page: data.page_number ?? 1,
+              pageNumber: data.page_number ?? 1,
+              sentenceIndex: data.sentence_index ?? 0,
+              completedCount: data.completed_count ?? 0,
+              skippedCount: data.skipped_count ?? 0,
+              savedCount: data.saved_count ?? 0,
+              lastUpdated: data.updated_at || new Date().toISOString(),
+            };
+            writeLocalStore(STORAGE_KEYS.frequencyProgress, merged);
+            return merged;
+          } else if (localUpdated > remoteUpdated) {
+            const dbRow = {
+              user_id: user.id,
+              page_number: local.pageNumber || local.page || 1,
+              sentence_index: local.sentenceIndex || 0,
+              completed_count: local.completedCount || 0,
+              skipped_count: local.skippedCount || 0,
+              saved_count: local.savedCount || 0,
+              updated_at: local.lastUpdated || new Date().toISOString(),
+            };
+            supabase.from('frequency_progress').upsert(dbRow).then(() => {}).catch((err) => {
+              console.warn('Supabase sync local-to-remote error:', err);
+            });
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('Supabase getFrequencyProgress error:', err);
+    }
+  }
+
+  return local;
 }
 
-export function saveFrequencyProgress(updates = {}) {
-  const current = getFrequencyProgress();
+export async function saveFrequencyProgress(updates = {}) {
+  const current = readLocalStore(STORAGE_KEYS.frequencyProgress) || {
+    page: 1,
+    pageNumber: 1,
+    sentenceIndex: 0,
+    completedCount: 0,
+    skippedCount: 0,
+    savedCount: 0,
+  };
+  const page = updates.pageNumber !== undefined
+    ? updates.pageNumber
+    : (updates.page !== undefined ? updates.page : (current.pageNumber || current.page || 1));
   const next = {
     ...current,
     ...updates,
+    page,
+    pageNumber: page,
     lastUpdated: new Date().toISOString(),
   };
   writeLocalStore(STORAGE_KEYS.frequencyProgress, next);
+
+  if (isSupabaseConfigured) {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const dbRow = {
+          user_id: user.id,
+          page_number: next.pageNumber,
+          sentence_index: next.sentenceIndex,
+          completed_count: next.completedCount,
+          skipped_count: next.skippedCount,
+          saved_count: next.savedCount,
+          updated_at: next.lastUpdated,
+        };
+        await supabase.from('frequency_progress').upsert(dbRow);
+      }
+    } catch (err) {
+      console.warn('Supabase saveFrequencyProgress error:', err);
+    }
+  }
+
   return next;
 }
 

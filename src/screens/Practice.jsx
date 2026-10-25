@@ -11,6 +11,7 @@ import {
 } from '../store';
 import { processReview, RATINGS } from '../srs';
 import AudioPlayerButton from '../components/AudioPlayerButton';
+import PracticeHeader from '../components/PracticeHeader';
 import TranslationPracticeSession from './TranslationPracticeSession';
 
 export default function Practice() {
@@ -347,19 +348,7 @@ export default function Practice() {
   // Card-Style Seamless AI Session for Translation Practice
   return (
     <div className="max-w-2xl mx-auto space-y-6 animate-fade-in py-2">
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-[#11121c] p-2 rounded-xl border border-gray-800">
-        <div className="flex items-center gap-2">
-          <span className="px-4 py-2 rounded-lg text-xs font-bold bg-purple-600 text-white shadow">
-            🌐 Translation Practice
-          </span>
-          <button
-            onClick={() => navigate('/frequency-practice')}
-            className="px-4 py-2 rounded-lg text-xs font-bold transition cursor-pointer bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1.5"
-          >
-            ⚡ Frequency Sentences
-          </button>
-        </div>
-      </div>
+      <PracticeHeader activeMode="translation" />
 
       <TranslationPracticeSession
         allCards={improvements}

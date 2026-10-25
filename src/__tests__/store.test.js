@@ -388,17 +388,18 @@ describe('Store In-Memory Calculation Helpers & Aggregated Loaders', () => {
   });
 
   describe('Frequency Sentences Practice helpers', () => {
-    it('getFrequencyProgress returns default values when empty', () => {
-      const progress = getFrequencyProgress();
+    it('getFrequencyProgress returns default values when empty', async () => {
+      const progress = await getFrequencyProgress();
       expect(progress.page).toBe(1);
+      expect(progress.pageNumber).toBe(1);
       expect(progress.sentenceIndex).toBe(0);
       expect(progress.completedCount).toBe(0);
       expect(progress.skippedCount).toBe(0);
       expect(progress.savedCount).toBe(0);
     });
 
-    it('saveFrequencyProgress updates and persists progress fields', () => {
-      const updated = saveFrequencyProgress({
+    it('saveFrequencyProgress updates and persists progress fields', async () => {
+      const updated = await saveFrequencyProgress({
         page: 3,
         sentenceIndex: 12,
         completedCount: 20,
@@ -407,11 +408,13 @@ describe('Store In-Memory Calculation Helpers & Aggregated Loaders', () => {
       });
 
       expect(updated.page).toBe(3);
+      expect(updated.pageNumber).toBe(3);
       expect(updated.sentenceIndex).toBe(12);
       expect(updated.completedCount).toBe(20);
 
-      const reloaded = getFrequencyProgress();
+      const reloaded = await getFrequencyProgress();
       expect(reloaded.page).toBe(3);
+      expect(reloaded.pageNumber).toBe(3);
       expect(reloaded.sentenceIndex).toBe(12);
     });
 

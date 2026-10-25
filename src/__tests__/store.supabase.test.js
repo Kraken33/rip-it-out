@@ -8,6 +8,7 @@ const {
   mockEq,
   mockNeq,
   mockDelete,
+  mockUpsert,
   mockFrom,
   mockSupabase,
 } = vi.hoisted(() => {
@@ -18,6 +19,7 @@ const {
   const mockEq = vi.fn();
   const mockNeq = vi.fn().mockResolvedValue({ error: null });
   const mockDelete = vi.fn().mockReturnValue({ neq: mockNeq });
+  const mockUpsert = vi.fn().mockResolvedValue({ error: null });
   const mockFrom = vi.fn();
 
   const mockSupabase = {
@@ -35,6 +37,7 @@ const {
     mockEq,
     mockNeq,
     mockDelete,
+    mockUpsert,
     mockFrom,
     mockSupabase,
   };
@@ -52,16 +55,20 @@ import {
   getImprovement,
   getSrsCard,
   addImprovements,
+  getFrequencyProgress,
+  saveFrequencyProgress,
 } from '../store';
 
 describe('Store Layer — Supabase maybeSingle queries', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
 
     mockDelete.mockReturnValue({ neq: mockNeq });
     mockFrom.mockReturnValue({
       select: mockSelect,
       delete: mockDelete,
+      upsert: mockUpsert,
     });
     mockSelect.mockReturnValue({
       eq: mockEq,
@@ -237,6 +244,84 @@ describe('Store Layer — Supabase maybeSingle queries', () => {
 
       expect(res).toHaveLength(1);
       expect(res[0].construction).toBe('test construction');
+    });
+  });
+
+  describe('Frequency Progress Supabase Sync', () => {
+    it('uses maybeSingle and falls back to local storage when user has no db progress row', async () => {
+      mockGetUser.mockResolvedValue({
+        data: { user: { id: 'test-user-id' } },
+      });
+      mockMaybeSingle.mockResolvedValue({
+        data: null,
+        error: null,
+      });
+
+      const prog = await getFrequencyProgress();
+
+      expect(mockFrom).toHaveBeenCalledWith('frequency_progress');
+      expect(mockSelect).toHaveBeenCalledWith('*');
+      expect(mockEq).toHaveBeenCalledWith('user_id', 'test-user-id');
+      expect(mockMaybeSingle).toHaveBeenCalled();
+      expect(prog.page).toBe(1);
+      expect(prog.sentenceIndex).toBe(0);
+      expect(prog.completedCount).toBe(0);
+    });
+
+    it('maps db frequency_progress correctly when row is newer than local', async () => {
+      mockGetUser.mockResolvedValue({
+        data: { user: { id: 'test-user-id' } },
+      });
+      mockMaybeSingle.mockResolvedValue({
+        data: {
+          user_id: 'test-user-id',
+          page_number: 5,
+          sentence_index: 10,
+          completed_count: 50,
+          skipped_count: 40,
+          saved_count: 10,
+          updated_at: '2026-10-25T12:00:00Z',
+        },
+        error: null,
+      });
+
+      const prog = await getFrequencyProgress();
+
+      expect(mockFrom).toHaveBeenCalledWith('frequency_progress');
+      expect(prog.page).toBe(5);
+      expect(prog.pageNumber).toBe(5);
+      expect(prog.sentenceIndex).toBe(10);
+      expect(prog.completedCount).toBe(50);
+      expect(prog.skippedCount).toBe(40);
+      expect(prog.savedCount).toBe(10);
+    });
+
+    it('upserts to Supabase frequency_progress table on saveFrequencyProgress', async () => {
+      mockGetUser.mockResolvedValue({
+        data: { user: { id: 'test-user-id' } },
+      });
+
+      const saved = await saveFrequencyProgress({
+        page: 7,
+        sentenceIndex: 4,
+        completedCount: 65,
+        skippedCount: 50,
+        savedCount: 15,
+      });
+
+      expect(saved.page).toBe(7);
+      expect(saved.pageNumber).toBe(7);
+      expect(mockFrom).toHaveBeenCalledWith('frequency_progress');
+      expect(mockUpsert).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user_id: 'test-user-id',
+          page_number: 7,
+          sentence_index: 4,
+          completed_count: 65,
+          skipped_count: 50,
+          saved_count: 15,
+        })
+      );
     });
   });
 });

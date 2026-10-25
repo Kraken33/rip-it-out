@@ -123,7 +123,6 @@ export default function Review() {
     }
 
     setShowAnswer(false);
-    setShowExamplesPrompt(false);
 
     if (currentIndex + 1 >= newQueue.length) {
       const elapsed = Math.round((Date.now() - startTimeRef.current) / 1000);
