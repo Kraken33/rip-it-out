@@ -178,7 +178,9 @@ export default function Practice() {
 
     if (customCards && Array.isArray(customCards) && customCards.length > 0) {
       const practicedIds = new Set(customCards.map((c) => c.id ?? c.improvementId));
-      const cardsToRate = selectedCards.filter((c) => practicedIds.has(c.improvementId));
+      const cardsToRate = selectedCards
+        .filter((c) => practicedIds.has(c.improvementId))
+        .filter((c) => !inlineRatedCardIds.has(c.improvementId));
       const rateableIds = new Set(cardsToRate.map((c) => c.improvementId));
       const impsToRate = improvements.filter((i) => rateableIds.has(i.id));
       setSelectedCards(cardsToRate);
@@ -189,8 +191,8 @@ export default function Practice() {
       }
     }
 
-    setStep('rating');
-    setCurrentIndex(0);
+    setStep('complete');
+    return;
   }, [startTime, improvements, selectedCards, inlineRatedCardIds]);
 
   const handleRate = useCallback(async (score) => {

@@ -107,7 +107,7 @@ describe('TranslationPracticeSession Component', () => {
     expect(screen.getByText(/Round 1/i)).toBeInTheDocument();
     expect(screen.queryByText(/Round 1 of/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Next Round/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Finish & Rate Recall →/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Finish Practice/i })).toBeInTheDocument();
 
     await waitFor(() => {
       expect(screen.getByText(SENTENCE)).toBeInTheDocument();
@@ -242,10 +242,11 @@ describe('TranslationPracticeSession Component', () => {
     submitTranslation('I plan on going to the theater.');
     await waitFor(() => expect(screen.getByTestId('translation-verdict')).toBeInTheDocument());
 
-    fireEvent.click(screen.getByRole('button', { name: /Finish & Rate Recall/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Finish Practice/i }));
 
     expect(onFinishMock).toHaveBeenCalledTimes(1);
-    const [orderedRounds, practiced] = onFinishMock.mock.calls[0];
+    const [orderedRounds, practiced, options] = onFinishMock.mock.calls[0];
+    expect(options).toEqual({ ratedInline: true });
     expect(orderedRounds).toHaveLength(2);
     expect(orderedRounds[0]).toMatchObject({
       roundIndex: 0,
@@ -275,10 +276,10 @@ describe('TranslationPracticeSession Component', () => {
 
     await waitForSentence();
 
-    const finishBtn = screen.getByRole('button', { name: /Finish & Rate Recall/i });
+    const finishBtn = screen.getByRole('button', { name: /Finish Practice/i });
     fireEvent.click(finishBtn);
 
-    expect(onFinishMock).toHaveBeenCalledWith([], []);
+    expect(onFinishMock).toHaveBeenCalledWith([], [], { ratedInline: true });
   });
 
   it('calls generateTranslationSentence statelessly with 1 card and zero conversation history', async () => {

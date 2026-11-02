@@ -99,7 +99,7 @@ describe('Practice Component', () => {
     await waitFor(() =>
       expect(screen.getByText(/Round 1/i)).toBeInTheDocument()
     );
-    expect(screen.getByRole('button', { name: /Finish & Rate Recall/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Finish Practice/i })).toBeInTheDocument();
   });
 
   it('renders translation practice directly and links to frequency sentences', async () => {
@@ -121,7 +121,7 @@ describe('Practice Component', () => {
     expect(screen.queryByText(/Prompt #3/i)).not.toBeInTheDocument();
   });
 
-  it('persists Easy rating and advances the queue after a seamless translation session finishes', async () => {
+  it('finishes session immediately when Finish Practice is clicked without rounds', async () => {
     const s = await createSession({ title: 'S1', sourceType: 'video' });
     await addImprovements(s.id, [
       { construction: 'catch up on', original: 'caught up', improved: 'catch up on work', explanation: 'exp' },
@@ -134,36 +134,23 @@ describe('Practice Component', () => {
       </BrowserRouter>
     );
 
-    const finishBtn = await screen.findByRole('button', { name: /Finish & Rate Recall/i });
+    const finishBtn = await screen.findByRole('button', { name: /Finish Practice/i });
     fireEvent.click(finishBtn);
 
-    // No rounds submitted → no session artefact saved, straight to rating.
-    const { getSessions, getActivityLogs } = await import('../store');
+    // No rounds submitted → no session artefact saved, straight to completion.
+    const { getSessions, getActivityLogs, getSrsCards } = await import('../store');
     await waitFor(async () => {
       expect(await getSessions()).toHaveLength(1);
       expect(await getActivityLogs()).toHaveLength(0);
     });
 
-    // Rate Recall step appears
-    await screen.findByRole('heading', { name: 'Rate Recall' });
+    // Session finished completion appears directly without redundant rating
+    expect(await screen.findByText('Session finished')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Rate Recall' })).not.toBeInTheDocument();
 
-    // Regression: Hard/Good/Easy must work too, not only Again
-    fireEvent.click(screen.getByRole('button', { name: /Easy/i }));
-
-    const { getSrsCards } = await import('../store');
-    await waitFor(async () => {
-      const all = await getSrsCards();
-      const rated = all.filter((c) => c.status === 'reviewing');
-      expect(rated).toHaveLength(1);
-      expect(rated[0].intervalDays).toBeGreaterThanOrEqual(4);
-      expect(rated[0].totalReviews).toBe(1);
-      expect(new Date(rated[0].nextReview).getTime()).toBeGreaterThan(Date.now());
-    });
-
-    // Queue advanced to the second practiced card
-    await waitFor(() =>
-      expect(screen.getByText((_, el) => el?.textContent === '2 / 2')).toBeInTheDocument()
-    );
+    // Cards remain unreviewed since they were not rated
+    const all = await getSrsCards();
+    expect(all.every((c) => c.totalReviews === 0)).toBe(true);
   });
 
   it('saves a translation-practice session with translations-only stats on seamless finish', async () => {
@@ -222,10 +209,11 @@ describe('Practice Component', () => {
       expect(stats.totalTimeSeconds).toBeGreaterThanOrEqual(0);
     });
 
-    // Library visibility + rating handoff still work.
+    // Session completion appears directly without redundant batch rating
     const sessions = await getSessions();
     expect(sessions.some((x) => x.id === savedId && x.sourceType === 'translation-practice')).toBe(true);
-    await screen.findByRole('heading', { name: 'Rate Recall' });
+    expect(await screen.findByText('Session finished')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Rate Recall' })).not.toBeInTheDocument();
   });
 
   it('skips to the completion state when no practiced card has a matching SRS card', async () => {
@@ -286,5 +274,58 @@ describe('Practice Component', () => {
     // Session completion view is displayed directly without redundant batch rating
     expect(await screen.findByText('Session finished')).toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Rate Recall' })).not.toBeInTheDocument();
+  });
+
+  it('finishes session early after rating card 1, ignoring unrated card 2 and transitioning straight to completion', async () => {
+    const s = await createSession({ title: 'S1', sourceType: 'video' });
+    await addImprovements(s.id, [
+      { construction: 'catch up on', original: 'caught up', improved: 'catch up on work', explanation: 'exp' },
+      { construction: 'invite over', original: 'invited', improved: 'invite him over', explanation: 'exp2' },
+    ]);
+
+    render(
+      <BrowserRouter>
+        <Practice />
+      </BrowserRouter>
+    );
+
+    await screen.findByText(/Round 1/i);
+
+    // Submit translation for card 1
+    const textarea = screen.getByPlaceholderText(/Type or speak your English translation/i);
+    fireEvent.change(textarea, { target: { value: 'We caught up on work.' } });
+    fireEvent.click(screen.getByRole('button', { name: /Translate/i }));
+
+    // Wait for verdict
+    await screen.findByTestId('translation-verdict');
+
+    // Rate card 1 inline via the card rating button (advances to card 2)
+    const goodBtn = screen.getByRole('button', { name: /3\. Good/i });
+    fireEvent.click(goodBtn);
+
+    // Now round 2 is loaded (unrated)
+    await screen.findByText(/Round 2/i);
+
+    // Click Finish Practice early
+    const finishBtn = screen.getByRole('button', { name: /Finish Practice/i });
+    fireEvent.click(finishBtn);
+
+    // Transitions directly to completion screen
+    expect(await screen.findByText('Session finished')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Rate Recall' })).not.toBeInTheDocument();
+
+    // Verify card 1 has SRS review, card 2 has 0 reviews
+    const { getSrsCards, getSessions } = await import('../store');
+    const all = await getSrsCards();
+    const card1 = all.find((c) => c.improvementId === 'imp_1' || c.construction === 'catch up on');
+    const card2 = all.find((c) => c.improvementId === 'imp_2' || c.construction === 'invite over');
+    expect(card1?.totalReviews ?? all[0].totalReviews).toBe(1);
+    expect(card2?.totalReviews ?? all[1].totalReviews).toBe(0);
+
+    // Saved session exists with 1 round
+    const sessions = await getSessions();
+    const saved = sessions.find((x) => x.sourceType === 'translation-practice');
+    expect(saved).toBeDefined();
+    expect(saved.title).toMatch(/1 rounds/);
   });
 });

@@ -381,11 +381,11 @@ export default function TranslationPracticeSession({
           <button
             id="btn-finish-translation-practice"
             type="button"
-            onClick={() => handleFinishSession()}
+            onClick={() => handleFinishSession({ ratedInline: true })}
             disabled={evaluating}
             className="px-3 py-1 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg shadow transition cursor-pointer disabled:opacity-50"
           >
-            Finish & Rate Recall →
+            Finish Practice
           </button>
         </div>
       </div>
@@ -483,7 +483,7 @@ export default function TranslationPracticeSession({
                   }}
                   placeholder={
                     isCompleted
-                      ? 'Session complete! Click Finish & Rate Recall above.'
+                      ? 'Session complete! Click Finish Practice above.'
                       : 'Type or speak your English translation...'
                   }
                   className="w-full p-3.5 pr-14 rounded-xl bg-[#0e0f17] border border-gray-800 text-white text-base focus:outline-none focus:border-purple-500 transition-all resize-none"
@@ -642,14 +642,14 @@ export default function TranslationPracticeSession({
               🎉 All target constructions practiced!
             </p>
             <p className="text-xs text-gray-300">
-              You've completed all constructions in this session. Ready to rate your recall?
+              You've completed all constructions in this session.
             </p>
             <button
               type="button"
               onClick={() => handleFinishSession({ ratedInline: true })}
               className="mt-1 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer"
             >
-              Finish & Rate Recall →
+              Finish Practice
             </button>
           </div>
         )}

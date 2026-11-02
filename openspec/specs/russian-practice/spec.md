@@ -45,7 +45,7 @@ The system SHALL support exclusively interactive in-app Seamless AI card session
 - **THEN** no external LLM Prompt #5 generation or copy interfaces are provided and the app directly initializes the card-style Seamless AI Translation Practice.
 
 ### Requirement: Transition to Manual SRS Recall Rating
-The system SHALL persist SRS recall ratings (`Again`, `Hard`, `Good`, `Easy`) for practiced cards inline on each card immediately after evaluation during Seamless AI translation practice, and SHALL NOT display post-session sequential rating screens for external prompt sessions.
+The system SHALL persist SRS recall ratings (`Again`, `Hard`, `Good`, `Easy`) for practiced cards inline on each card immediately after evaluation during Seamless AI translation practice, and SHALL NOT display post-session sequential rating screens. When the learner finishes the practice session early via the finish control, the system SHALL finish the session immediately and transition directly to the completion state without presenting a post-session rating screen, ignoring any currently unrated card.
 
 #### Scenario: Transition after practice completion
 - **WHEN** a translation on the active card is evaluated in Seamless AI mode
@@ -64,6 +64,12 @@ The system SHALL persist SRS recall ratings (`Again`, `Hard`, `Good`, `Easy`) fo
 #### Scenario: Rating covers distinct practiced constructions
 - **WHEN** the user generates multiple sentences for the same construction on a card before rating recall or ends the session
 - **THEN** each distinct construction is rated once to advance to the next card, and the saved translation session artefact records all submitted rounds independent of the rating outcome.
+
+#### Scenario: Finishing practice early via finish control
+- **WHEN** the learner activates the Finish Practice control while a card is active (whether not yet submitted, in evaluation, or evaluated without an inline recall rating selected)
+- **THEN** the system terminates the practice session immediately and transitions directly to the completion state without displaying a batch recall rating screen
+- **AND** any active card that has not been rated inline is excluded from SRS schedule updates
+- **AND** the saved translation session artefact and activity logs record all rounds evaluated prior to finishing.
 
 ### Requirement: Multi-Line Translation Input
 The system SHALL provide a pre-focused, multi-line translation input inside the active practice card in which an English answer can be written and reviewed in full before submission, and SHALL submit only on an explicit action rather than on a plain newline.
